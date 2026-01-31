@@ -10,26 +10,7 @@ import { twMerge } from 'tailwind-merge'
 
 const API_BASE = 'http://localhost:3001/api';
 
-// Brain Icon for CORTEX Branding
-function BrainIcon({ size = 24, className }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-4A2.5 2.5 0 0 1 9.5 2Z" />
-      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-4A2.5 2.5 0 0 0 14.5 2Z" />
-    </svg>
-  )
-}
+import brainIcon from './assets/brain.png'
 
 // --- Components ---
 
@@ -213,7 +194,7 @@ function App() {
         <div className="p-6">
           <div className="flex items-center gap-3 text-cyan-400 mb-8">
             <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-lg border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
-              <BrainIcon size={24} className="text-cyan-300" />
+              <img src={brainIcon} alt="Cortex Brain" className="w-6 h-6 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
             </div>
             <span className="font-bold text-lg tracking-tight text-white">CORTEX</span>
           </div>

@@ -18,25 +18,33 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-function StatCard({ title, count, icon: Icon, color, delay }) {
+function StatCard({ title, count, icon: Icon, color, delay, description }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      className="glass-card p-6 rounded-2xl relative overflow-hidden group"
-    >
-      <div className={cn("absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity", color)}>
-        <Icon size={64} />
-      </div>
-      <div className="relative z-10">
-        <div className={cn("p-2 rounded-lg w-fit mb-3", color.replace('text-', 'bg-').replace('400', '500/10'))}>
-          <Icon size={20} className={color} />
+    <div className="relative group z-0 hover:z-10">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay }}
+        className="glass-card p-6 rounded-2xl relative overflow-hidden h-full"
+      >
+        <div className={cn("absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity", color)}>
+          <Icon size={64} />
         </div>
-        <div className="text-3xl font-bold text-slate-100">{count}</div>
-        <div className="text-slate-400 text-xs font-medium uppercase tracking-wider mt-1">{title}</div>
+        <div className="relative z-10">
+          <div className={cn("p-2 rounded-lg w-fit mb-3", color.replace('text-', 'bg-').replace('400', '500/10'))}>
+            <Icon size={20} className={color} />
+          </div>
+          <div className="text-3xl font-bold text-slate-100">{count}</div>
+          <div className="text-slate-400 text-xs font-medium uppercase tracking-wider mt-1">{title}</div>
+        </div>
+      </motion.div>
+
+      {/* Tooltip */}
+      <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 w-48 p-3 bg-slate-950/90 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-50 text-xs text-slate-300 text-center translate-y-2 group-hover:translate-y-0">
+        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-950/90 border-t border-l border-slate-800 rotate-45"></div>
+        {description}
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -192,24 +200,40 @@ function App() {
       {/* Sidebar */}
       <nav className="w-64 glass-panel border-r border-slate-800/50 flex flex-col fixed h-full z-50">
         <div className="p-6">
-          <div className="flex items-center gap-3 text-cyan-400 mb-8">
-            <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-lg border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
-              <img src={brainIcon} alt="Cortex Brain" className="w-6 h-6 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
+          <div className="flex items-center gap-4 text-cyan-400 mb-8">
+            <div className="bg-slate-950 rounded-2xl p-3 border border-slate-800 shadow-xl">
+              <img src={brainIcon} alt="Cortex Brain" className="w-10 h-10 object-contain drop-shadow-[0_0_12px_rgba(6,182,212,0.6)]" />
             </div>
-            <span className="font-bold text-lg tracking-tight text-white">CORTEX</span>
+            <span className="font-bold text-2xl tracking-tight text-white">CORTEX</span>
           </div>
 
           <div className="space-y-1">
-            <NavItem icon={LayoutDashboard} active label="Dashboard" />
-            <NavItem icon={Terminal} label="System Logs" onClick={() => { }} />
-            <NavItem icon={GitBranch} label="Repositories" badge={repos.length} />
+            <NavItem
+              icon={LayoutDashboard}
+              label="Dashboard"
+              active={view === 'dashboard'}
+              onClick={() => setView('dashboard')}
+            />
+            <NavItem
+              icon={Terminal}
+              label="System Logs"
+              active={view === 'logs'}
+              onClick={() => setView('logs')}
+            />
+            <NavItem
+              icon={GitBranch}
+              label="Repositories"
+              badge={repos.length}
+              active={view === 'repos'}
+              onClick={() => setView('repos')}
+            />
           </div>
         </div>
 
         <div className="mt-auto p-6 border-t border-slate-800/50 bg-slate-900/40">
           <div className="flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-xs font-medium text-emerald-400">System Online</span>
+            <div className={`w-2 h-2 rounded-full ${status === 'Online' ? 'bg-emerald-500' : 'bg-red-500'} animate-pulse`}></div>
+            <span className={`text-xs font-medium ${status === 'Online' ? 'text-emerald-400' : 'text-red-400'}`}>System {status}</span>
           </div>
           <div className="text-xs text-slate-500 mt-1">v1.2.0 • Stable</div>
         </div>
@@ -222,7 +246,7 @@ function App() {
         <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold">CORTEX UI</h1>
-            <p className="text-slate-400 text-sm mt-1">Centralized Intelligence Management Hub</p>
+            <p className="text-slate-400 text-sm mt-1">Centralized AI Repo Management</p>
           </div>
 
           <div className="flex gap-3">
@@ -241,92 +265,144 @@ function App() {
           </div>
         </header>
 
-        {/* Bento Grid Stats */}
-        <div className="grid grid-cols-5 gap-4 mb-8">
-          <StatCard title="Agents" count={categorized.agents.length} icon={Cpu} color="text-purple-400" delay={0.1} />
-          <StatCard title="Skills" count={categorized.skills.length} icon={Terminal} color="text-yellow-400" delay={0.2} />
-          <StatCard title="Knowledge" count={categorized.knowledge.length} icon={Database} color="text-blue-400" delay={0.3} />
-          <StatCard title="Tools" count={categorized.tools.length} icon={Wrench} color="text-emerald-400" delay={0.4} />
-          <StatCard title="Benchmarks" count={categorized.benchmarks.length} icon={BarChart3} color="text-red-400" delay={0.5} />
-        </div>
-
-        {/* Smart Add Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Smart Clone Card */}
-          <div className="lg:col-span-2 glass-panel rounded-2xl p-1">
-            <div className="bg-slate-900/50 p-6 rounded-xl h-full border border-slate-800/50">
-              <div className="flex items-center gap-2 mb-4">
-                <Search size={18} className="text-cyan-400" />
-                <h3 className="font-semibold text-slate-200">Smart Clone Repository</h3>
+        {/* Content Views */}
+        <AnimatePresence mode="wait">
+          {view === 'dashboard' && (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Bento Grid Stats */}
+              <div className="grid grid-cols-5 gap-4 mb-8">
+                <StatCard title="Agents" count={categorized.agents.length} icon={Cpu} color="text-purple-400" delay={0.1} description="Autonomous systems that perceive, reason, and act to execute tasks." />
+                <StatCard title="Skills" count={categorized.skills.length} icon={Terminal} color="text-yellow-400" delay={0.2} description="Modular specific capabilities and functions utilized by agents." />
+                <StatCard title="Knowledge" count={categorized.knowledge.length} icon={Database} color="text-blue-400" delay={0.3} description="Information libraries, reasoning patterns, and documentation." />
+                <StatCard title="Tools" count={categorized.tools.length} icon={Wrench} color="text-emerald-400" delay={0.4} description="Utilities, servers, and infrastructure support helpers." />
+                <StatCard title="Benchmarks" count={categorized.benchmarks.length} icon={BarChart3} color="text-red-400" delay={0.5} description="Standardized tests and metrics for evaluating performance." />
               </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  placeholder="https://github.com/username/repo"
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50 transition-colors placeholder:text-slate-600"
-                />
-                <button
-                  onClick={handleAdd}
-                  disabled={loading || !url}
-                  className="px-6 bg-slate-100 hover:bg-white text-slate-900 rounded-xl font-bold transition-all disabled:opacity-50 text-sm"
-                >
-                  Clone
-                </button>
-              </div>
-              <p className="text-xs text-slate-500 mt-3 flex items-center gap-1.5">
-                <CheckCircle2 size={12} className="text-cyan-500" />
-                Auto-classifies into Agents, Skills, or Knowledge folders.
-              </p>
-            </div>
-          </div>
 
-          {/* Logs Panel */}
-          <div className="glass-panel rounded-2xl p-4 h-[200px] overflow-hidden flex flex-col">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3 flex justify-between">
-              <span>System Activity</span>
-              <span className="text-emerald-500">Live</span>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-1.5 font-mono text-[10px] sm:text-xs">
-              {logs.length === 0 && <div className="text-slate-600 italic">Ready for commands...</div>}
-              {logs.map((log, i) => (
-                <div key={i} className="text-slate-300 border-l-2 border-slate-700 pl-2">
-                  {log}
+              {/* Smart Add Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <div className="lg:col-span-2 glass-panel rounded-2xl p-1">
+                  <div className="bg-slate-900/50 p-6 rounded-xl h-full border border-slate-800/50">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Search size={18} className="text-cyan-400" />
+                      <h3 className="font-semibold text-slate-200">Smart Clone Repository</h3>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={url}
+                        onChange={e => setUrl(e.target.value)}
+                        placeholder="https://github.com/username/repo"
+                        className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50 transition-colors placeholder:text-slate-600"
+                      />
+                      <button
+                        onClick={handleAdd}
+                        disabled={loading || !url}
+                        className="px-6 bg-slate-100 hover:bg-white text-slate-900 rounded-xl font-bold transition-all disabled:opacity-50 text-sm"
+                      >
+                        Clone
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3 flex items-center gap-1.5">
+                      <CheckCircle2 size={12} className="text-cyan-500" />
+                      Auto-classifies into Agents, Skills, or Knowledge folders.
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* Repository Table */}
-        <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl shadow-black/20">
-          <div className="px-6 py-4 border-b border-slate-800/50 flex justify-between items-center bg-slate-900/20">
-            <h3 className="font-semibold text-slate-200">Tracked Resources</h3>
-            <div className="text-xs text-slate-500 font-mono">{repos.length} total</div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-950/30 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
-                <tr>
-                  <th className="p-4 pl-6">Name / Path</th>
-                  <th className="p-4">Branch</th>
-                  <th className="p-4">Type</th>
-                  <th className="p-4 pr-6 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                <AnimatePresence>
-                  {repos.map((repo, i) => (
-                    <RepoRow key={repo.Name + i} repo={repo} delay={i * 0.05} />
-                  ))}
-                </AnimatePresence>
-              </tbody>
-            </table>
-          </div>
-        </div>
+                <div className="glass-panel rounded-2xl p-4 h-[200px] overflow-hidden flex flex-col">
+                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3 flex justify-between">
+                    <span>System Activity</span>
+                    <span className="text-emerald-500">Live</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-1.5 font-mono text-[10px] sm:text-xs">
+                    {logs.length === 0 && <div className="text-slate-600 italic">Ready for commands...</div>}
+                    {logs.map((log, i) => (
+                      <div key={i} className="text-slate-300 border-l-2 border-slate-700 pl-2">
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <RepoTable repos={repos} />
+            </motion.div>
+          )}
+
+          {view === 'repos' && (
+            <motion.div
+              key="repos"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <RepoTable repos={repos} />
+            </motion.div>
+          )}
+
+          {view === 'logs' && (
+            <motion.div
+              key="logs"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="h-[calc(100vh-140px)] glass-panel rounded-2xl p-6 flex flex-col"
+            >
+              <div className="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-4 flex justify-between border-b border-slate-800 pb-4">
+                <span>Full System Logs</span>
+                <span className="text-emerald-500 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live Stream</span>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 font-mono text-sm">
+                {logs.length === 0 && <div className="text-slate-600 italic">No activity recorded.</div>}
+                {logs.map((log, i) => (
+                  <div key={i} className="text-slate-300 border-l-2 border-slate-700 pl-4 py-1 hover:bg-slate-800/30">
+                    {log}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </main>
+    </div>
+  )
+}
+
+function RepoTable({ repos }) {
+  return (
+    <div className="glass-panel rounded-2xl overflow-hidden shadow-2xl shadow-black/20">
+      <div className="px-6 py-4 border-b border-slate-800/50 flex justify-between items-center bg-slate-900/20">
+        <h3 className="font-semibold text-slate-200">Tracked Resources</h3>
+        <div className="text-xs text-slate-500 font-mono">{repos.length} total</div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-slate-950/30 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
+            <tr>
+              <th className="p-4 pl-6">Name / Path</th>
+              <th className="p-4">Branch</th>
+              <th className="p-4">Type</th>
+              <th className="p-4 pr-6 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/50">
+            <AnimatePresence>
+              {repos.map((repo, i) => (
+                <RepoRow key={repo.Name + i} repo={repo} delay={i * 0.05} />
+              ))}
+            </AnimatePresence>
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

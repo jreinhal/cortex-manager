@@ -17,6 +17,8 @@ const MANAGER_SCRIPT = path.join(SCRIPTS_DIR, 'manage-reference-repos.ps1');
 // Default repos path (can be overridden)
 let REPOS_ROOT = "D:\\Projects\\reference-repos";
 
+console.log("Using REPOS_ROOT:", REPOS_ROOT);
+
 // Helper to run PowerShell
 function runScript(args, res) {
     const ps = spawn('powershell.exe', [
@@ -61,9 +63,10 @@ app.get('/api/repos', (req, res) => {
     const registryPath = path.join(REPOS_ROOT, '_system', 'repos.json');
     if (fs.existsSync(registryPath)) {
         try {
-            const data = fs.readFileSync(registryPath, 'utf8');
+            const data = fs.readFileSync(registryPath, 'utf8').replace(/^\uFEFF/, '');
             res.json(JSON.parse(data));
         } catch (e) {
+            console.error("Repo read error:", e);
             res.status(500).json({ error: "Failed to read registry" });
         }
     } else {

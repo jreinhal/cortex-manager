@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Terminal, LayoutDashboard, Database, Cpu, Wrench,
   BarChart3, Search, Plus, RefreshCw, CheckCircle2,
-  AlertCircle, ChevronRight, Activity, GitBranch, Folder
+  AlertCircle, ChevronRight, Activity, GitBranch, Folder,
+  Package // Default icon
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -19,15 +20,21 @@ function cn(...inputs) {
 }
 
 function StatCard({ title, count, icon: Icon, color, delay, description }) {
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
-    <div className="relative group z-0 hover:z-10">
+    <div
+      className={cn("relative transition-all duration-200", isHovered ? "z-20" : "z-0")}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay }}
         className="glass-card p-6 rounded-2xl relative overflow-hidden h-full"
       >
-        <div className={cn("absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity", color)}>
+        <div className={cn("absolute right-0 top-0 p-3 opacity-10 transition-opacity", isHovered ? "opacity-20" : "", color)}>
           <Icon size={64} />
         </div>
         <div className="relative z-10">
@@ -40,7 +47,10 @@ function StatCard({ title, count, icon: Icon, color, delay, description }) {
       </motion.div>
 
       {/* Tooltip */}
-      <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 w-48 p-3 bg-slate-950/90 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-50 text-xs text-slate-300 text-center translate-y-2 group-hover:translate-y-0">
+      <div className={cn(
+        "absolute top-full mt-3 left-1/2 -translate-x-1/2 w-48 p-3 bg-slate-950/90 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl transition-all duration-200 pointer-events-none z-50 text-xs text-slate-300 text-center",
+        isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+      )}>
         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-950/90 border-t border-l border-slate-800 rotate-45"></div>
         {description}
       </div>
@@ -50,12 +60,23 @@ function StatCard({ title, count, icon: Icon, color, delay, description }) {
 
 function RepoRow({ repo, delay }) {
   const getIcon = (purpose) => {
-    if (purpose.includes("Agent")) return Cpu;
-    if (purpose.includes("Skill")) return Terminal;
-    if (purpose.includes("Knowledge")) return Database;
-    if (purpose.includes("Tool")) return Wrench;
-    if (purpose.includes("Benchmark")) return BarChart3;
+    const p = purpose.toLowerCase();
+    if (p.includes("agent")) return Cpu;
+    if (p.includes("skill")) return Terminal;
+    if (p.includes("knowledge")) return Database;
+    if (p.includes("tool")) return Wrench;
+    if (p.includes("benchmark")) return BarChart3;
     return Folder;
+  }
+
+  const getPurposeColor = (purpose) => {
+    const p = purpose.toLowerCase();
+    if (p.includes("agent")) return { text: "text-purple-400", bg: "bg-purple-400/10", badge: "bg-purple-400/10 text-purple-300 border-purple-400/20" };
+    if (p.includes("skill")) return { text: "text-yellow-400", bg: "bg-yellow-400/10", badge: "bg-yellow-400/10 text-yellow-300 border-yellow-400/20" };
+    if (p.includes("knowledge")) return { text: "text-blue-400", bg: "bg-blue-400/10", badge: "bg-blue-400/10 text-blue-300 border-blue-400/20" };
+    if (p.includes("tool")) return { text: "text-emerald-400", bg: "bg-emerald-400/10", badge: "bg-emerald-400/10 text-emerald-300 border-emerald-400/20" };
+    if (p.includes("benchmark")) return { text: "text-red-400", bg: "bg-red-400/10", badge: "bg-red-400/10 text-red-300 border-red-400/20" };
+    return { text: "text-slate-400", bg: "bg-slate-400/10", badge: "bg-slate-400/10 text-slate-300 border-slate-400/20" };
   }
 
   const Icon = getIcon(repo.Purpose);
@@ -102,8 +123,19 @@ function RepoRow({ repo, delay }) {
 
 // --- Main App ---
 
+const CATEGORY_CONFIG = {
+  agents: { icon: Cpu, color: 'text-purple-400', desc: "Autonomous systems that perceive, reason, and act." },
+  skills: { icon: Terminal, color: 'text-yellow-400', desc: "Modular specific capabilities and functions." },
+  knowledge: { icon: Database, color: 'text-blue-400', desc: "Information libraries, reasoning patterns, and data." },
+  tools: { icon: Wrench, color: 'text-emerald-400', desc: "Utilities, servers, and infrastructure helpers." },
+  benchmarks: { icon: BarChart3, color: 'text-red-400', desc: "Standardized tests and metrics for evaluation." }
+};
+
+const DEFAULT_CATEGORY = { icon: Folder, color: 'text-slate-400', desc: "General repository collection." };
+
 function App() {
   const [repos, setRepos] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [status, setStatus] = useState('Online');
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -111,26 +143,36 @@ function App() {
   const [view, setView] = useState('dashboard'); // dashboard | settings
 
   useEffect(() => {
-    fetchRepos();
-    const interval = setInterval(fetchRepos, 10000);
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchData = () => {
+    fetchRepos();
+    fetchCategories();
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch categories", e);
+    }
+  };
 
   const derivePurpose = (path) => {
     if (!path) return "Unknown";
     const normalize = path.replace(/\\/g, '/');
     const sections = normalize.split('/');
     if (sections.length < 2) return "Unknown";
-    const parent = sections[sections.length - 2].toLowerCase();
-
-    switch (parent) {
-      case 'agents': return "Agent Engine";
-      case 'skills': return "Skill Bundle";
-      case 'knowledge': return "Knowledge Resource";
-      case 'tools': return "Tool / Utility";
-      case 'benchmarks': return "Benchmark Suite";
-      default: return "Reference";
-    }
+    const parent = sections[sections.length - 2];
+    // Capitalize first letter
+    return parent.charAt(0).toUpperCase() + parent.slice(1);
   };
 
   const fetchRepos = async () => {
@@ -155,7 +197,7 @@ function App() {
       const res = await fetch(`${API_BASE}/scan`, { method: 'POST' });
       const data = await res.json();
       addLog(data.output || "Scan Complete");
-      fetchRepos();
+      fetchData();
     } catch (e) {
       addLog("Scan Failed");
     }
@@ -175,7 +217,7 @@ function App() {
       const data = await res.json();
       addLog(data.output || "Clone Complete");
       setUrl('');
-      fetchRepos();
+      fetchData();
     } catch (e) {
       addLog("Add Failed");
     }
@@ -186,13 +228,11 @@ function App() {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
   };
 
-  const categorized = {
-    agents: repos.filter(r => r.Purpose.includes("Agent")),
-    skills: repos.filter(r => r.Purpose.includes("Skill")),
-    knowledge: repos.filter(r => r.Purpose.includes("Knowledge")),
-    tools: repos.filter(r => r.Purpose.includes("Tool")),
-    benchmarks: repos.filter(r => r.Purpose.includes("Benchmark")),
-  };
+  // Group repos by category (dynamic)
+  const categorized = {};
+  categories.forEach(cat => {
+    categorized[cat] = repos.filter(r => r.Purpose.toLowerCase().includes(cat.toLowerCase()));
+  });
 
   return (
     <div className="min-h-screen flex text-slate-100 font-sans selection:bg-cyan-500/30">
@@ -275,13 +315,27 @@ function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {/* Bento Grid Stats */}
+              {/* Bento Grid Stats - Dynamic */}
               <div className="grid grid-cols-5 gap-4 mb-8">
-                <StatCard title="Agents" count={categorized.agents.length} icon={Cpu} color="text-purple-400" delay={0.1} description="Autonomous systems that perceive, reason, and act to execute tasks." />
-                <StatCard title="Skills" count={categorized.skills.length} icon={Terminal} color="text-yellow-400" delay={0.2} description="Modular specific capabilities and functions utilized by agents." />
-                <StatCard title="Knowledge" count={categorized.knowledge.length} icon={Database} color="text-blue-400" delay={0.3} description="Information libraries, reasoning patterns, and documentation." />
-                <StatCard title="Tools" count={categorized.tools.length} icon={Wrench} color="text-emerald-400" delay={0.4} description="Utilities, servers, and infrastructure support helpers." />
-                <StatCard title="Benchmarks" count={categorized.benchmarks.length} icon={BarChart3} color="text-red-400" delay={0.5} description="Standardized tests and metrics for evaluating performance." />
+                {categories.map((cat, i) => {
+                  const config = CATEGORY_CONFIG[cat.toLowerCase()] || DEFAULT_CATEGORY;
+                  return (
+                    <StatCard
+                      key={cat}
+                      title={cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      count={categorized[cat] ? categorized[cat].length : 0}
+                      icon={config.icon}
+                      color={config.color}
+                      delay={i * 0.1}
+                      description={config.desc}
+                    />
+                  );
+                })}
+                {categories.length === 0 && (
+                  <div className="col-span-5 text-center text-slate-500 py-4">
+                    Scanning for categories...
+                  </div>
+                )}
               </div>
 
               {/* Smart Add Section */}
@@ -310,7 +364,9 @@ function App() {
                     </div>
                     <p className="text-xs text-slate-500 mt-3 flex items-center gap-1.5">
                       <CheckCircle2 size={12} className="text-cyan-500" />
-                      Auto-classifies into Agents, Skills, or Knowledge folders.
+                      {categories.length > 0
+                        ? `Auto-classifies into ${categories.map(c => c.charAt(0).toUpperCase() + c.slice(1)).join(', ')}.`
+                        : "Initialize system to auto-classify folders."}
                     </p>
                   </div>
                 </div>
@@ -428,15 +484,6 @@ function NavItem({ icon: Icon, label, active, badge, onClick }) {
       {!active && !badge && <ChevronRight size={14} className="ml-auto opacity-0 group-hover:opacity-50" />}
     </button>
   )
-}
-
-function getPurposeColor(purpose) {
-  if (purpose.includes("Agent")) return { text: "text-purple-400", bg: "bg-purple-400/10", badge: "bg-purple-400/10 text-purple-300 border-purple-400/20" };
-  if (purpose.includes("Skill")) return { text: "text-yellow-400", bg: "bg-yellow-400/10", badge: "bg-yellow-400/10 text-yellow-300 border-yellow-400/20" };
-  if (purpose.includes("Knowledge")) return { text: "text-blue-400", bg: "bg-blue-400/10", badge: "bg-blue-400/10 text-blue-300 border-blue-400/20" };
-  if (purpose.includes("Tool")) return { text: "text-emerald-400", bg: "bg-emerald-400/10", badge: "bg-emerald-400/10 text-emerald-300 border-emerald-400/20" };
-  if (purpose.includes("Benchmark")) return { text: "text-red-400", bg: "bg-red-400/10", badge: "bg-red-400/10 text-red-300 border-red-400/20" };
-  return { text: "text-slate-400", bg: "bg-slate-400/10", badge: "bg-slate-400/10 text-slate-300 border-slate-400/20" };
 }
 
 export default App

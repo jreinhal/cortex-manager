@@ -84,6 +84,21 @@ app.post('/api/add', (req, res) => {
     runScript(['-Add', url], res);
 });
 
+app.get('/api/categories', (req, res) => {
+    try {
+        if (!fs.existsSync(REPOS_ROOT)) {
+            return res.json([]);
+        }
+        const dirs = fs.readdirSync(REPOS_ROOT, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.') && !dirent.name.startsWith('_'))
+            .map(dirent => dirent.name);
+        res.json(dirs);
+    } catch (e) {
+        console.error("Categories read error:", e);
+        res.status(500).json({ error: "Failed to list categories" });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });

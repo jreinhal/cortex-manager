@@ -84,6 +84,29 @@ app.post('/api/add', (req, res) => {
     runScript(['-Add', url], res);
 });
 
+// [NEW] Orchestrator Endpoint
+app.post('/api/spawn', (req, res) => {
+    const { goal } = req.body;
+    if (!goal) return res.status(400).json({ error: "Goal required" });
+
+    // Sanitize goal to prevent injection (basic)
+    const safeGoal = goal.replace(/"/g, '\\"');
+    const orchestratorPath = path.join(__dirname, 'orchestrator.js');
+
+    // We execute node directly
+    const cmd = `node "${orchestratorPath}" "${safeGoal}"`;
+    console.log(`[ORCHESTRATOR] Spawning: ${safeGoal}`);
+
+    const { exec } = require('child_process');
+    exec(cmd, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[ORCHESTRATOR ERROR] ${error.message}`);
+            return res.status(500).json({ success: false, error: error.message, output: stdout + stderr });
+        }
+        res.json({ success: true, output: stdout });
+    });
+});
+
 app.get('/api/categories', (req, res) => {
     try {
         if (!fs.existsSync(REPOS_ROOT)) {

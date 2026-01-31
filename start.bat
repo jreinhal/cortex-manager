@@ -1,0 +1,6 @@
+@echo off
+echo Starting Reference Manager...
+echo.
+echo [1/2] Starting Backend & Frontend...
+npm start
+pause

@@ -29,6 +29,8 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - If any AGENTS.md is present, it appears first in Required Reading.
   - Skill usage note appears (explore context first, then consult skills).
   - For an ambiguous or low-confidence goal, “Requires Review” is flagged in the plan.
+- Saved prompts cleanup:
+  - Delete any prompts created only for testing once verification is complete.
 - Agent + repo selection quality:
   - Generated Flight Plan selects the **Standard Agent** for general tasks.
   - Required reading includes only **CORTEX-relevant repos/files** (client/server/config), not unrelated knowledge bases.

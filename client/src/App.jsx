@@ -12,7 +12,7 @@ import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import brainIcon from './assets/brain.png'
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
 // --- Utils ---
 function cn(...inputs) {
@@ -28,6 +28,21 @@ function formatBytes(bytes) {
   const value = bytes / Math.pow(k, i);
   const precision = i >= 2 ? 1 : 0;
   return `${value.toFixed(precision)} ${sizes[i]}`;
+}
+
+function isValidRepoInput(value) {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (
+    /^https?:\/\//i.test(trimmed) ||
+    /^ssh:\/\//i.test(trimmed) ||
+    /^git@[^:]+:.+/i.test(trimmed) ||
+    /^file:\/\//i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  return /^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith('/');
 }
 
 // --- Configuration ---
@@ -546,7 +561,7 @@ function SpawnTimeline({ steps }) {
 // Main Components
 // ==========================================
 
-function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId }) {
+function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId, sizeTestId }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -565,7 +580,7 @@ function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId })
         <div>
           <div className="text-4xl font-bold text-slate-100 tracking-tight tabular-nums">{count}</div>
           <div className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-2">{title}</div>
-          <div className="text-slate-500 text-[11px] font-medium mt-2" data-testid={testId ? `${testId}-size` : undefined}>
+          <div className="text-slate-500 text-[11px] font-medium mt-2" data-testid={sizeTestId}>
             Size {sizeLabel}
           </div>
         </div>
@@ -1279,6 +1294,10 @@ function App() {
       addLog(`Repo already exists: ${repoName}`);
       return;
     }
+    if (!isValidRepoInput(trimmedUrl)) {
+      addLog('Invalid repository URL. Use https://, ssh://, git@host:path, file://, or a local path.');
+      return;
+    }
 
     setLoading(true);
     addLog(`Cloning ${url}…`);
@@ -1528,7 +1547,8 @@ function App() {
                       title={cat.charAt(0).toUpperCase() + cat.slice(1)}
                       count={categorized[cat] ? categorized[cat].length : 0}
                       sizeLabel={formatBytes(sizeBytes)}
-                      testId={`stat-${cat.toLowerCase()}`}
+                      testId={`stat-card-${cat.toLowerCase()}`}
+                      sizeTestId={`stat-size-${cat.toLowerCase()}`}
                       icon={config.icon}
                       color={config.color}
                       delay={i * 0.05}

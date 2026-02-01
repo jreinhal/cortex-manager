@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 const DEFAULT_REPOS_ROOT = 'D:\\Projects\\reference-repos';
+const API_BASE = process.env.E2E_API_BASE || 'http://localhost:3002/api';
 const REPOS_ROOT = process.env.E2E_REPOS_ROOT || DEFAULT_REPOS_ROOT;
 
 async function completeSetupIfNeeded(page) {
@@ -32,16 +33,16 @@ test.beforeEach(async ({ page }) => {
 
 test('navigate between primary views', async ({ page }) => {
   await page.getByTestId('nav-repos').click();
-  await expect(page.getByRole('heading', { name: 'Repositories' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Repositories', level: 1 })).toBeVisible();
 
   await page.getByTestId('nav-logs').click();
-  await expect(page.getByRole('heading', { name: 'System Logs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'System Logs', level: 1 })).toBeVisible();
 
   await page.getByTestId('nav-settings').click();
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
 
   await page.getByTestId('nav-agents').click();
-  await expect(page.getByRole('heading', { name: 'Agent Factory' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent Factory', level: 1 })).toBeVisible();
 });
 
 test('save prompt appears in Quick Access', async ({ page }) => {
@@ -59,7 +60,7 @@ test('save prompt appears in Quick Access', async ({ page }) => {
 test('repositories show size labels', async ({ page }) => {
   await page.getByTestId('nav-repos').click();
 
-  const cards = page.locator('[data-testid^="stat-"]');
+  const cards = page.locator('[data-testid^="stat-card-"]');
   await expect(cards.first()).toBeVisible();
 
   const count = await cards.count();
@@ -67,9 +68,10 @@ test('repositories show size labels', async ({ page }) => {
     const card = cards.nth(i);
     const testId = await card.getAttribute('data-testid');
     if (!testId) continue;
-    const sizeLabel = page.getByTestId(`${testId}-size`);
+    const sizeTestId = testId.replace('stat-card-', 'stat-size-');
+    const sizeLabel = page.getByTestId(sizeTestId);
     await expect(sizeLabel).toBeVisible();
-    await expect(sizeLabel).not.toContainText('—');
+    await expect.poll(async () => (await sizeLabel.textContent()) || '', { timeout: 30000 }).not.toContain('—');
   }
 });
 
@@ -91,7 +93,7 @@ test('settings rejects empty repos root', async ({ page }) => {
 });
 
 test('analytics endpoint returns expected shape', async ({ request }) => {
-  const res = await request.get('http://localhost:3001/api/analytics');
+  const res = await request.get(`${API_BASE}/analytics`);
   expect(res.ok()).toBeTruthy();
   const data = await res.json();
   expect(typeof data.totalSpawns).toBe('number');

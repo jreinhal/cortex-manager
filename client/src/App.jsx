@@ -5,7 +5,8 @@ import {
   BarChart3, Search, Plus, RefreshCw, CheckCircle2,
   AlertCircle, ChevronRight, Activity, GitBranch, Folder,
   Package, Settings, FolderOpen, Check, X, Clock,
-  TrendingUp, Zap, History, ExternalLink
+  TrendingUp, Zap, History, ExternalLink, HardDrive,
+  ChevronUp, FolderInput
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -32,12 +33,139 @@ const DEFAULT_CATEGORY = { icon: Folder, color: 'text-slate-400', desc: "General
 // ==========================================
 // Setup Wizard Component
 // ==========================================
+// Directory Browser Component
+function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
+  const [currentPath, setCurrentPath] = useState('');
+  const [items, setItems] = useState([]);
+  const [parentPath, setParentPath] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const fetchDirectory = async (path = '') => {
+    setLoading(true);
+    setError(null);
+    try {
+      const url = path
+        ? `${API_BASE}/browse?path=${encodeURIComponent(path)}`
+        : `${API_BASE}/browse`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setCurrentPath(data.path);
+        setItems(data.items || []);
+        setParentPath(data.parent);
+      }
+    } catch (e) {
+      setError('Failed to browse directory');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchDirectory(initialPath || '');
+    }
+  }, [isOpen, initialPath]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-lg max-h-[70vh] flex flex-col shadow-2xl"
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+          <h3 className="font-bold text-white flex items-center gap-2">
+            <FolderInput size={20} className="text-cyan-400" />
+            Select Directory
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Current Path */}
+        <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-700">
+          <p className="text-xs text-slate-400 font-mono truncate">
+            {currentPath || 'Select a drive'}
+          </p>
+        </div>
+
+        {/* Navigation */}
+        {parentPath !== null && (
+          <button
+            onClick={() => fetchDirectory(parentPath)}
+            className="flex items-center gap-2 px-4 py-3 hover:bg-slate-800 text-slate-300 border-b border-slate-800"
+          >
+            <ChevronUp size={16} />
+            <span>..</span>
+          </button>
+        )}
+
+        {/* Directory List */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw size={24} className="animate-spin text-cyan-400" />
+            </div>
+          ) : error ? (
+            <div className="p-4 text-red-400 text-sm">{error}</div>
+          ) : items.length === 0 ? (
+            <div className="p-4 text-slate-500 text-sm text-center">No subdirectories</div>
+          ) : (
+            items.map((item) => (
+              <button
+                key={item.path}
+                onClick={() => fetchDirectory(item.path)}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-slate-800 text-slate-300 w-full text-left border-b border-slate-800/50"
+              >
+                {item.name.includes(':') ? (
+                  <HardDrive size={18} className="text-cyan-400" />
+                ) : (
+                  <Folder size={18} className="text-yellow-400" />
+                )}
+                <span className="font-mono text-sm">{item.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-700 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              onSelect(currentPath);
+              onClose();
+            }}
+            disabled={!currentPath}
+            className="flex-1 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold transition-all"
+          >
+            Select This Folder
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function SetupWizard({ onComplete, defaultPath }) {
   const [reposRoot, setReposRoot] = useState(defaultPath || '');
   const [createStructure, setCreateStructure] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [validation, setValidation] = useState(null);
+  const [showBrowser, setShowBrowser] = useState(false);
 
   const validatePath = async (path) => {
     if (!path) {
@@ -115,15 +243,24 @@ function SetupWizard({ onComplete, defaultPath }) {
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 block">
                 Repository Root Directory
               </label>
-              <div className="relative">
-                <FolderOpen size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  value={reposRoot}
-                  onChange={(e) => setReposRoot(e.target.value)}
-                  placeholder="/path/to/reference-repos"
-                  className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-slate-200 focus:outline-none focus:border-cyan-500/50 focus:ring-4 focus:ring-cyan-500/10 transition-all font-mono text-sm"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <FolderOpen size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={reposRoot}
+                    onChange={(e) => setReposRoot(e.target.value)}
+                    placeholder="/path/to/reference-repos"
+                    className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-slate-200 focus:outline-none focus:border-cyan-500/50 focus:ring-4 focus:ring-cyan-500/10 transition-all font-mono text-sm"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowBrowser(true)}
+                  className="px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl text-slate-300 transition-all flex items-center gap-2"
+                  title="Browse directories"
+                >
+                  <FolderInput size={20} />
+                </button>
               </div>
 
               {/* Validation Status */}
@@ -204,6 +341,14 @@ function SetupWizard({ onComplete, defaultPath }) {
           </div>
         </div>
       </motion.div>
+
+      {/* Directory Browser Modal */}
+      <DirectoryBrowser
+        isOpen={showBrowser}
+        onClose={() => setShowBrowser(false)}
+        onSelect={(path) => setReposRoot(path)}
+        initialPath={reposRoot}
+      />
     </div>
   );
 }

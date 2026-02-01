@@ -137,6 +137,97 @@ app.get('/api/default-paths', (req, res) => {
   });
 });
 
+// Browse directories - returns list of subdirectories at a given path
+app.get('/api/browse', (req, res) => {
+  const requestedPath = req.query.path || '';
+  const os = require('os');
+
+  let targetPath;
+
+  // Handle empty path - return drives on Windows, root dirs on Unix
+  if (!requestedPath) {
+    if (process.platform === 'win32') {
+      // Return common drives on Windows
+      const drives = [];
+      for (const letter of ['C', 'D', 'E', 'F']) {
+        const drivePath = `${letter}:\\`;
+        try {
+          fs.accessSync(drivePath, fs.constants.R_OK);
+          drives.push({ name: `${letter}:`, path: drivePath, isDirectory: true });
+        } catch (e) {
+          // Drive doesn't exist or not accessible
+        }
+      }
+      return res.json({
+        path: '',
+        parent: null,
+        items: drives
+      });
+    } else {
+      targetPath = '/';
+    }
+  } else {
+    targetPath = requestedPath;
+  }
+
+  // Normalize path
+  targetPath = path.normalize(targetPath);
+
+  // Check if path exists and is accessible
+  try {
+    fs.accessSync(targetPath, fs.constants.R_OK);
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      error: 'Path does not exist or is not accessible'
+    });
+  }
+
+  // Check if it's a directory
+  const stat = fs.statSync(targetPath);
+  if (!stat.isDirectory()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Path is not a directory'
+    });
+  }
+
+  // Read directory contents
+  try {
+    const entries = fs.readdirSync(targetPath, { withFileTypes: true });
+    const items = entries
+      .filter(entry => {
+        // Only show directories, skip hidden files on Unix
+        if (!entry.isDirectory()) return false;
+        if (entry.name.startsWith('.') && process.platform !== 'win32') return false;
+        // Skip system directories
+        if (['$RECYCLE.BIN', 'System Volume Information', 'node_modules'].includes(entry.name)) return false;
+        return true;
+      })
+      .map(entry => ({
+        name: entry.name,
+        path: path.join(targetPath, entry.name),
+        isDirectory: true
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Calculate parent path
+    const parentPath = path.dirname(targetPath);
+    const hasParent = parentPath !== targetPath;
+
+    res.json({
+      path: targetPath,
+      parent: hasParent ? parentPath : null,
+      items
+    });
+  } catch (e) {
+    res.status(500).json({
+      success: false,
+      error: `Failed to read directory: ${e.message}`
+    });
+  }
+});
+
 // ==========================================
 // Status & Repository API
 // ==========================================

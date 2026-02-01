@@ -248,14 +248,16 @@ function SetupWizard({ onComplete, defaultPath }) {
           <div className="bg-slate-950/80 rounded-[2.2rem] p-10">
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
-              <div className="bg-black rounded-2xl p-4">
+              <div className="bg-black rounded-2xl p-4 relative overflow-visible">
+                <div className="brain-glow absolute -inset-2 rounded-[20px] bg-[radial-gradient(circle_at_28%_35%,rgba(34,211,238,0.65),transparent_63%),radial-gradient(circle_at_72%_55%,rgba(168,85,247,0.6),transparent_66%)] blur-xl opacity-80 pointer-events-none"></div>
                 <img
                   src={brainIcon}
                   alt="Cortex"
                   width="56"
                   height="56"
                   fetchpriority="high"
-                  className="w-14 h-14 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
+                  className="relative z-10 w-14 h-14 object-contain"
+                  style={{ filter: 'drop-shadow(0 0 11px rgba(34,211,238,0.7)) drop-shadow(0 0 16px rgba(168,85,247,0.65))' }}
                 />
               </div>
               <div>
@@ -1589,14 +1591,16 @@ function App() {
       <nav className="w-72 glass-panel border-r border-slate-800/50 flex flex-col fixed h-full z-50 backdrop-blur-xl bg-slate-950/80">
         <div className="p-8">
           <div className="flex items-center gap-4 text-cyan-400 mb-10 pl-2">
-            <div className="bg-black rounded-2xl p-3">
+            <div className="bg-black rounded-2xl p-3 relative overflow-visible">
+              <div className="brain-glow absolute -inset-2 rounded-[20px] bg-[radial-gradient(circle_at_28%_35%,rgba(34,211,238,0.65),transparent_63%),radial-gradient(circle_at_72%_55%,rgba(168,85,247,0.6),transparent_66%)] blur-xl opacity-80 pointer-events-none"></div>
               <img
                 src={brainIcon}
                 alt="Cortex Brain"
                 width="40"
                 height="40"
                 fetchpriority="high"
-                className="w-10 h-10 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
+                className="relative z-10 w-10 h-10 object-contain"
+                style={{ filter: 'drop-shadow(0 0 11px rgba(34,211,238,0.7)) drop-shadow(0 0 16px rgba(168,85,247,0.65))' }}
               />
             </div>
             <span className="font-bold text-3xl tracking-tighter text-white">CORTEX</span>

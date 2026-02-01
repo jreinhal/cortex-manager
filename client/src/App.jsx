@@ -1158,21 +1158,26 @@ function App() {
     setIsFirstRun(false);
     setAppConfig(prev => ({ ...prev, config: { ...prev?.config, reposRoot: result.reposRoot } }));
     fetchData();
+    fetchCategorySizes();
     addLog(`Setup complete! Repos root: ${result.reposRoot}`);
   };
 
   useEffect(() => {
     if (isFirstRun === false) {
       fetchData();
-      const interval = setInterval(fetchData, 10000);
-      return () => clearInterval(interval);
+      fetchCategorySizes();
+      const dataInterval = setInterval(fetchData, 10000);
+      const sizeInterval = setInterval(fetchCategorySizes, 5000);
+      return () => {
+        clearInterval(dataInterval);
+        clearInterval(sizeInterval);
+      };
     }
   }, [isFirstRun]);
 
   const fetchData = () => {
     fetchRepos();
     fetchCategories();
-    fetchCategorySizes();
   };
 
   const fetchSessions = async () => {
@@ -1246,6 +1251,7 @@ function App() {
       const data = await res.json();
       addLog(data.output || "Scan Complete");
       fetchData();
+      fetchCategorySizes();
     } catch (e) {
       addLog("Scan failed. Check the server and try again.");
     }
@@ -1287,6 +1293,7 @@ function App() {
         addLog(data.output || "Clone Complete");
         shouldClear = true;
         shouldRefresh = true;
+        fetchCategorySizes();
       }
     } catch (e) {
       addLog("Add failed. Check the URL and try again.");

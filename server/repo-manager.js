@@ -9,7 +9,7 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 const { getConfig } = require('./config');
 
-const SIZE_CACHE_TTL_MS = 60 * 1000;
+const SIZE_CACHE_TTL_MS = 0;
 const sizeCache = {
   timestamp: 0,
   data: {}
@@ -536,7 +536,7 @@ function getDirSizeBytes(targetPath) {
 
 function getCategorySizes() {
   const now = Date.now();
-  if (now - sizeCache.timestamp < SIZE_CACHE_TTL_MS) {
+  if (SIZE_CACHE_TTL_MS > 0 && now - sizeCache.timestamp < SIZE_CACHE_TTL_MS) {
     return sizeCache.data;
   }
 

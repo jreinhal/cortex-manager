@@ -16,6 +16,7 @@ function gitExec(args, cwd = null) {
   try {
     const result = execSync(`git ${args}`, {
       cwd: cwd || process.cwd(),
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -293,17 +294,53 @@ async function cloneRepository(url, progressCallback = null) {
     return { success: false, error: 'Git is not installed or not in PATH' };
   }
 
+  const trimmedUrl = (url || '').trim().replace(/\/+$/, '');
+
   // Extract repo name from URL
-  const repoName = path.basename(url, '.git').replace(/\.git$/, '');
+  const repoName = path.basename(trimmedUrl, '.git').replace(/\.git$/i, '');
+  if (!repoName) {
+    return { success: false, error: 'Invalid repository URL' };
+  }
+
+  // Check for existing repo (by name or path)
+  const existingRegistry = loadRegistry();
+  const existingRepo = existingRegistry.find(r => r.Name.toLowerCase() === repoName.toLowerCase());
+  if (existingRepo) {
+    return {
+      success: false,
+      code: 'REPO_EXISTS',
+      error: `Repository already exists at: ${existingRepo.Path}`,
+      repo: existingRepo
+    };
+  }
+
+  const categoryDirs = ['agents', 'skills', 'knowledge', 'tools', 'benchmarks'];
+  for (const category of categoryDirs) {
+    const repoPath = path.join(reposRoot, category, repoName);
+    if (fs.existsSync(path.join(repoPath, '.git'))) {
+      return {
+        success: false,
+        code: 'REPO_EXISTS',
+        error: `Repository already exists at: ${repoPath}`,
+        repo: { Name: repoName, Path: repoPath, Category: category }
+      };
+    }
+  }
 
   if (progressCallback) progressCallback(`Cloning: ${repoName}`);
+
+  // Validate remote URL before cloning
+  const remoteCheck = gitExec(`ls-remote --heads --tags "${trimmedUrl}"`);
+  if (!remoteCheck.success) {
+    return { success: false, error: 'Repository not found or inaccessible' };
+  }
 
   // Clone to temp location first
   const tempDir = path.join(require('os').tmpdir(), `cortex-clone-${Date.now()}`);
 
   try {
     // Clone repository
-    const cloneResult = gitExec(`clone "${url}" "${tempDir}"`);
+    const cloneResult = gitExec(`clone "${trimmedUrl}" "${tempDir}"`);
     if (!cloneResult.success) {
       return { success: false, error: `Clone failed: ${cloneResult.error}` };
     }

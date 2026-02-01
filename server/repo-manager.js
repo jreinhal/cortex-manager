@@ -546,19 +546,24 @@ async function getDirSizeBytesAsync(targetPath) {
 async function refreshCategorySizes() {
   if (sizeCache.running) return;
   sizeCache.running = true;
-  const config = getConfig();
-  const reposRoot = config.reposRoot;
-  const categories = getCategories();
-  const sizes = {};
+  try {
+    const config = getConfig();
+    const reposRoot = config.reposRoot;
+    const categories = getCategories();
+    const sizes = {};
 
-  for (const category of categories) {
-    const categoryPath = path.join(reposRoot, category);
-    sizes[category] = await getDirSizeBytesAsync(categoryPath);
+    for (const category of categories) {
+      const categoryPath = path.join(reposRoot, category);
+      sizes[category] = await getDirSizeBytesAsync(categoryPath);
+    }
+
+    sizeCache.timestamp = Date.now();
+    sizeCache.data = sizes;
+  } catch (error) {
+    console.error('Error refreshing category sizes:', error.message);
+  } finally {
+    sizeCache.running = false;
   }
-
-  sizeCache.timestamp = Date.now();
-  sizeCache.data = sizes;
-  sizeCache.running = false;
 }
 
 function getCategorySizes() {

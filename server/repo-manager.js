@@ -332,7 +332,19 @@ async function cloneRepository(url, progressCallback = null) {
     }
 
     // Move from temp to final location
-    fs.renameSync(tempDir, destPath);
+    // Use copy+remove fallback for cross-device moves (EXDEV error on Windows)
+    try {
+      fs.renameSync(tempDir, destPath);
+    } catch (renameErr) {
+      if (renameErr.code === 'EXDEV') {
+        // Cross-device link not permitted - use copy instead
+        if (progressCallback) progressCallback('Moving repository (cross-drive)...');
+        fs.cpSync(tempDir, destPath, { recursive: true });
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } else {
+        throw renameErr;
+      }
+    }
 
     // Add safe.directory config for git
     gitExec(`config --global --add safe.directory "${destPath}"`);

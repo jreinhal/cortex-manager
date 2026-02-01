@@ -212,17 +212,25 @@ function SetupWizard({ onComplete, defaultPath }) {
 // Settings Panel Component
 // ==========================================
 function SettingsPanel({ config, onSave, onClose }) {
-  const [reposRoot, setReposRoot] = useState(config?.reposRoot || '');
+  // config is the full API response: { config: { reposRoot, ... }, system, isFirstRun }
+  const [reposRoot, setReposRoot] = useState(config?.config?.reposRoot || '');
   const [loading, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSave = async () => {
+    // Guard against empty submissions
+    if (!reposRoot || !reposRoot.trim()) {
+      setError('Repository root path cannot be empty');
+      return;
+    }
+    setError('');
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reposRoot })
+        body: JSON.stringify({ reposRoot: reposRoot.trim() })
       });
       const data = await res.json();
       if (data.success) {
@@ -231,9 +239,12 @@ function SettingsPanel({ config, onSave, onClose }) {
           setSaved(false);
           onSave(data.config);
         }, 1000);
+      } else {
+        setError(data.error || 'Failed to save settings');
       }
     } catch (e) {
       console.error('Save failed:', e);
+      setError('Failed to save settings');
     }
     setSaving(false);
   };
@@ -284,6 +295,9 @@ function SettingsPanel({ config, onSave, onClose }) {
           <p className="text-slate-500 text-xs mt-2">
             This is where CORTEX looks for Agents, Skills, Knowledge, and Tools
           </p>
+          {error && (
+            <p className="text-red-400 text-sm mt-2">{error}</p>
+          )}
         </div>
 
         {/* System Info */}

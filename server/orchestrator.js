@@ -31,8 +31,8 @@ function refreshIndex(reposRoot) {
   }
 }
 
-function getAgentTemplatePath(agentId) {
-  const agentDir = path.join(AGENTS_DIR, agentId);
+function getAgentTemplatePath(agentId, agentsDir) {
+  const agentDir = path.join(agentsDir, agentId);
   let templatePath = path.join(agentDir, 'template.md');
   if (!fs.existsSync(templatePath)) {
     templatePath = path.join(agentDir, 'README.md');
@@ -221,7 +221,7 @@ async function orchestrate(goal, format = 'universal') {
   });
 
   // Step 4: Get agent template path
-  const templatePath = getAgentTemplatePath(selectedAgent.agentId);
+  const templatePath = getAgentTemplatePath(selectedAgent.agentId, AGENTS_DIR);
 
   // Step 5: Generate flight plan
   const flightPlan = generateFlightPlan({

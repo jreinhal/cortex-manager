@@ -43,7 +43,7 @@ We decouple **Data** (your local repositories) from **Intelligence** (the LLM), 
            │
            ▼
 ┌─────────────────────┐
-│  Any LLM You Choose │  ◄── GPT-4, Claude, Gemini, Llama
+│  Any LLM You Choose │  ◄── GPT-4, Claude, Gemini, Qwen
 │   (Execution Layer) │
 └─────────────────────┘
 ```
@@ -101,6 +101,10 @@ cortex/
 ├── server/                  # Node.js + Express Backend
 │   ├── index.js            # API Server (Port 3001)
 │   ├── orchestrator.js     # Agent Spawning Logic
+│   ├── goal-analyzer.js    # Intent + tech stack analysis
+│   ├── agent-selector.js   # Deterministic agent scoring
+│   ├── resource-matcher.js # Resource scoring + filtering
+│   ├── llm-reranker.js     # Optional Qwen rerank layer
 │   ├── config.js           # Configuration Management
 │   └── repo-manager.js     # Cross-platform Git Operations
 ├── config.json             # User Configuration (created on first run)
@@ -235,6 +239,32 @@ Your `reference-repos` folder structure might look like:
 
 CORTEX automatically categorizes repos based on their content.
 
+### Decision Matrix (AGENTS‑First)
+CORTEX uses a deterministic decision matrix with an optional Qwen2.5 rerank layer. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
+
+```mermaid
+flowchart TD
+    A[User goal] --> B[Goal analysis]
+    B --> C[Deterministic scoring]
+    C --> D{AGENTS.md present?}
+    D -->|Yes| E[Inject AGENTS.md as highest priority]
+    D -->|No| F[Proceed]
+    E --> G[Gate checks: low confidence / ambiguity]
+    F --> G
+    G -->|Needs review| H[Require human review]
+    G -->|OK| I{LLM rerank enabled?}
+    I -->|Yes| J[Qwen2.5 14B rerank top N]
+    J --> K{Rerank valid?}
+    K -->|No| L[Fallback to deterministic]
+    K -->|Yes| M[Apply reranked order]
+    I -->|No| L
+    L --> N[Generate flight plan]
+    M --> N
+    N --> O[Output]
+```
+
+See `docs/decision-matrix.md` for the full spec and gating rules.
+
 ---
 
 ## 🛠️ Advanced Configuration
@@ -246,6 +276,10 @@ CORTEX automatically categorizes repos based on their content.
 | `REPOS_ROOT` | Path to reference repositories | `~/Projects/reference-repos` |
 | `CORTEX_OUTPUT_DIR` | Where to save flight plans | `./spawned_agents` |
 | `PORT` | Backend API port | `3001` |
+| `LLM_ENABLED` | Enable optional reranker | `1` |
+| `LLM_ENDPOINT` | OpenAI‑compatible or Ollama endpoint | `http://localhost:8080/v1/chat/completions` |
+| `LLM_MODEL` | Local model name | `qwen2.5-14b-instruct-q4` |
+| `LLM_MODEL_DIR` | Model directory (Windows default) | `D:\\Models\\qwen2.5-14b-instruct-q4` |
 
 ### Custom Agent Templates
 Add new agent types by creating `agents/your-agent-name/template.md` in your reference repos.
@@ -349,7 +383,8 @@ npm start
 ```
 
 ### Testing
-Manual QA checklist lives in `TESTING.md`.
+- Automated: `npm run e2e` (Playwright)
+- Manual QA: `docs/qa-manual.md` (includes decision‑matrix verification)
 
 ---
 

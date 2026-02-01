@@ -3,6 +3,9 @@ const { test, expect } = require('@playwright/test');
 const DEFAULT_REPOS_ROOT = 'D:\\Projects\\reference-repos';
 const API_BASE = process.env.E2E_API_BASE || 'http://localhost:3002/api';
 const REPOS_ROOT = process.env.E2E_REPOS_ROOT || DEFAULT_REPOS_ROOT;
+const TEST_PROMPT_PREFIX = '[E2E]';
+const TEST_PROMPT_TITLE = `${TEST_PROMPT_PREFIX} Test Creation`;
+const TEST_PROMPT_QUERY = `${TEST_PROMPT_PREFIX} Test Creation prompt`;
 
 async function completeSetupIfNeeded(page) {
   const wizardHeading = page.getByRole('heading', { name: 'Welcome to CORTEX' });
@@ -26,9 +29,32 @@ async function completeSetupIfNeeded(page) {
   await expect(page.getByRole('heading', { name: 'Agent Factory' })).toBeVisible();
 }
 
+async function cleanupTestPrompts(request) {
+  try {
+    const res = await request.get(`${API_BASE}/prompts`);
+    if (!res.ok()) return;
+    const prompts = await res.json();
+    const targets = prompts.filter((prompt) => {
+      const title = prompt?.title || '';
+      const query = prompt?.query || '';
+      return title.startsWith(TEST_PROMPT_PREFIX) || query.includes(TEST_PROMPT_PREFIX);
+    });
+
+    for (const prompt of targets) {
+      await request.delete(`${API_BASE}/prompts/${prompt.id}`);
+    }
+  } catch {
+    // Best-effort cleanup; do not fail tests on cleanup errors.
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await completeSetupIfNeeded(page);
+});
+
+test.afterEach(async ({ request }) => {
+  await cleanupTestPrompts(request);
 });
 
 test('navigate between primary views', async ({ page }) => {
@@ -46,15 +72,15 @@ test('navigate between primary views', async ({ page }) => {
 });
 
 test('save prompt appears in Quick Access', async ({ page }) => {
-  await page.getByTestId('goal-input').fill('Test Creation prompt');
+  await page.getByTestId('goal-input').fill(TEST_PROMPT_QUERY);
   await page.getByTestId('save-prompt-btn').click();
 
   await expect(page.getByTestId('save-prompt-modal')).toBeVisible();
-  await page.getByTestId('prompt-title-input').fill('Test Creation');
+  await page.getByTestId('prompt-title-input').fill(TEST_PROMPT_TITLE);
   await page.getByTestId('confirm-save-prompt').click();
 
   await expect(page.getByTestId('quick-access')).toBeVisible();
-  await expect(page.getByTestId('saved-prompts-section')).toContainText('Test Creation');
+  await expect(page.getByTestId('saved-prompts-section')).toContainText(TEST_PROMPT_TITLE);
 });
 
 test('repositories show size labels', async ({ page }) => {

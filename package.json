@@ -5,7 +5,9 @@
   "main": "server/index.js",
   "scripts": {
     "start": "concurrently \"node server/index.js\" \"cd client && npm run dev\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "keywords": [],
   "author": "",
@@ -14,5 +16,8 @@
   "dependencies": {
     "concurrently": "^9.2.1",
     "string-similarity": "^4.0.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
   }
 }

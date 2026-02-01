@@ -83,6 +83,8 @@ function getDefaultReposRoot() {
     case 'win32':
       // Windows: Check common locations
       const windowsPaths = [
+        path.join('D:', 'Projects', 'reference-repos'),
+        path.join('D:', 'reference-repos'),
         path.join(home, 'Projects', 'reference-repos'),
         path.join(home, 'Documents', 'reference-repos'),
         path.join('C:', 'Projects', 'reference-repos')
@@ -129,6 +131,89 @@ function getDefaultModelDir() {
   }
 
   return path.join(os.homedir(), 'models', 'qwen2.5-14b-instruct-q4');
+}
+
+function hasReposStructure(candidate) {
+  if (!candidate || !fs.existsSync(candidate)) return false;
+  const registry = path.join(candidate, '_system', 'repos.json');
+  if (fs.existsSync(registry)) return true;
+
+  const categories = ['agents', 'skills', 'knowledge', 'tools', 'benchmarks'];
+  return categories.some((dir) => fs.existsSync(path.join(candidate, dir)));
+}
+
+function getRepoCandidateScore(candidate) {
+  if (!candidate || !fs.existsSync(candidate)) {
+    return { score: 0, registryCount: 0, categoryCount: 0, hasStructure: false };
+  }
+
+  const registryPath = path.join(candidate, '_system', 'repos.json');
+  let registryCount = 0;
+  if (fs.existsSync(registryPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(registryPath, 'utf8').replace(/^\uFEFF/, ''));
+      registryCount = Array.isArray(data) ? data.length : 0;
+    } catch {
+      registryCount = 0;
+    }
+  }
+
+  const categories = ['agents', 'skills', 'knowledge', 'tools', 'benchmarks'];
+  let categoryCount = 0;
+  for (const dir of categories) {
+    const categoryPath = path.join(candidate, dir);
+    if (!fs.existsSync(categoryPath)) continue;
+    try {
+      const entries = fs.readdirSync(categoryPath, { withFileTypes: true });
+      if (entries.some(entry => entry.isDirectory() && !entry.name.startsWith('.'))) {
+        categoryCount += 1;
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  const hasStructure = hasReposStructure(candidate);
+  let score = 0;
+  if (registryCount > 0) score += 1000 + registryCount;
+  else if (fs.existsSync(registryPath)) score += 5;
+  score += categoryCount * 10;
+  if (hasStructure) score += 1;
+
+  return { score, registryCount, categoryCount, hasStructure };
+}
+
+function autoDetectReposRoot() {
+  if (process.platform !== 'win32') {
+    const defaultPath = getDefaultReposRoot();
+    return fs.existsSync(defaultPath) ? defaultPath : null;
+  }
+
+  const candidates = [];
+  const driveLetters = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const baseDirs = ['Projects', 'projects', 'Repos', 'repos'];
+
+  for (const drive of driveLetters) {
+    const root = `${drive}:\\`;
+    if (!fs.existsSync(root)) continue;
+
+    candidates.push(path.join(root, 'reference-repos'));
+    baseDirs.forEach((dir) => {
+      candidates.push(path.join(root, dir, 'reference-repos'));
+    });
+  }
+
+  let best = null;
+  let bestScore = 0;
+  for (const candidate of candidates) {
+    const score = getRepoCandidateScore(candidate);
+    if (score.score > bestScore) {
+      bestScore = score.score;
+      best = candidate;
+    }
+  }
+
+  return bestScore > 0 ? best : null;
 }
 
 /**
@@ -225,6 +310,23 @@ function getConfig() {
   // Apply defaults if not set
   if (!config.reposRoot) {
     config.reposRoot = getDefaultReposRoot();
+  }
+
+  if (config.reposRoot) {
+    const currentScore = getRepoCandidateScore(config.reposRoot);
+    const detected = autoDetectReposRoot();
+    const detectedScore = detected ? getRepoCandidateScore(detected) : { score: 0 };
+    const isEmptyRoot = currentScore.registryCount === 0 && currentScore.categoryCount === 0;
+
+    const shouldOverride =
+      !fs.existsSync(config.reposRoot) ||
+      !currentScore.hasStructure ||
+      (isEmptyRoot && detectedScore.score > currentScore.score && detected !== config.reposRoot);
+
+    if (shouldOverride && detected) {
+      config.reposRoot = detected;
+      saveConfig(config);
+    }
   }
   if (!config.outputDir) {
     config.outputDir = getDefaultOutputDir();

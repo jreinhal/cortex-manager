@@ -1,0 +1,14 @@
+{
+  "reposRoot": "/path/to/your/reference-repos",
+  "outputDir": null,
+  "firstRunComplete": false,
+  "theme": "dark",
+  "pollingInterval": 10000,
+  "maxRecentSpawns": 20,
+  "filePreviewLength": 2000,
+  "analytics": {
+    "enabled": true,
+    "spawns": [],
+    "lastReset": null
+  }
+}

@@ -307,9 +307,19 @@ app.post('/api/add', async (req, res) => {
   }
 
   const trimmedUrl = url.trim();
-  const isValidUrl = /^(https?:\/\/|git@)[^\s]+$/i.test(trimmedUrl);
+  const isValidUrl =
+    /^https?:\/\//i.test(trimmedUrl) ||
+    /^ssh:\/\//i.test(trimmedUrl) ||
+    /^git@[^:]+:.+/i.test(trimmedUrl) ||
+    /^file:\/\//i.test(trimmedUrl) ||
+    fs.existsSync(trimmedUrl) ||
+    path.isAbsolute(trimmedUrl);
   if (!isValidUrl) {
-    return res.status(400).json({ success: false, code: 'INVALID_URL', error: 'Invalid repository URL' });
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_URL',
+      error: 'Invalid repository URL. Use https://, ssh://, git@host:path, file://, or a local path.'
+    });
   }
 
   try {

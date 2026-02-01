@@ -9,10 +9,11 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 const { getConfig } = require('./config');
 
-const SIZE_CACHE_TTL_MS = 0;
+const SIZE_REFRESH_MS = 5000;
 const sizeCache = {
   timestamp: 0,
-  data: {}
+  data: {},
+  running: false
 };
 
 /**
@@ -497,29 +498,32 @@ function getCategories() {
     .map(d => d.name);
 }
 
-function getDirSizeBytes(targetPath) {
-  if (!fs.existsSync(targetPath)) return 0;
+async function getDirSizeBytesAsync(targetPath) {
+  try {
+    await fs.promises.access(targetPath);
+  } catch {
+    return 0;
+  }
+
   let total = 0;
   const stack = [targetPath];
+  let counter = 0;
 
   while (stack.length) {
     const current = stack.pop();
     let stats;
     try {
-      stats = fs.statSync(current);
+      stats = await fs.promises.stat(current);
     } catch {
       continue;
     }
 
     if (stats.isFile()) {
       total += stats.size;
-      continue;
-    }
-
-    if (stats.isDirectory()) {
+    } else if (stats.isDirectory()) {
       let entries;
       try {
-        entries = fs.readdirSync(current, { withFileTypes: true });
+        entries = await fs.promises.readdir(current, { withFileTypes: true });
       } catch {
         continue;
       }
@@ -529,31 +533,48 @@ function getDirSizeBytes(targetPath) {
         stack.push(path.join(current, entry.name));
       }
     }
+
+    counter += 1;
+    if (counter % 500 === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
   }
 
   return total;
 }
 
-function getCategorySizes() {
-  const now = Date.now();
-  if (SIZE_CACHE_TTL_MS > 0 && now - sizeCache.timestamp < SIZE_CACHE_TTL_MS) {
-    return sizeCache.data;
+async function refreshCategorySizes() {
+  if (sizeCache.running) return;
+  sizeCache.running = true;
+  try {
+    const config = getConfig();
+    const reposRoot = config.reposRoot;
+    const categories = getCategories();
+    const sizes = {};
+
+    for (const category of categories) {
+      const categoryPath = path.join(reposRoot, category);
+      sizes[category] = await getDirSizeBytesAsync(categoryPath);
+    }
+
+    sizeCache.timestamp = Date.now();
+    sizeCache.data = sizes;
+  } catch (error) {
+    console.error('Error refreshing category sizes:', error.message);
+  } finally {
+    sizeCache.running = false;
   }
-
-  const config = getConfig();
-  const reposRoot = config.reposRoot;
-  const categories = getCategories();
-  const sizes = {};
-
-  categories.forEach((category) => {
-    const categoryPath = path.join(reposRoot, category);
-    sizes[category] = getDirSizeBytes(categoryPath);
-  });
-
-  sizeCache.timestamp = now;
-  sizeCache.data = sizes;
-  return sizes;
 }
+
+function getCategorySizes() {
+  if (!sizeCache.timestamp && !sizeCache.running) {
+    refreshCategorySizes();
+  }
+  return sizeCache.data;
+}
+
+refreshCategorySizes();
+setInterval(refreshCategorySizes, SIZE_REFRESH_MS).unref();
 
 module.exports = {
   scanRepositories,

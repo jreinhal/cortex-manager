@@ -12,7 +12,7 @@ import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import brainIcon from './assets/brain.png'
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
 // --- Utils ---
 function cn(...inputs) {
@@ -28,6 +28,21 @@ function formatBytes(bytes) {
   const value = bytes / Math.pow(k, i);
   const precision = i >= 2 ? 1 : 0;
   return `${value.toFixed(precision)} ${sizes[i]}`;
+}
+
+function isValidRepoInput(value) {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (
+    /^https?:\/\//i.test(trimmed) ||
+    /^ssh:\/\//i.test(trimmed) ||
+    /^git@[^:]+:.+/i.test(trimmed) ||
+    /^file:\/\//i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  return /^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith('/');
 }
 
 // --- Configuration ---
@@ -476,11 +491,13 @@ function SettingsPanel({ config, onSave, onClose }) {
               autoCorrect="off"
               spellCheck="false"
               ref={reposRootInputRef}
+              data-testid="settings-repos-root"
               className="flex-1 bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
             />
             <button
               onClick={handleSave}
               disabled={loading || saved}
+              data-testid="settings-save"
               className={cn(
                 "px-6 py-4 rounded-2xl font-bold transition-ui flex items-center gap-2",
                 saved
@@ -496,7 +513,7 @@ function SettingsPanel({ config, onSave, onClose }) {
             This is where CORTEX looks for Agents, Skills, Knowledge, and Tools
           </p>
         {error && (
-          <p className="text-red-400 text-sm mt-2" role="alert">{error}</p>
+          <p className="text-red-400 text-sm mt-2" role="alert" data-testid="settings-error">{error}</p>
         )}
       </div>
       </div>
@@ -544,12 +561,13 @@ function SpawnTimeline({ steps }) {
 // Main Components
 // ==========================================
 
-function StatCard({ title, count, sizeLabel, icon: Icon, color, delay }) {
+function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId, sizeTestId }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
+      data-testid={testId}
       className="glass-card p-6 rounded-3xl relative overflow-hidden h-full border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl shadow-xl"
     >
       <div className={cn("absolute -right-4 -top-4 w-32 h-32 rounded-full opacity-10 blur-3xl transition-opacity", color.replace('text-', 'bg-'))} />
@@ -562,7 +580,9 @@ function StatCard({ title, count, sizeLabel, icon: Icon, color, delay }) {
         <div>
           <div className="text-4xl font-bold text-slate-100 tracking-tight tabular-nums">{count}</div>
           <div className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-2">{title}</div>
-          <div className="text-slate-500 text-[11px] font-medium mt-2">Size {sizeLabel}</div>
+          <div className="text-slate-500 text-[11px] font-medium mt-2" data-testid={sizeTestId}>
+            Size {sizeLabel}
+          </div>
         </div>
       </div>
     </motion.div>
@@ -703,6 +723,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                     autoComplete="off"
                     value={format}
                     onChange={(e) => setFormat(e.target.value)}
+                    data-testid="format-select"
                     className="bg-slate-900/70 border border-slate-700/60 text-slate-200 text-xs rounded-xl px-3 py-2 focus-visible:outline-none focus-visible:border-cyan-500/40 focus-visible:ring-2 focus-visible:ring-cyan-500/20"
                   >
                     <option value="universal">Universal</option>
@@ -718,6 +739,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                   name="goal"
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
+                  data-testid="goal-input"
                   placeholder="Example: Audit the dashboard UI for clarity, accessibility, and visual hierarchy…"
                   autoComplete="off"
                   className="w-full bg-slate-950/70 border border-slate-700/60 rounded-3xl p-6 text-xl text-slate-100 focus-visible:outline-none focus-visible:border-cyan-500/40 focus-visible:ring-4 focus-visible:ring-cyan-500/10 transition-ui min-h-[140px] resize-none leading-relaxed placeholder:text-slate-500 font-medium"
@@ -728,6 +750,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                     type="button"
                     onClick={() => setShowSaveModal(true)}
                     disabled={!goal}
+                    data-testid="save-prompt-btn"
                     className={cn(
                       "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-ui border",
                       justSaved
@@ -743,6 +766,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                     type="button"
                     onClick={handleSpawn}
                     disabled={loading || !goal}
+                    data-testid="spawn-btn"
                     className="flex items-center gap-2 px-5 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-2xl shadow-lg shadow-cyan-500/20 transition-ui text-sm font-bold disabled:opacity-50 disabled:shadow-none"
                     title="Generate Flight Plan"
                   >
@@ -795,14 +819,14 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
         {/* Sidebar */}
         <div className="lg:col-span-4 space-y-4">
           {(savedPrompts.length > 0 || (sessions && sessions.length > 0)) && (
-            <div className="glass-panel p-5 rounded-3xl space-y-6">
+            <div className="glass-panel p-5 rounded-3xl space-y-6" data-testid="quick-access">
               <div className="flex items-center gap-2">
                 <History size={16} className="text-cyan-400" aria-hidden="true" />
                 <h3 className="font-bold text-slate-200">Quick Access</h3>
               </div>
 
               {savedPrompts.length > 0 && (
-                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner">
+                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner" data-testid="saved-prompts-section">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-amber-300 uppercase tracking-[0.3em]">Saved Prompts</div>
                     <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
@@ -841,7 +865,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
               )}
 
               {sessions && sessions.length > 0 && (
-                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner">
+                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner" data-testid="recent-sessions-section">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-cyan-300 uppercase tracking-[0.3em]">Recent Sessions</div>
                     <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
@@ -880,7 +904,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
       {/* Save Prompt Modal */}
       <AnimatePresence>
         {showSaveModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" data-testid="save-prompt-modal">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -908,6 +932,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 type="text"
                 value={promptTitle}
                 onChange={(e) => setPromptTitle(e.target.value)}
+                data-testid="prompt-title-input"
                 placeholder="e.g., UI Test, Security Audit…"
                 autoComplete="off"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-amber-500/50 focus-visible:ring-2 focus-visible:ring-amber-500/30 mb-3"
@@ -925,6 +950,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                     setShowSaveModal(false);
                     setPromptTitle('');
                   }}
+                  data-testid="cancel-save-prompt"
                   className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-ui"
                 >
                   Cancel
@@ -932,6 +958,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 <button
                   type="button"
                   onClick={handleSavePrompt}
+                  data-testid="confirm-save-prompt"
                   className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold transition-ui flex items-center justify-center gap-2"
                 >
                   <Star size={16} aria-hidden="true" />
@@ -1038,7 +1065,7 @@ function RepoTable({ repos }) {
   )
 }
 
-function NavItem({ icon: Icon, label, active, badge, href, onClick }) {
+function NavItem({ icon: Icon, label, active, badge, href, onClick, testId }) {
   const handleClick = (event) => {
     if (!onClick) return;
     if (event.defaultPrevented) return;
@@ -1053,6 +1080,7 @@ function NavItem({ icon: Icon, label, active, badge, href, onClick }) {
       href={href}
       onClick={handleClick}
       aria-current={active ? 'page' : undefined}
+      data-testid={testId}
       className={cn(
         "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-ui text-sm font-semibold group relative overflow-hidden no-underline",
         active
@@ -1266,6 +1294,10 @@ function App() {
       addLog(`Repo already exists: ${repoName}`);
       return;
     }
+    if (!isValidRepoInput(trimmedUrl)) {
+      addLog('Invalid repository URL. Use https://, ssh://, git@host:path, file://, or a local path.');
+      return;
+    }
 
     setLoading(true);
     addLog(`Cloning ${url}…`);
@@ -1428,6 +1460,7 @@ function App() {
               label="Agent Factory"
               active={view === 'agents'}
               href="?view=agents"
+              testId="nav-agents"
               onClick={() => handleViewChange('agents')}
             />
             <NavItem
@@ -1436,6 +1469,7 @@ function App() {
               badge={repos.length}
               active={view === 'repos'}
               href="?view=repos"
+              testId="nav-repos"
               onClick={() => handleViewChange('repos')}
             />
             <NavItem
@@ -1443,6 +1477,7 @@ function App() {
               label="System Logs"
               active={view === 'logs'}
               href="?view=logs"
+              testId="nav-logs"
               onClick={() => handleViewChange('logs')}
             />
             <NavItem
@@ -1450,6 +1485,7 @@ function App() {
               label="Settings"
               active={view === 'settings'}
               href="?view=settings"
+              testId="nav-settings"
               onClick={() => handleViewChange('settings')}
             />
           </div>
@@ -1511,6 +1547,8 @@ function App() {
                       title={cat.charAt(0).toUpperCase() + cat.slice(1)}
                       count={categorized[cat] ? categorized[cat].length : 0}
                       sizeLabel={formatBytes(sizeBytes)}
+                      testId={`stat-card-${cat.toLowerCase()}`}
+                      sizeTestId={`stat-size-${cat.toLowerCase()}`}
                       icon={config.icon}
                       color={config.color}
                       delay={i * 0.05}
@@ -1538,6 +1576,7 @@ function App() {
                       inputMode="url"
                       value={url}
                       onChange={e => setUrl(e.target.value)}
+                      data-testid="repo-url-input"
                       placeholder="e.g., https://github.com/org/repo…"
                       autoComplete="off"
                       autoCapitalize="none"
@@ -1550,6 +1589,7 @@ function App() {
                     type="button"
                     onClick={handleAdd}
                     disabled={loading || !url}
+                    data-testid="repo-clone-btn"
                     className="px-6 py-3 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl font-bold transition-ui disabled:opacity-50 text-sm shadow-lg shadow-white/5 active:scale-95"
                   >
                     Clone
@@ -1558,6 +1598,7 @@ function App() {
                     type="button"
                     onClick={handleScan}
                     disabled={loading}
+                    data-testid="repo-scan-btn"
                     className="group flex items-center gap-2 px-5 py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-300 rounded-2xl border border-slate-700/50 transition-ui text-sm font-bold disabled:opacity-50"
                   >
                     <RefreshCw size={14} className={cn("transition-transform group-hover:rotate-180 duration-500", loading ? "animate-spin" : "")} aria-hidden="true" />
@@ -1577,6 +1618,7 @@ function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
               className="h-[calc(100vh-180px)] glass-panel rounded-3xl p-8 flex flex-col bg-slate-950/50 border border-slate-800"
+              data-testid="system-logs"
             >
               <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex justify-between border-b border-slate-800 pb-6">
                 <span>System Logs</span>
@@ -1584,7 +1626,7 @@ function App() {
               <div className="flex-1 overflow-y-auto space-y-2 font-mono text-sm" role="log" aria-live="polite" aria-relevant="additions">
                 {logs.length === 0 && <div className="text-slate-600 italic">No activity recorded.</div>}
                 {logs.map((log, i) => (
-                  <div key={i} className="text-slate-300 border-l-2 border-slate-700 pl-4 py-1.5 hover:bg-slate-800/30 rounded-r-lg break-words">
+                  <div key={i} data-testid="system-log-entry" className="text-slate-300 border-l-2 border-slate-700 pl-4 py-1.5 hover:bg-slate-800/30 rounded-r-lg break-words">
                     {log}
                   </div>
                 ))}

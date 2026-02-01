@@ -36,6 +36,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - Stats cards show:
   - Correct repo counts per category.
   - Size label (not “—”) updates when folder size changes.
+  - Size values match filesystem folder properties (use **Size**, not “Size on disk”), allowing for rounding to the displayed unit.
 - Add Repository:
   - Valid URL → success log “Cloned X to <category>”.
   - Duplicate URL → info log “Repo already exists…”.

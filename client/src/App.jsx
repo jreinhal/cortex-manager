@@ -248,14 +248,14 @@ function SetupWizard({ onComplete, defaultPath }) {
           <div className="bg-slate-950/80 rounded-[2.2rem] p-10">
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
-              <div className="bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-2xl p-4 border border-white/10 shadow-2xl">
+              <div className="bg-black rounded-2xl p-4">
                 <img
                   src={brainIcon}
                   alt="Cortex"
-                  width="48"
-                  height="48"
+                  width="56"
+                  height="56"
                   fetchpriority="high"
-                  className="w-12 h-12 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
+                  className="w-14 h-14 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
                 />
               </div>
               <div>
@@ -1589,14 +1589,14 @@ function App() {
       <nav className="w-72 glass-panel border-r border-slate-800/50 flex flex-col fixed h-full z-50 backdrop-blur-xl bg-slate-950/80">
         <div className="p-8">
           <div className="flex items-center gap-4 text-cyan-400 mb-10 pl-2">
-            <div className="bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-2xl p-3 border border-white/10 shadow-2xl">
+            <div className="bg-black rounded-2xl p-3">
               <img
                 src={brainIcon}
                 alt="Cortex Brain"
-                width="32"
-                height="32"
+                width="40"
+                height="40"
                 fetchpriority="high"
-                className="w-8 h-8 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
+                className="w-10 h-10 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
               />
             </div>
             <span className="font-bold text-3xl tracking-tighter text-white">CORTEX</span>

@@ -6,6 +6,26 @@
   "pollingInterval": 10000,
   "maxRecentSpawns": 20,
   "filePreviewLength": 2000,
+  "decisionMatrix": {
+    "agentsMdPriority": true,
+    "lowConfidenceThreshold": 0.4,
+    "ambiguityGap": 15,
+    "rerankGap": 0.12,
+    "maxCandidates": 8,
+    "requireDDrive": true
+  },
+  "llm": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "model": "qwen2.5-14b-instruct-q4",
+    "endpoint": "http://localhost:8080/v1/chat/completions",
+    "modelDir": "D:/Models/qwen2.5-14b-instruct-q4",
+    "modelPath": "D:/Models/qwen2.5-14b-instruct-q4/qwen2.5-14b-instruct-q4.gguf",
+    "timeoutMs": 10000,
+    "temperature": 0.1,
+    "maxTokens": 400,
+    "topN": 6
+  },
   "analytics": {
     "enabled": true,
     "spawns": [],

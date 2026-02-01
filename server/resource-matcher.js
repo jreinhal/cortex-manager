@@ -59,6 +59,7 @@ const TECH_DETECTION = {
 const DOMAIN_PATTERNS = {
   directoryPatterns: {
     'components|ui|views|pages': ['frontend', 'ui'],
+    'design|ux|ui': ['ui', 'ux', 'design', 'frontend'],
     'api|routes|controllers|handlers': ['backend', 'api'],
     'models|entities|schemas': ['backend', 'data-modeling'],
     'utils|helpers|lib': ['utilities'],
@@ -74,6 +75,7 @@ const DOMAIN_PATTERNS = {
     'test|spec|assert|mock': ['testing'],
     'deploy|ci|cd|pipeline': ['devops', 'ci-cd'],
     'component|render|state|props': ['frontend', 'ui'],
+    'ui|ux|design|interface|usability|accessibility|a11y': ['ui', 'ux', 'design', 'frontend'],
     'prompt|agent|llm|completion': ['ai', 'llm']
   }
 };
@@ -84,15 +86,65 @@ const STOP_WORDS = new Set([
   'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
   'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her',
   'function', 'const', 'let', 'var', 'return', 'import', 'export',
-  'true', 'false', 'null', 'undefined', 'class', 'new', 'self'
+  'true', 'false', 'null', 'undefined', 'class', 'new', 'self',
+  // Generic noise terms
+  'best', 'practice', 'practices', 'guide', 'guides', 'overview', 'intro', 'introduction',
+  'reference', 'references', 'pattern', 'patterns', 'template', 'templates', 'example', 'examples',
+  'sample', 'samples', 'misc', 'general', 'notes', 'note', 'docs', 'documentation', 'readme',
+  'skill', 'skills', 'knowledge', 'tool', 'tools', 'resource', 'resources',
+  'repo', 'repos', 'repository', 'repositories', 'project', 'projects',
+  'app', 'apps', 'application', 'applications',
+  'top', 'standard', 'standards', 'industry', 'software', 'focus', 'precise', 'results', 'using', 'borrow', 'user', 'experience'
 ]);
+
+const KEYWORD_ALLOWLIST = new Set([
+  'ui', 'ux', 'ai', 'ml', 'db', 'qa', 'os', 'ci', 'cd', 'js', 'ts', 'go', 'api', 'sql', 'a11y', 'ef'
+]);
+
+const GOAL_DOMAIN_KEYWORDS = {
+  ui: ['ui', 'ux', 'design', 'interface', 'usability', 'accessibility', 'a11y', 'user experience', 'visual'],
+  security: ['security', 'vulnerability', 'vulnerabilities', 'owasp', 'pentest', 'auth', 'audit'],
+  backend: ['backend', 'server', 'api'],
+  database: ['database', 'sql', 'orm', 'query'],
+  devops: ['devops', 'deploy', 'ci', 'cd', 'pipeline', 'docker', 'kubernetes'],
+  testing: ['test', 'testing', 'qa', 'unit', 'integration', 'e2e'],
+  documentation: ['docs', 'documentation', 'readme'],
+  performance: ['performance', 'optimize', 'latency', 'speed']
+};
+
+const UI_PREFERRED_PATTERNS = [
+  /guidelines?/i,
+  /standards?/i,
+  /design\s*system/i,
+  /design-system/i,
+  /\bhig\b/i,
+  /human\s*interface/i,
+  /material\s*design/i,
+  /\bone\s*ui\b/i,
+  /\bapple\b/i,
+  /\bgoogle\b/i,
+  /\bsamsung\b/i,
+  /\bios\b/i,
+  /\bandroid\b/i,
+  /style\s*guide/i,
+  /styleguide/i,
+  /ui\s*kit/i,
+  /accessibility|a11y/i
+];
+
+const AGENTS_FILE_NAME = 'agents.md';
+const INSTRUCTION_BOOST = 0.35;
+
+const DOC_EXTENSIONS = ['.md', '.mdx', '.txt', '.rst', '.adoc', '.org', '.markdown'];
+const DATA_EXTENSIONS = [...DOC_EXTENSIONS, '.json', '.yaml', '.yml'];
+const TOOL_EXTENSIONS = [...DATA_EXTENSIONS, '.js', '.ts', '.py', '.sh'];
 
 /**
  * Walk directory recursively
  */
-function walkDirectory(dir, fileList = []) {
+function walkDirectory(dir, fileList = [], options = {}) {
   const IGNORE = ['.git', 'node_modules', 'dist', 'build', '__pycache__', '.venv', 'venv', 'coverage', '_system'];
-  const ALLOWED_EXTENSIONS = ['.md', '.js', '.ts', '.jsx', '.tsx', '.py', '.rs', '.go', '.yaml', '.yml', '.json', '.sh'];
+  const allowedExtensions = options.allowedExtensions || DATA_EXTENSIONS;
 
   if (!fs.existsSync(dir)) return fileList;
 
@@ -104,10 +156,10 @@ function walkDirectory(dir, fileList = []) {
     try {
       const stat = fs.statSync(filePath);
       if (stat.isDirectory()) {
-        walkDirectory(filePath, fileList);
+        walkDirectory(filePath, fileList, options);
       } else {
         const ext = path.extname(file).toLowerCase();
-        if (ALLOWED_EXTENSIONS.includes(ext)) {
+        if (!allowedExtensions || allowedExtensions.includes(ext)) {
           fileList.push(filePath);
         }
       }
@@ -183,13 +235,13 @@ function extractKeywords(content, fileName) {
     .replace(/[^a-zA-Z0-9]/g, ' ')
     .toLowerCase()
     .split(/\s+/)
-    .filter(t => t.length > 2 && !STOP_WORDS.has(t));
+    .filter(t => (t.length > 2 || KEYWORD_ALLOWLIST.has(t)) && !STOP_WORDS.has(t));
 
   const contentWords = content
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter(w => w.length > 3 && !STOP_WORDS.has(w));
+    .filter(w => (w.length > 3 || KEYWORD_ALLOWLIST.has(w)) && !STOP_WORDS.has(w));
 
   // Count frequency
   const wordCount = {};
@@ -205,6 +257,40 @@ function extractKeywords(content, fileName) {
   return [...new Set([...fileTokens, ...topContent])].slice(0, 30);
 }
 
+function extractPathTokens(value) {
+  return value
+    .replace(/\\/g, '/')
+    .split(/[\/._-]+/)
+    .map(t => t.toLowerCase())
+    .filter(t => {
+      if (!t) return false;
+      if (STOP_WORDS.has(t)) return false;
+      if (t.length > 2) return true;
+      return KEYWORD_ALLOWLIST.has(t);
+    });
+}
+
+function analyzePathSignals(relativePath, fileName) {
+  const normalized = relativePath.toLowerCase().replace(/\\/g, '/');
+  const entryPointPatterns = /(readme|skill|template|index)\.md$/;
+  const isEntryPoint = entryPointPatterns.test(fileName.toLowerCase()) || entryPointPatterns.test(normalized);
+  const isReference = /\/references?\//.test(normalized) || /\/ref(erence)?\//.test(normalized);
+  const isExample = /\/examples?\//.test(normalized) || /\/samples?\//.test(normalized);
+  const isDocsDir = /\/docs?\//.test(normalized) || /\/documentation\//.test(normalized);
+  const isAgents = fileName.toLowerCase() === AGENTS_FILE_NAME || normalized.endsWith(`/${AGENTS_FILE_NAME}`);
+
+  let priority = 0.6;
+  if (isEntryPoint) priority += 0.35;
+  if (isDocsDir) priority += 0.1;
+  if (isReference) priority -= 0.35;
+  if (isExample) priority -= 0.15;
+  if (isAgents) priority = 1.0;
+
+  priority = Math.max(0, Math.min(1, priority));
+
+  return { priority, isEntryPoint, isReference, isExample, isDocsDir, isAgents };
+}
+
 /**
  * Extract summary from content
  */
@@ -217,6 +303,47 @@ function extractSummary(content) {
     .filter(l => l.length > 20);
 
   return lines.slice(0, 3).join(' ').substring(0, 300);
+}
+
+function deriveGoalDomains(analyzedGoal) {
+  const domains = new Set();
+  const normalizedGoal = (analyzedGoal.originalGoal || '').toLowerCase();
+  const keywords = analyzedGoal.keywords || [];
+
+  (analyzedGoal.techStack?.platforms || []).forEach(d => domains.add(d));
+
+  for (const [domain, terms] of Object.entries(GOAL_DOMAIN_KEYWORDS)) {
+    const matched = terms.some(term => {
+      if (term.includes(' ')) return normalizedGoal.includes(term);
+      return keywords.includes(term) || normalizedGoal.includes(term);
+    });
+    if (matched) domains.add(domain);
+  }
+
+  return Array.from(domains);
+}
+
+function computePreferenceBoost(resource, analyzedGoal, techContext) {
+  const targetDomains = techContext.domains || [];
+  if (!targetDomains.includes('ui')) return 0;
+  if (!resource || (resource.category !== 'skills' && resource.category !== 'knowledge')) return 0;
+
+  const goalText = (analyzedGoal.originalGoal || '').toLowerCase();
+  const haystack = `${resource.relativePath} ${resource.fileName} ${resource.summary || ''}`.toLowerCase();
+  let matches = 0;
+  UI_PREFERRED_PATTERNS.forEach((pattern) => {
+    if (pattern.test(haystack)) matches += 1;
+  });
+
+  if (matches === 0) return 0;
+
+  const mentionsBrands = /(apple|google|samsung|material|one\s*ui|human\s*interface|\bhig\b)/i.test(goalText);
+  const baseBoost = matches * 0.06;
+  const skillBonus = resource.category === 'skills' ? 0.02 : 0;
+  const brandBonus = mentionsBrands ? 0.04 : 0;
+
+  // Small, capped boost to keep overall scoring stable
+  return Math.min(0.24, baseBoost + skillBonus + brandBonus);
 }
 
 /**
@@ -254,28 +381,35 @@ function isTechCompatible(resourceTech, targetTech) {
  */
 function scoreResource(resource, analyzedGoal, techContext) {
   const weights = {
-    filenameMatch: 0.25,
-    keywordMatch: 0.20,
-    techStackBonus: 0.20,
-    domainBonus: 0.15,
+    filenameMatch: 0.22,
+    keywordMatch: 0.18,
+    techStackBonus: 0.18,
+    domainBonus: 0.12,
     contentMatch: 0.10,
-    quality: 0.10
+    quality: 0.10,
+    pathPriority: 0.10
   };
 
   const keywords = analyzedGoal.keywords || [];
   const targetTech = techContext.techStack || [];
   const targetDomains = techContext.domains || [];
+  const negativeDomains = techContext.negativeDomains || [];
 
   // Filename match - with word boundary checking
   let filenameScore = 0;
   const fileNameLower = resource.fileName.toLowerCase();
-  const fileNameTokens = fileNameLower.replace(/[^a-z0-9]/g, ' ').split(/\s+/);
+  const fileNameTokens = resource.fileNameTokens || fileNameLower.replace(/[^a-z0-9]/g, ' ').split(/\s+/);
+  const pathTokens = resource.pathTokens || [];
 
   keywords.forEach(kw => {
     const kwLower = kw.toLowerCase();
     // Exact token match (higher score)
     if (fileNameTokens.includes(kwLower)) {
       filenameScore += 2;
+    }
+    // Directory/path match (medium score)
+    else if (pathTokens.includes(kwLower)) {
+      filenameScore += 1.2;
     }
     // Substring match (lower score)
     else if (fileNameLower.includes(kwLower)) {
@@ -320,6 +454,21 @@ function scoreResource(resource, analyzedGoal, techContext) {
   if (fileSize > 500 && fileSize < 100000) qualityScore = 0.8;
   if (fileSize > 2000 && fileSize < 50000) qualityScore = 1.0;
 
+  // Path priority (entrypoints > docs > references/examples)
+  const pathPriority = resource.pathSignals?.priority ?? 0.6;
+  const instructionBoost = resource.pathSignals?.isAgents ? INSTRUCTION_BOOST : 0;
+
+  const preferenceBoost = computePreferenceBoost(resource, analyzedGoal, techContext);
+
+  // Domain penalty for explicitly excluded domains
+  let domainPenalty = 0;
+  if (negativeDomains.length > 0 && resource.domains.some(d => negativeDomains.includes(d))) {
+    domainPenalty = 0.2;
+  }
+  if (targetDomains.length > 0 && resource.domains.length > 0 && !resource.domains.some(d => targetDomains.includes(d))) {
+    domainPenalty += 0.15;
+  }
+
   // Calculate total
   const total =
     filenameScore * weights.filenameMatch +
@@ -327,17 +476,25 @@ function scoreResource(resource, analyzedGoal, techContext) {
     techScore * weights.techStackBonus +
     domainScore * weights.domainBonus +
     contentScore * weights.contentMatch +
-    qualityScore * weights.quality;
+    qualityScore * weights.quality +
+    pathPriority * weights.pathPriority +
+    instructionBoost +
+    preferenceBoost -
+    domainPenalty;
 
   return {
-    score: Math.min(1, total),
+    score: Math.max(0, Math.min(1, total)),
     breakdown: {
       filename: filenameScore,
       keywords: keywordScore,
       techStack: techScore,
       domains: domainScore,
       content: contentScore,
-      quality: qualityScore
+      quality: qualityScore,
+      pathPriority,
+      instructionBoost,
+      preferenceBoost,
+      domainPenalty
     }
   };
 }
@@ -352,14 +509,27 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     category = null // null means all categories
   } = options;
 
-  const categories = category ? [category] : ['knowledge', 'skills', 'tools'];
+  const intent = analyzedGoal.intent?.primary || 'coding';
+  const includeTools = intent === 'automation' ||
+    intent === 'deployment' ||
+    analyzedGoal.capabilities?.terminal ||
+    (analyzedGoal.keywords || []).includes('tool') ||
+    (analyzedGoal.keywords || []).includes('cli');
+
+  const categories = category
+    ? [category]
+    : (includeTools ? ['knowledge', 'skills', 'tools'] : ['knowledge', 'skills']);
+
+  const goalDomains = deriveGoalDomains(analyzedGoal);
+
   const techContext = {
     techStack: [
       ...(analyzedGoal.techStack?.languages || []),
       ...(analyzedGoal.techStack?.frameworks || []),
       ...(analyzedGoal.techStack?.inferred || [])
     ],
-    domains: analyzedGoal.techStack?.platforms || []
+    domains: goalDomains,
+    negativeDomains: goalDomains.includes('security') ? [] : ['security']
   };
 
   const results = {
@@ -372,7 +542,15 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     const catDir = path.join(reposRoot, cat);
     if (!fs.existsSync(catDir)) continue;
 
-    const files = walkDirectory(catDir);
+    const allowedExtensions = cat === 'tools'
+      ? TOOL_EXTENSIONS
+      : (cat === 'skills' ? DOC_EXTENSIONS : DATA_EXTENSIONS);
+    const files = walkDirectory(catDir, [], { allowedExtensions });
+
+    const categoryMinScore =
+      cat === 'knowledge' ? minScore + 0.05 :
+      cat === 'tools' ? minScore + 0.1 :
+      minScore;
 
     const scoredFiles = files.map(filePath => {
       // Read first 10KB of content for analysis
@@ -389,6 +567,12 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
       const stat = fs.statSync(filePath);
       const fileName = path.basename(filePath);
       const relativePath = path.relative(reposRoot, filePath);
+      const pathTokens = extractPathTokens(relativePath);
+      const fileNameTokens = extractPathTokens(fileName);
+      const pathSignals = analyzePathSignals(relativePath, fileName);
+
+      const keywords = extractKeywords(content, fileName);
+      const mergedKeywords = [...new Set([...keywords, ...pathTokens])];
 
       const resource = {
         filePath,
@@ -397,7 +581,11 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
         category: cat,
         techStack: detectFileTechStack(filePath, content),
         domains: detectFileDomains(filePath, content),
-        keywords: extractKeywords(content, fileName),
+        keywords: mergedKeywords,
+        pathTokens,
+        fileNameTokens,
+        pathSignals,
+        isInstruction: pathSignals.isAgents,
         summary: extractSummary(content),
         fileSize: stat.size
       };
@@ -414,10 +602,13 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
         score: scoring.score,
         breakdown: scoring.breakdown
       };
-    }).filter(r => r !== null && r.score >= minScore);
+    }).filter(r => r !== null && (r.isInstruction || r.score >= categoryMinScore));
 
     // Sort by score and limit
-    scoredFiles.sort((a, b) => b.score - a.score);
+    scoredFiles.sort((a, b) => {
+      if (a.isInstruction !== b.isInstruction) return a.isInstruction ? -1 : 1;
+      return b.score - a.score;
+    });
     results[cat] = scoredFiles.slice(0, maxResults);
   }
 
@@ -440,7 +631,8 @@ function formatForFlightPlan(results) {
       score: Math.round(r.score * 100),
       preview: r.summary.substring(0, 100),
       techStack: r.techStack,
-      domains: r.domains
+      domains: r.domains,
+      isInstruction: r.isInstruction
     }));
   }
 

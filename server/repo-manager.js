@@ -9,6 +9,12 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 const { getConfig } = require('./config');
 
+const SIZE_CACHE_TTL_MS = 60 * 1000;
+const sizeCache = {
+  timestamp: 0,
+  data: {}
+};
+
 /**
  * Execute git command and return result
  */
@@ -491,6 +497,64 @@ function getCategories() {
     .map(d => d.name);
 }
 
+function getDirSizeBytes(targetPath) {
+  if (!fs.existsSync(targetPath)) return 0;
+  let total = 0;
+  const stack = [targetPath];
+
+  while (stack.length) {
+    const current = stack.pop();
+    let stats;
+    try {
+      stats = fs.statSync(current);
+    } catch {
+      continue;
+    }
+
+    if (stats.isFile()) {
+      total += stats.size;
+      continue;
+    }
+
+    if (stats.isDirectory()) {
+      let entries;
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        stack.push(path.join(current, entry.name));
+      }
+    }
+  }
+
+  return total;
+}
+
+function getCategorySizes() {
+  const now = Date.now();
+  if (now - sizeCache.timestamp < SIZE_CACHE_TTL_MS) {
+    return sizeCache.data;
+  }
+
+  const config = getConfig();
+  const reposRoot = config.reposRoot;
+  const categories = getCategories();
+  const sizes = {};
+
+  categories.forEach((category) => {
+    const categoryPath = path.join(reposRoot, category);
+    sizes[category] = getDirSizeBytes(categoryPath);
+  });
+
+  sizeCache.timestamp = now;
+  sizeCache.data = sizes;
+  return sizes;
+}
+
 module.exports = {
   scanRepositories,
   cloneRepository,
@@ -499,6 +563,7 @@ module.exports = {
   loadRegistry,
   saveRegistry,
   getCategories,
+  getCategorySizes,
   analyzeRepoContent,
   isGitAvailable,
   detectDefaultBranch

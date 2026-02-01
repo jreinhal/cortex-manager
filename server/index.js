@@ -271,6 +271,16 @@ app.get('/api/categories', (req, res) => {
   }
 });
 
+app.get('/api/category-sizes', (req, res) => {
+  try {
+    const sizes = repoManager.getCategorySizes();
+    res.json(sizes);
+  } catch (e) {
+    console.error('Category size error:', e);
+    res.status(500).json({ error: 'Failed to compute category sizes' });
+  }
+});
+
 // Scan for repositories (cross-platform Node.js)
 app.post('/api/scan', (req, res) => {
   try {

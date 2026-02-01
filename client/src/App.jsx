@@ -19,6 +19,17 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return '—';
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = bytes / Math.pow(k, i);
+  const precision = i >= 2 ? 1 : 0;
+  return `${value.toFixed(precision)} ${sizes[i]}`;
+}
+
 // --- Configuration ---
 const CATEGORY_CONFIG = {
   agents: { icon: Cpu, color: 'text-purple-400', desc: "Autonomous systems that perceive, reason, and act." },
@@ -533,7 +544,7 @@ function SpawnTimeline({ steps }) {
 // Main Components
 // ==========================================
 
-function StatCard({ title, count, icon: Icon, color, delay }) {
+function StatCard({ title, count, sizeLabel, icon: Icon, color, delay }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -551,6 +562,7 @@ function StatCard({ title, count, icon: Icon, color, delay }) {
         <div>
           <div className="text-4xl font-bold text-slate-100 tracking-tight tabular-nums">{count}</div>
           <div className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-2">{title}</div>
+          <div className="text-slate-500 text-[11px] font-medium mt-2">Size {sizeLabel}</div>
         </div>
       </div>
     </motion.div>
@@ -1068,6 +1080,7 @@ function NavItem({ icon: Icon, label, active, badge, href, onClick }) {
 function App() {
   const [repos, setRepos] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categorySizes, setCategorySizes] = useState({});
   const [status, setStatus] = useState('Online');
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1159,6 +1172,7 @@ function App() {
   const fetchData = () => {
     fetchRepos();
     fetchCategories();
+    fetchCategorySizes();
   };
 
   const fetchSessions = async () => {
@@ -1180,6 +1194,22 @@ function App() {
       }
     } catch (e) {
       console.error("Failed to fetch categories", e);
+    }
+  };
+
+  const fetchCategorySizes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/category-sizes`);
+      if (res.ok) {
+        const data = await res.json();
+        const normalized = {};
+        Object.entries(data || {}).forEach(([key, value]) => {
+          normalized[key.toLowerCase()] = value;
+        });
+        setCategorySizes(normalized);
+      }
+    } catch (e) {
+      console.error("Failed to fetch category sizes", e);
     }
   };
 
@@ -1467,11 +1497,13 @@ function App() {
               <div className="grid grid-cols-5 gap-6 mb-10">
                 {categories.map((cat, i) => {
                   const config = CATEGORY_CONFIG[cat.toLowerCase()] || DEFAULT_CATEGORY;
+                  const sizeBytes = categorySizes[cat.toLowerCase()];
                   return (
                     <StatCard
                       key={cat}
                       title={cat.charAt(0).toUpperCase() + cat.slice(1)}
                       count={categorized[cat] ? categorized[cat].length : 0}
+                      sizeLabel={formatBytes(sizeBytes)}
                       icon={config.icon}
                       color={config.color}
                       delay={i * 0.05}

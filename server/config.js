@@ -25,13 +25,37 @@ const DEFAULT_CONFIG = {
     ambiguityGap: 15,
     rerankGap: 0.12,
     maxCandidates: 8,
-    requireDDrive: process.platform === 'win32'
+    requireDDrive: process.platform === 'win32',
+    queryExpansion: {
+      maxVariants: 4
+    },
+    routing: {
+      minKeywordCount: 2,
+      highRecallKeywordCount: 6,
+      noResourceKeywordCount: 0,
+      lowConfidenceThreshold: 0.35
+    },
+    uncertainty: {
+      requiresReviewThreshold: 0.6,
+      highComplexityPenalty: 0.1,
+      lowKeywordPenalty: 0.2,
+      lowTechPenalty: 0.12,
+      shortGoalPenalty: 0.08,
+      minKeywordCount: 2
+    },
+    rrf: {
+      enabled: true,
+      k: 60,
+      weight: 0.45
+    }
   },
   llm: {
     enabled: true,
     provider: 'openai-compatible',
     model: 'qwen2.5-14b-instruct-q4',
     endpoint: 'http://localhost:8080/v1/chat/completions',
+    fallbackEndpoint: null,
+    allowRemote: true,
     modelDir: null,
     modelPath: null,
     timeoutMs: 10000,
@@ -284,8 +308,10 @@ function createDirectoryStructure(reposRoot) {
 /**
  * Validate repos root path
  */
-function validateReposRoot(reposPath) {
+function validateReposRoot(reposPath, options = {}) {
+  const strict = options.strict === true;
   const errors = [];
+  const warnings = [];
 
   // Check if path is absolute
   if (!path.isAbsolute(reposPath)) {
@@ -295,19 +321,28 @@ function validateReposRoot(reposPath) {
   // Check if parent directory exists (for creation)
   const parent = path.dirname(reposPath);
   if (!fs.existsSync(parent)) {
-    errors.push(`Parent directory does not exist: ${parent}`);
+    if (strict) {
+      errors.push(`Parent directory does not exist: ${parent}`);
+    } else {
+      warnings.push(`Parent directory does not exist: ${parent}`);
+    }
   }
 
   // Check write permissions on parent
   try {
     fs.accessSync(parent, fs.constants.W_OK);
   } catch {
-    errors.push(`No write permission for: ${parent}`);
+    if (strict) {
+      errors.push(`No write permission for: ${parent}`);
+    } else {
+      warnings.push(`No write permission for: ${parent}`);
+    }
   }
 
   return {
     valid: errors.length === 0,
     errors,
+    warnings,
     exists: fs.existsSync(reposPath),
     hasStructure: fs.existsSync(path.join(reposPath, '_system', 'repos.json'))
   };

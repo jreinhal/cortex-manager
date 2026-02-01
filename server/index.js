@@ -60,21 +60,16 @@ app.get('/api/config', (req, res) => {
 app.post('/api/config', (req, res) => {
   const updates = req.body;
 
-  // Validate reposRoot if provided
+  // Repo root validation is advisory only (do not block saves)
+  let validationWarnings = [];
   if (updates.reposRoot) {
     const validation = config.validateReposRoot(updates.reposRoot);
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid repos root path',
-        details: validation.errors
-      });
-    }
+    validationWarnings = [...(validation.errors || []), ...(validation.warnings || [])];
   }
 
   const newConfig = config.updateConfig(updates);
   if (newConfig) {
-    res.json({ success: true, config: newConfig });
+    res.json({ success: true, config: newConfig, warnings: validationWarnings });
   } else {
     res.status(500).json({ success: false, error: 'Failed to save configuration' });
   }
@@ -88,15 +83,8 @@ app.post('/api/setup', (req, res) => {
     return res.status(400).json({ success: false, error: 'reposRoot is required' });
   }
 
-  // Validate path
+  // Repo root validation is advisory only (do not block setup)
   const validation = config.validateReposRoot(reposRoot);
-  if (!validation.valid) {
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid path',
-      details: validation.errors
-    });
-  }
 
   // Create directory structure if requested
   let createdDirs = [];
@@ -119,10 +107,15 @@ app.post('/api/setup', (req, res) => {
       success: true,
       message: 'Setup complete',
       reposRoot,
-      createdDirectories: createdDirs
+      createdDirectories: createdDirs,
+      warnings: [...(validation.errors || []), ...(validation.warnings || [])]
     });
   } else {
-    res.status(500).json({ success: false, error: 'Failed to save configuration' });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save configuration',
+      warnings: [...(validation.errors || []), ...(validation.warnings || [])]
+    });
   }
 });
 
@@ -136,6 +129,75 @@ app.post('/api/validate-path', (req, res) => {
 
   const validation = config.validateReposRoot(pathToValidate);
   res.json(validation);
+});
+
+// LLM connectivity check (advisory)
+app.post('/api/llm/ping', async (req, res) => {
+  const { endpoint, model, provider } = req.body || {};
+  const llmConfig = config.getConfig().llm || {};
+  const target = endpoint || llmConfig.endpoint;
+  const selectedModel = model || llmConfig.model || 'gpt-3.5-turbo';
+  const selectedProvider = provider || llmConfig.provider;
+
+  if (!target) {
+    return res.status(400).json({ success: false, reachable: false, error: 'Endpoint is required' });
+  }
+
+  const isOllama = selectedProvider === 'ollama' || /\/api\/chat/i.test(target);
+  const payload = isOllama
+    ? {
+        model: selectedModel,
+        messages: [{ role: 'user', content: 'ping' }],
+        stream: false,
+        options: { temperature: 0, num_predict: 1 }
+      }
+    : {
+        model: selectedModel,
+        messages: [{ role: 'user', content: 'ping' }],
+        temperature: 0,
+        max_tokens: 1
+      };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    res.json({
+      success: true,
+      endpoint: target,
+      reachable: true,
+      ok: response.ok,
+      status: response.status
+    });
+  } catch (e) {
+    try {
+      const response = await fetch(target, { method: 'HEAD', signal: controller.signal });
+      res.json({
+        success: true,
+        endpoint: target,
+        reachable: true,
+        ok: response.ok,
+        status: response.status,
+        note: 'HEAD fallback'
+      });
+    } catch (err) {
+      res.json({
+        success: false,
+        endpoint: target,
+        reachable: false,
+        error: err.message
+      });
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 // Get default paths suggestion

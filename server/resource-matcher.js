@@ -134,6 +134,16 @@ const UI_PREFERRED_PATTERNS = [
 
 const AGENTS_FILE_NAME = 'agents.md';
 const INSTRUCTION_BOOST = 0.35;
+const GENERIC_GOAL_KEYWORDS = new Set([
+  'agent', 'agents', 'skill', 'skills', 'knowledge', 'tool', 'tools',
+  'repo', 'repos', 'repository', 'repositories', 'selection', 'prompt', 'prompts'
+]);
+
+const RRF_DEFAULT = {
+  enabled: true,
+  k: 60,
+  weight: 0.45
+};
 
 const DOC_EXTENSIONS = ['.md', '.mdx', '.txt', '.rst', '.adoc', '.org', '.markdown'];
 const DATA_EXTENSIONS = [...DOC_EXTENSIONS, '.json', '.yaml', '.yml'];
@@ -270,6 +280,18 @@ function extractPathTokens(value) {
     });
 }
 
+function filterGoalKeywords(keywords) {
+  const filtered = (keywords || [])
+    .map(kw => kw.toLowerCase())
+    .filter((kw) => !GENERIC_GOAL_KEYWORDS.has(kw));
+  return [...new Set(filtered)];
+}
+
+function goalExplicitlyRequestsAgents(goalText) {
+  if (!goalText) return false;
+  return /agents?\.md/i.test(goalText) || /\bagents? instructions\b/i.test(goalText);
+}
+
 function analyzePathSignals(relativePath, fileName) {
   const normalized = relativePath.toLowerCase().replace(/\\/g, '/');
   const entryPointPatterns = /(readme|skill|template|index)\.md$/;
@@ -308,7 +330,7 @@ function extractSummary(content) {
 function deriveGoalDomains(analyzedGoal) {
   const domains = new Set();
   const normalizedGoal = (analyzedGoal.originalGoal || '').toLowerCase();
-  const keywords = analyzedGoal.keywords || [];
+  const keywords = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
 
   (analyzedGoal.techStack?.platforms || []).forEach(d => domains.add(d));
 
@@ -390,7 +412,7 @@ function scoreResource(resource, analyzedGoal, techContext) {
     pathPriority: 0.10
   };
 
-  const keywords = analyzedGoal.keywords || [];
+  const keywords = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
   const targetTech = techContext.techStack || [];
   const targetDomains = techContext.domains || [];
   const negativeDomains = techContext.negativeDomains || [];
@@ -499,29 +521,106 @@ function scoreResource(resource, analyzedGoal, techContext) {
   };
 }
 
+function applyRrfFusion(items, config) {
+  if (!config.enabled || items.length < 2) {
+    return { used: false, items };
+  }
+
+  const metrics = [
+    { name: 'weighted', accessor: (item) => item.score },
+    { name: 'filename', accessor: (item) => item.breakdown.filename },
+    { name: 'keywords', accessor: (item) => item.breakdown.keywords },
+    { name: 'tech', accessor: (item) => item.breakdown.techStack },
+    { name: 'domains', accessor: (item) => item.breakdown.domains },
+    { name: 'content', accessor: (item) => item.breakdown.content },
+    { name: 'path', accessor: (item) => item.breakdown.pathPriority }
+  ];
+
+  const rankMaps = {};
+  metrics.forEach((metric) => {
+    const sorted = [...items].sort((a, b) => metric.accessor(b) - metric.accessor(a));
+    const map = new Map();
+    sorted.forEach((item, idx) => {
+      map.set(item.filePath, idx + 1);
+    });
+    rankMaps[metric.name] = map;
+  });
+
+  items.forEach((item) => {
+    let rrfScore = 0;
+    metrics.forEach((metric) => {
+      const rank = rankMaps[metric.name].get(item.filePath) || items.length;
+      rrfScore += 1 / (config.k + rank);
+    });
+    item.rrfScore = rrfScore;
+  });
+
+  const scores = items.map((i) => i.rrfScore);
+  const minScore = Math.min(...scores);
+  const maxScore = Math.max(...scores);
+  const range = maxScore - minScore;
+
+  items.forEach((item) => {
+    const normalized = range > 0 ? (item.rrfScore - minScore) / range : 0.5;
+    item.rrfNormalized = normalized;
+    item.scoreRaw = item.score;
+    item.score = Math.max(0, Math.min(1, (1 - config.weight) * item.scoreRaw + config.weight * normalized));
+  });
+
+  return { used: true, items };
+}
+
+function resolveRoutingOptions(analyzedGoal, options) {
+  const baseMaxResults = options.maxResults ?? 10;
+  const baseMinScore = options.minScore ?? 0.15;
+  const routingMode = analyzedGoal.routing?.mode || 'DOCUMENT';
+
+  if (routingMode === 'NO_RESOURCES') {
+    return { maxResults: 0, minScore: 1, routingMode };
+  }
+
+  if (routingMode === 'HIGH_RECALL') {
+    return {
+      maxResults: Math.max(baseMaxResults, 12),
+      minScore: Math.max(0.08, baseMinScore - 0.05),
+      routingMode
+    };
+  }
+
+  return { maxResults: baseMaxResults, minScore: baseMinScore, routingMode };
+}
+
 /**
  * Main entry point - find relevant resources
  */
 function findResources(analyzedGoal, reposRoot, options = {}) {
   const {
-    maxResults = 10,
-    minScore = 0.15,
-    category = null // null means all categories
+    category = null,
+    rrf = {},
+    includeMeta = false,
+    agentsMdPriority = false
   } = options;
 
+  const routingOptions = resolveRoutingOptions(analyzedGoal, options);
+  const maxResults = routingOptions.maxResults;
+  const minScore = routingOptions.minScore;
+  const rrfConfig = { ...RRF_DEFAULT, ...(rrf || {}) };
+
   const intent = analyzedGoal.intent?.primary || 'coding';
+  const goalKeywords = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
   const includeTools = intent === 'automation' ||
     intent === 'deployment' ||
     analyzedGoal.capabilities?.terminal ||
-    (analyzedGoal.keywords || []).includes('tool') ||
-    (analyzedGoal.keywords || []).includes('cli');
+    goalKeywords.includes('tool') ||
+    goalKeywords.includes('cli');
 
   const categories = category
     ? [category]
     : (includeTools ? ['knowledge', 'skills', 'tools'] : ['knowledge', 'skills']);
 
   const goalDomains = deriveGoalDomains(analyzedGoal);
-
+  const goalText = analyzedGoal.originalGoal || '';
+  const filteredGoalKeywords = filterGoalKeywords(goalKeywords);
   const techContext = {
     techStack: [
       ...(analyzedGoal.techStack?.languages || []),
@@ -532,10 +631,33 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     negativeDomains: goalDomains.includes('security') ? [] : ['security']
   };
 
+  const allowAllInstructions = goalExplicitlyRequestsAgents(goalText) ||
+    (agentsMdPriority && (filteredGoalKeywords.length > 0 || goalDomains.length > 0 || techContext.techStack.length > 0));
+
   const results = {
     knowledge: [],
     skills: [],
     tools: []
+  };
+
+  const hasInstructionSignal = (resource) => {
+    if (allowAllInstructions) return true;
+
+    const keywordHit = filteredGoalKeywords.some((kw) => resource.keywords?.includes(kw));
+    if (keywordHit) return true;
+
+    if (techContext.domains.length > 0) {
+      const domainHit = resource.domains?.some((d) => techContext.domains.includes(d));
+      if (domainHit) return true;
+    }
+
+    if (techContext.techStack.length > 0) {
+      const techHit = resource.techStack?.some((t) => techContext.techStack.includes(t));
+      if (techHit) return true;
+    }
+
+    const summary = (resource.summary || '').toLowerCase();
+    return filteredGoalKeywords.some((kw) => summary.includes(kw));
   };
 
   for (const cat of categories) {
@@ -602,14 +724,28 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
         score: scoring.score,
         breakdown: scoring.breakdown
       };
-    }).filter(r => r !== null && (r.isInstruction || r.score >= categoryMinScore));
+    }).filter(r => {
+      if (!r) return false;
+      if (!r.isInstruction) return r.score >= categoryMinScore;
+      return hasInstructionSignal(r);
+    });
+
+    const fusion = applyRrfFusion(scoredFiles, rrfConfig);
 
     // Sort by score and limit
-    scoredFiles.sort((a, b) => {
+    fusion.items.sort((a, b) => {
       if (a.isInstruction !== b.isInstruction) return a.isInstruction ? -1 : 1;
       return b.score - a.score;
     });
-    results[cat] = scoredFiles.slice(0, maxResults);
+    results[cat] = fusion.items.slice(0, maxResults);
+
+    if (includeMeta) {
+      results.__meta = results.__meta || {};
+      results.__meta.rrfUsed = results.__meta.rrfUsed || fusion.used;
+      results.__meta.routingMode = routingOptions.routingMode;
+      results.__meta.maxResults = maxResults;
+      results.__meta.minScore = minScore;
+    }
   }
 
   return results;
@@ -625,7 +761,8 @@ function formatForFlightPlan(results) {
     tools: []
   };
 
-  for (const [cat, resources] of Object.entries(results)) {
+  ['knowledge', 'skills', 'tools'].forEach((cat) => {
+    const resources = results[cat] || [];
     formatted[cat] = resources.map(r => ({
       file: r.filePath,
       score: Math.round(r.score * 100),
@@ -634,7 +771,7 @@ function formatForFlightPlan(results) {
       domains: r.domains,
       isInstruction: r.isInstruction
     }));
-  }
+  });
 
   return formatted;
 }

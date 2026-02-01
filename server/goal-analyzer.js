@@ -3,6 +3,8 @@
  * Extracts intent, tech stack, complexity, and required capabilities
  */
 
+const { expandGoalVariants } = require('./query-expander');
+
 // Intent patterns with weights
 const INTENT_PATTERNS = {
   coding: {
@@ -38,6 +40,12 @@ const INTENT_PATTERNS = {
     verbs: ['document', 'describe', 'explain', 'write'],
     nouns: ['docs', 'documentation', 'readme', 'api docs', 'jsdoc', 'comment'],
     weight: 1.0
+  },
+  analysis: {
+    verbs: ['analyze', 'review', 'assess', 'evaluate', 'critique', 'inspect'],
+    nouns: ['ui', 'ux', 'design', 'interface', 'usability', 'experience', 'standards', 'guidelines', 'heuristics'],
+    modifiers: ['user experience', 'accessibility', 'a11y', 'design review', 'heuristic'],
+    weight: 1.2
   },
   automation: {
     verbs: ['automate', 'script', 'scrape', 'crawl', 'navigate', 'click'],
@@ -128,12 +136,53 @@ const TECH_TAXONOMY = {
     bundler: ['webpack', 'vite', 'rollup', 'esbuild']
   },
   platforms: {
-    web: ['web', 'browser', 'frontend', 'client-side', 'spa'],
+    web: ['web', 'browser', 'frontend', 'front end', 'front-end', 'ui', 'ux', 'interface', 'client-side', 'spa'],
     mobile: ['mobile', 'ios', 'android', 'react native', 'flutter'],
     cli: ['cli', 'command line', 'terminal', 'shell'],
     api: ['api', 'rest', 'graphql', 'backend', 'server'],
     desktop: ['desktop', 'electron', 'tauri']
   }
+};
+
+// Keyword filtering
+const KEYWORD_STOP_WORDS = new Set([
+  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
+  'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+  'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her',
+  'function', 'const', 'let', 'var', 'return', 'import', 'export',
+  'true', 'false', 'null', 'undefined', 'class', 'new', 'self',
+  // Generic noise terms
+  'best', 'practice', 'practices', 'guide', 'guides', 'overview', 'intro', 'introduction',
+  'reference', 'references', 'pattern', 'patterns', 'template', 'templates', 'example', 'examples',
+  'sample', 'samples', 'misc', 'general', 'notes', 'note', 'docs', 'documentation', 'readme',
+  'skill', 'skills', 'knowledge', 'tool', 'tools', 'resource', 'resources',
+  'repo', 'repos', 'repository', 'repositories', 'project', 'projects',
+  'app', 'apps', 'application', 'applications',
+  'top', 'standard', 'standards', 'industry', 'software', 'focus', 'precise', 'results', 'using', 'borrow', 'user', 'experience'
+]);
+
+const KEYWORD_ALLOWLIST = new Set([
+  'ui', 'ux', 'ai', 'ml', 'db', 'qa', 'os', 'ci', 'cd', 'js', 'ts', 'go', 'api', 'sql', 'a11y', 'ef'
+]);
+
+const DEFAULT_QUERY_EXPANSION = {
+  maxVariants: 4
+};
+
+const DEFAULT_ROUTING_CONFIG = {
+  minKeywordCount: 2,
+  highRecallKeywordCount: 6,
+  noResourceKeywordCount: 0,
+  lowConfidenceThreshold: 0.35
+};
+
+const DEFAULT_UNCERTAINTY_CONFIG = {
+  requiresReviewThreshold: 0.6,
+  highComplexityPenalty: 0.1,
+  lowKeywordPenalty: 0.2,
+  lowTechPenalty: 0.12,
+  shortGoalPenalty: 0.08,
+  minKeywordCount: 2
 };
 
 // Action verb analysis
@@ -180,6 +229,19 @@ const COMPLEXITY_INDICATORS = {
     maxSteps: 100
   }
 };
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function textIncludesTerm(text, term) {
+  if (!term) return false;
+  if (term.includes(' ')) return text.includes(term);
+  if (term.length <= 2) {
+    return new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(text);
+  }
+  return text.includes(term);
+}
 
 /**
  * Classify the primary intent of the goal
@@ -237,18 +299,18 @@ function detectTechStack(goal) {
     let found = false;
     if (config.useRegex) {
       found = config.explicit.some(term => new RegExp(term, 'i').test(normalizedGoal)) ||
-              config.related.some(term => normalizedGoal.includes(term));
+              config.related.some(term => textIncludesTerm(normalizedGoal, term));
     } else {
-      found = config.explicit.some(term => normalizedGoal.includes(term)) ||
-              config.related.some(term => normalizedGoal.includes(term));
+      found = config.explicit.some(term => textIncludesTerm(normalizedGoal, term)) ||
+              config.related.some(term => textIncludesTerm(normalizedGoal, term));
     }
     if (found) detected.languages.push(lang);
   }
 
   // Detect frameworks and their implications
   for (const [fw, config] of Object.entries(TECH_TAXONOMY.frameworks)) {
-    const found = config.explicit.some(term => normalizedGoal.includes(term)) ||
-                  (config.signals && config.signals.some(term => normalizedGoal.includes(term)));
+    const found = config.explicit.some(term => textIncludesTerm(normalizedGoal, term)) ||
+                  (config.signals && config.signals.some(term => textIncludesTerm(normalizedGoal, term)));
     if (found) {
       detected.frameworks.push(fw);
       if (config.implies) {
@@ -265,14 +327,14 @@ function detectTechStack(goal) {
 
   // Detect tools
   for (const [tool, terms] of Object.entries(TECH_TAXONOMY.tools)) {
-    if (terms.some(term => normalizedGoal.includes(term))) {
+    if (terms.some(term => textIncludesTerm(normalizedGoal, term))) {
       detected.tools.push(tool);
     }
   }
 
   // Detect platforms
   for (const [platform, terms] of Object.entries(TECH_TAXONOMY.platforms)) {
-    if (terms.some(term => normalizedGoal.includes(term))) {
+    if (terms.some(term => textIncludesTerm(normalizedGoal, term))) {
       detected.platforms.push(platform);
     }
   }
@@ -384,7 +446,7 @@ function mapCapabilities(goal, intent, techStack) {
   }
 
   // File system (default for coding tasks)
-  if (intent.primary === 'coding' || intent.primary === 'refactoring' || intent.primary === 'debugging') {
+  if (['coding', 'refactoring', 'debugging', 'analysis', 'documentation', 'testing'].includes(intent.primary)) {
     capabilities.fileSystem = true;
   }
 
@@ -410,10 +472,28 @@ function mapCapabilities(goal, intent, techStack) {
  * Extract keywords for backward compatibility and resource matching
  */
 function extractKeywords(goal, techStack) {
-  const basicTokens = goal.toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
+  const goalLower = goal.toLowerCase();
+  const basicTokens = goalLower
+    .replace(/c\+\+/g, 'cpp')
+    .replace(/c#/g, 'csharp')
+    .replace(/\.net/g, 'dotnet')
+    .replace(/node\.js/g, 'nodejs')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter(t => t.length > 2);
+    .filter(t => {
+      if (!t) return false;
+      if (KEYWORD_STOP_WORDS.has(t)) return false;
+      if (t.length > 2) return true;
+      return KEYWORD_ALLOWLIST.has(t);
+    });
+
+  // Phrase-aware additions
+  const keywordSet = new Set(basicTokens);
+  if (/user\s+interface/.test(goalLower)) keywordSet.add('ui');
+  if (/user\s+experience/.test(goalLower)) keywordSet.add('ux');
+  if (/front\s*end/.test(goalLower)) keywordSet.add('frontend');
+  if (/back\s*end/.test(goalLower)) keywordSet.add('backend');
+  if (/accessibility|a11y/.test(goalLower)) keywordSet.add('accessibility');
 
   const techTerms = [
     ...techStack.languages,
@@ -423,7 +503,7 @@ function extractKeywords(goal, techStack) {
     ...techStack.inferred
   ];
 
-  const combined = [...new Set([...techTerms, ...basicTokens])];
+  const combined = [...new Set([...techTerms, ...keywordSet])];
 
   // Sort: tech terms first, then by length
   return combined.sort((a, b) => {
@@ -432,6 +512,114 @@ function extractKeywords(goal, techStack) {
     if (aIsTech !== bIsTech) return bIsTech - aIsTech;
     return b.length - a.length;
   });
+}
+
+function expandKeywords(goal, techStack, options) {
+  const variants = expandGoalVariants(goal, options);
+  if (!variants.length) {
+    return { variants: [], expandedKeywords: [] };
+  }
+
+  const keywordSet = new Set();
+  variants.forEach((variant) => {
+    extractKeywords(variant, techStack).forEach((kw) => keywordSet.add(kw));
+  });
+
+  return {
+    variants,
+    expandedKeywords: Array.from(keywordSet)
+  };
+}
+
+function computeGoalSignals(goal, keywords, expandedKeywords, techStack) {
+  const wordCount = goal.split(/\s+/).filter(Boolean).length;
+  const techSignals = [
+    ...(techStack.languages || []),
+    ...(techStack.frameworks || []),
+    ...(techStack.tools || []),
+    ...(techStack.platforms || []),
+    ...(techStack.inferred || [])
+  ];
+
+  return {
+    wordCount,
+    keywordCount: keywords.length,
+    expandedKeywordCount: expandedKeywords.length,
+    keywordDensity: wordCount > 0 ? keywords.length / wordCount : 0,
+    hasTechStack: techSignals.length > 0,
+    techSignalCount: techSignals.length
+  };
+}
+
+function determineRouting(analysis, signals, config) {
+  const routing = {
+    mode: 'DOCUMENT',
+    reasons: []
+  };
+
+  if (signals.keywordCount <= config.noResourceKeywordCount && !signals.hasTechStack) {
+    routing.mode = 'NO_RESOURCES';
+    routing.reasons.push('No keywords or tech signals detected');
+    return routing;
+  }
+
+  if (analysis.intent.confidence < config.lowConfidenceThreshold) {
+    routing.mode = 'HIGH_RECALL';
+    routing.reasons.push('Low intent confidence');
+  }
+
+  if (signals.expandedKeywordCount >= config.highRecallKeywordCount) {
+    routing.mode = 'HIGH_RECALL';
+    routing.reasons.push('High keyword coverage');
+  }
+
+  if (['complex', 'epic'].includes(analysis.complexity.level)) {
+    routing.mode = 'HIGH_RECALL';
+    routing.reasons.push('Complexity suggests broader retrieval');
+  }
+
+  if (routing.reasons.length === 0) {
+    routing.reasons.push('Default document retrieval');
+  }
+
+  return routing;
+}
+
+function computeUncertainty(analysis, signals, routing, config) {
+  let score = 1 - analysis.intent.confidence;
+  const reasons = ['Base: intent confidence'];
+
+  if (signals.keywordCount < config.minKeywordCount) {
+    score += config.lowKeywordPenalty;
+    reasons.push('Low keyword count');
+  }
+
+  if (!signals.hasTechStack) {
+    score += config.lowTechPenalty;
+    reasons.push('No tech stack signals');
+  }
+
+  if (signals.wordCount < 6) {
+    score += config.shortGoalPenalty;
+    reasons.push('Very short goal text');
+  }
+
+  if (['complex', 'epic'].includes(analysis.complexity.level)) {
+    score += config.highComplexityPenalty;
+    reasons.push('High complexity');
+  }
+
+  if (routing.mode === 'NO_RESOURCES') {
+    score += 0.2;
+    reasons.push('No-resources routing');
+  }
+
+  score = Math.max(0, Math.min(1, score));
+
+  return {
+    score,
+    reasons
+  };
 }
 
 /**
@@ -443,6 +631,10 @@ function analyzeGoal(goalText, options = {}) {
   }
 
   const normalizedGoal = goalText.trim();
+  const decisionConfig = options.decisionConfig || {};
+  const queryExpansionConfig = { ...DEFAULT_QUERY_EXPANSION, ...(decisionConfig.queryExpansion || {}) };
+  const routingConfig = { ...DEFAULT_ROUTING_CONFIG, ...(decisionConfig.routing || {}) };
+  const uncertaintyConfig = { ...DEFAULT_UNCERTAINTY_CONFIG, ...(decisionConfig.uncertainty || {}) };
 
   const intent = classifyIntent(normalizedGoal);
   const techStack = detectTechStack(normalizedGoal);
@@ -450,6 +642,16 @@ function analyzeGoal(goalText, options = {}) {
   const complexity = assessComplexity(normalizedGoal, intent, techStack);
   const capabilities = mapCapabilities(normalizedGoal, intent, techStack);
   const keywords = extractKeywords(normalizedGoal, techStack);
+  const expansion = expandKeywords(normalizedGoal, techStack, queryExpansionConfig);
+  const expandedKeywordSet = new Set([...keywords, ...expansion.expandedKeywords]);
+  const expandedKeywords = Array.from(expandedKeywordSet);
+  const signals = computeGoalSignals(normalizedGoal, keywords, expandedKeywords, techStack);
+  const routing = determineRouting({ intent, complexity }, signals, routingConfig);
+  const uncertainty = computeUncertainty({ intent, complexity }, signals, routing, uncertaintyConfig);
+
+  if (uncertainty.score >= uncertaintyConfig.requiresReviewThreshold) {
+    actions.requiresReview = true;
+  }
 
   return {
     intent,
@@ -458,6 +660,14 @@ function analyzeGoal(goalText, options = {}) {
     complexity,
     capabilities,
     keywords,
+    expandedKeywords,
+    queryExpansion: {
+      variants: expansion.variants,
+      expandedKeywordCount: expandedKeywords.length
+    },
+    routing,
+    uncertainty,
+    signals,
     originalGoal: normalizedGoal,
     analyzedAt: new Date().toISOString()
   };
@@ -470,5 +680,7 @@ module.exports = {
   analyzeActions,
   assessComplexity,
   mapCapabilities,
-  extractKeywords
+  extractKeywords,
+  determineRouting,
+  computeUncertainty
 };

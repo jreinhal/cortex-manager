@@ -12,13 +12,37 @@
     "ambiguityGap": 15,
     "rerankGap": 0.12,
     "maxCandidates": 8,
-    "requireDDrive": true
+    "requireDDrive": true,
+    "queryExpansion": {
+      "maxVariants": 4
+    },
+    "routing": {
+      "minKeywordCount": 2,
+      "highRecallKeywordCount": 6,
+      "noResourceKeywordCount": 0,
+      "lowConfidenceThreshold": 0.35
+    },
+    "uncertainty": {
+      "requiresReviewThreshold": 0.6,
+      "highComplexityPenalty": 0.1,
+      "lowKeywordPenalty": 0.2,
+      "lowTechPenalty": 0.12,
+      "shortGoalPenalty": 0.08,
+      "minKeywordCount": 2
+    },
+    "rrf": {
+      "enabled": true,
+      "k": 60,
+      "weight": 0.45
+    }
   },
   "llm": {
     "enabled": true,
     "provider": "openai-compatible",
     "model": "qwen2.5-14b-instruct-q4",
     "endpoint": "http://localhost:8080/v1/chat/completions",
+    "fallbackEndpoint": null,
+    "allowRemote": true,
     "modelDir": "D:/Models/qwen2.5-14b-instruct-q4",
     "modelPath": "D:/Models/qwen2.5-14b-instruct-q4/qwen2.5-14b-instruct-q4.gguf",
     "timeoutMs": 10000,

@@ -448,6 +448,55 @@ app.post('/api/sessions', (req, res) => {
 });
 
 // ==========================================
+// Saved Prompts API
+// ==========================================
+
+// Get all saved prompts
+app.get('/api/prompts', (req, res) => {
+  const prompts = config.getSavedPrompts();
+  res.json(prompts);
+});
+
+// Save a new prompt
+app.post('/api/prompts', (req, res) => {
+  const { title, query } = req.body;
+
+  if (!query) {
+    return res.status(400).json({ success: false, error: 'Query is required' });
+  }
+
+  const prompt = config.savePrompt(title, query);
+  res.json({ success: true, prompt });
+});
+
+// Update a prompt
+app.put('/api/prompts/:id', (req, res) => {
+  const { id } = req.params;
+  const { title, query } = req.body;
+
+  const prompt = config.updatePrompt(id, { title, query });
+
+  if (prompt) {
+    res.json({ success: true, prompt });
+  } else {
+    res.status(404).json({ success: false, error: 'Prompt not found' });
+  }
+});
+
+// Delete a prompt
+app.delete('/api/prompts/:id', (req, res) => {
+  const { id } = req.params;
+
+  const success = config.deletePrompt(id);
+
+  if (success) {
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ success: false, error: 'Prompt not found' });
+  }
+});
+
+// ==========================================
 // Tools Registry API (for P1: Tools Registry)
 // ==========================================
 

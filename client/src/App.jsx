@@ -6,7 +6,7 @@ import {
   AlertCircle, ChevronRight, Activity, GitBranch, Folder,
   Package, Settings, FolderOpen, Check, X, Clock,
   TrendingUp, Zap, History, ExternalLink, HardDrive,
-  ChevronUp, FolderInput
+  ChevronUp, FolderInput, Star, Trash2, Edit3
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -41,16 +41,20 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchDirectory = async (path = '') => {
+  const fetchDirectory = async (pathToFetch = '', fallbackToRoot = false) => {
     setLoading(true);
     setError(null);
     try {
-      const url = path
-        ? `${API_BASE}/browse?path=${encodeURIComponent(path)}`
+      const url = pathToFetch
+        ? `${API_BASE}/browse?path=${encodeURIComponent(pathToFetch)}`
         : `${API_BASE}/browse`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.error) {
+        // If path doesn't exist and we haven't tried root yet, fall back to root
+        if (fallbackToRoot === false && pathToFetch) {
+          return fetchDirectory('', true);
+        }
         setError(data.error);
       } else {
         setCurrentPath(data.path);
@@ -65,9 +69,10 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
 
   useEffect(() => {
     if (isOpen) {
+      // Start from initialPath if provided, will fallback to root if path doesn't exist
       fetchDirectory(initialPath || '');
     }
-  }, [isOpen, initialPath]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -639,6 +644,63 @@ function AgentReflectionBadge() {
 function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReuseSession }) {
   const [goal, setGoal] = useState('');
   const [spawnSteps, setSpawnSteps] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [savedPrompts, setSavedPrompts] = useState([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [promptTitle, setPromptTitle] = useState('');
+  const [justSaved, setJustSaved] = useState(false);
+
+  // Fetch saved prompts on mount
+  useEffect(() => {
+    fetchSavedPrompts();
+  }, []);
+
+  const fetchSavedPrompts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/prompts`);
+      const data = await res.json();
+      setSavedPrompts(data);
+    } catch (e) {
+      console.error('Failed to fetch saved prompts:', e);
+    }
+  };
+
+  const handleSavePrompt = async () => {
+    if (!goal) return;
+    try {
+      const res = await fetch(`${API_BASE}/prompts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: promptTitle || 'Untitled', query: goal })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSavedPrompts(prev => [data.prompt, ...prev]);
+        setShowSaveModal(false);
+        setPromptTitle('');
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 2000);
+      }
+    } catch (e) {
+      console.error('Failed to save prompt:', e);
+    }
+  };
+
+  const handleDeletePrompt = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/prompts/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setSavedPrompts(prev => prev.filter(p => p.id !== id));
+      }
+    } catch (e) {
+      console.error('Failed to delete prompt:', e);
+    }
+  };
+
+  const handleUsePrompt = (query) => {
+    setGoal(query);
+  };
 
   const handleSpawn = async () => {
     if (!goal) return;
@@ -661,6 +723,8 @@ function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReu
 
   const handleCopy = () => {
     navigator.clipboard.writeText(result);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleReuseSession = (sessionGoal) => {
@@ -700,7 +764,22 @@ function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReu
                   className="w-full bg-slate-900/40 border border-slate-800/60 rounded-3xl p-6 text-xl text-slate-200 focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/10 transition-all min-h-[140px] resize-none leading-relaxed placeholder:text-slate-600/70 font-medium"
                 />
 
-                <div className="absolute bottom-4 right-4">
+                <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                  {/* Save Prompt Button */}
+                  <button
+                    onClick={() => setShowSaveModal(true)}
+                    disabled={!goal}
+                    className={cn(
+                      "h-10 w-10 flex items-center justify-center rounded-full transition-all",
+                      justSaved
+                        ? "bg-amber-500/20 text-amber-400"
+                        : "bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 disabled:opacity-30 disabled:hover:bg-slate-800 disabled:hover:text-slate-400"
+                    )}
+                    title="Save prompt"
+                  >
+                    <Star size={18} fill={justSaved ? "currentColor" : "none"} />
+                  </button>
+                  {/* Spawn Button */}
                   <button
                     onClick={handleSpawn}
                     disabled={loading || !goal}
@@ -735,9 +814,14 @@ function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReu
                 </div>
                 <button
                   onClick={handleCopy}
-                  className="text-xs bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium border border-slate-700"
+                  className={cn(
+                    "text-xs px-3 py-1.5 rounded-lg transition-all font-medium border flex items-center gap-2",
+                    copied
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                      : "bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
+                  )}
                 >
-                  Copy to Clipboard
+                  {copied ? <><Check size={14} /> Copied!</> : 'Copy to Clipboard'}
                 </button>
               </div>
               <div className="p-0 overflow-x-auto bg-slate-950/90 max-h-[500px] overflow-y-auto">
@@ -785,6 +869,43 @@ function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReu
             </div>
           </div>
 
+          {/* Saved Prompts */}
+          {savedPrompts.length > 0 && (
+            <div className="glass-panel p-5 rounded-3xl">
+              <div className="flex items-center gap-2 mb-4">
+                <Star size={16} className="text-amber-400" />
+                <h3 className="font-bold text-slate-200">Saved Prompts</h3>
+              </div>
+              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                {savedPrompts.map((prompt) => (
+                  <div
+                    key={prompt.id}
+                    className="group flex items-center gap-2 p-3 bg-slate-900/50 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer"
+                  >
+                    <button
+                      onClick={() => handleUsePrompt(prompt.query)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="text-sm font-medium text-slate-300 group-hover:text-white truncate">
+                        {prompt.title}
+                      </div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {prompt.query.substring(0, 50)}{prompt.query.length > 50 ? '...' : ''}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDeletePrompt(prompt.id)}
+                      className="p-1.5 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Analytics */}
           {analytics && <AnalyticsPanel analytics={analytics} />}
 
@@ -792,6 +913,64 @@ function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReu
           <SessionHistory sessions={sessions} onReuse={handleReuseSession} />
         </div>
       </div>
+
+      {/* Save Prompt Modal */}
+      <AnimatePresence>
+        {showSaveModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-md p-6 shadow-2xl"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-amber-500/20 rounded-xl">
+                  <Star size={20} className="text-amber-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white">Save Prompt</h3>
+              </div>
+
+              <p className="text-slate-400 text-sm mb-4">
+                Give this prompt a name so you can easily find it later.
+              </p>
+
+              <input
+                type="text"
+                value={promptTitle}
+                onChange={(e) => setPromptTitle(e.target.value)}
+                placeholder="e.g., UI Test, Security Audit..."
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 focus:outline-none focus:border-amber-500/50 mb-3"
+                autoFocus
+              />
+
+              <div className="p-3 bg-slate-800/50 rounded-xl mb-6">
+                <p className="text-xs text-slate-500 mb-1">Prompt:</p>
+                <p className="text-sm text-slate-300 line-clamp-2">{goal}</p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowSaveModal(false);
+                    setPromptTitle('');
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePrompt}
+                  className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  <Star size={16} />
+                  Save
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

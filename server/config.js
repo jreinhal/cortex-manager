@@ -24,7 +24,9 @@ const DEFAULT_CONFIG = {
     enabled: true,
     spawns: [],
     lastReset: null
-  }
+  },
+  // Saved prompts/queries
+  savedPrompts: []
 };
 
 /**
@@ -291,6 +293,70 @@ function getAnalytics() {
   };
 }
 
+/**
+ * Get all saved prompts
+ */
+function getSavedPrompts() {
+  const config = loadConfig();
+  return config.savedPrompts || [];
+}
+
+/**
+ * Save a new prompt
+ */
+function savePrompt(title, query) {
+  const config = loadConfig();
+  if (!config.savedPrompts) config.savedPrompts = [];
+
+  const newPrompt = {
+    id: Date.now().toString(),
+    title: title || 'Untitled',
+    query,
+    createdAt: new Date().toISOString()
+  };
+
+  config.savedPrompts.unshift(newPrompt); // Add to beginning
+  saveConfig(config);
+  return newPrompt;
+}
+
+/**
+ * Update an existing prompt
+ */
+function updatePrompt(id, updates) {
+  const config = loadConfig();
+  if (!config.savedPrompts) return null;
+
+  const index = config.savedPrompts.findIndex(p => p.id === id);
+  if (index === -1) return null;
+
+  config.savedPrompts[index] = {
+    ...config.savedPrompts[index],
+    ...updates,
+    updatedAt: new Date().toISOString()
+  };
+
+  saveConfig(config);
+  return config.savedPrompts[index];
+}
+
+/**
+ * Delete a saved prompt
+ */
+function deletePrompt(id) {
+  const config = loadConfig();
+  if (!config.savedPrompts) return false;
+
+  const initialLength = config.savedPrompts.length;
+  config.savedPrompts = config.savedPrompts.filter(p => p.id !== id);
+
+  if (config.savedPrompts.length < initialLength) {
+    saveConfig(config);
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   getConfig,
   updateConfig,
@@ -306,5 +372,9 @@ module.exports = {
   getSystemInfo,
   recordSpawn,
   getAnalytics,
+  getSavedPrompts,
+  savePrompt,
+  updatePrompt,
+  deletePrompt,
   CONFIG_PATH
 };

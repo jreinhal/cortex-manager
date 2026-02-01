@@ -42,12 +42,19 @@ AGENTS.md instructions are treated as the highest priority:
 - AGENTS.md resources receive a strong score boost and sort ahead of skills.
 - Skills remain useful for depth, but are secondary to explicit instructions.
 
+### Why AGENTS.md First
+- External evals show instruction-centric context (AGENTS.md) can outperform skills in accuracy and reliability.
+- Skills are most effective when explicitly invoked with clear sequencing (e.g., explore context first, then consult skills).
+These findings drive the "AGENTS-first + explicit skill usage" policy in this pipeline.
+
 ## Gating Rules (Safety + Reliability)
 - **Low-confidence gate:** If deterministic confidence is low, require human review.
 - **Ambiguity gate:** If top 2 scores are too close, flag ambiguity.
 - **Instruction gate:** If AGENTS.md exists, it must appear first in required reading.
 - **Rerank gate:** LLM rerank only applies when enabled and valid, otherwise fallback.
 - **Mismatch gate:** If LLM order conflicts with strong deterministic signals, keep deterministic.
+- **Approval gate:** When confidence/ambiguity triggers, require a human review step before finalizing.
+This keeps the selection flow explicit and stateful, with clear fallbacks.
 
 ## Optional LLM Rerank (Qwen2.5 14B Instruct Q4)
 Rerank only the top N candidates, return strict JSON:

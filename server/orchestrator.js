@@ -281,6 +281,10 @@ function generateFlightPlan({ goal, analysis, selectedAgent, selection, resource
     ? '\n> AGENTS.md instructions are highest priority and should be read first.\n'
     : '';
 
+  const skillsUsageNote = resources.skills.length > 0
+    ? '\n> If skills are listed, explore project context first, then consult skills as reference.\n'
+    : '';
+
   const knowledgeSection = resources.knowledge.length > 0
     ? resources.knowledge.map(r =>
         `- [ ] \`${r.file}\`${r.preview ? `\n      _"${r.preview}..."_` : ''}${r.techStack.length > 0 ? `\n      **Tech:** ${r.techStack.join(', ')}` : ''}`
@@ -328,7 +332,7 @@ function generateFlightPlan({ goal, analysis, selectedAgent, selection, resource
 
 You must open and use these files before responding. If any file is inaccessible, ask the user to provide it.
 
-${requiredReadingSection}${instructionNote}
+${requiredReadingSection}${instructionNote}${skillsUsageNote}
 
 ## 1. IDENTITY ASSIGNMENT
 

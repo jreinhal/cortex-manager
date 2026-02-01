@@ -8,6 +8,7 @@ const fs = require('fs');
 // Import new modules
 const config = require('./config');
 const repoManager = require('./repo-manager');
+const logStore = require('./log-store');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,6 +18,13 @@ app.use(bodyParser.json());
 
 // Get current configuration
 const appConfig = config.getConfig();
+
+// Log helper (store in memory + console)
+function logEvent(message, level = 'info') {
+  logStore.addLog(message, level);
+  const prefix = level.toUpperCase();
+  console.log(`[${prefix}] ${message}`);
+}
 
 // Startup logging
 console.log('\n========================================');
@@ -28,6 +36,7 @@ console.log(`  Config: ${config.CONFIG_PATH}`);
 console.log(`  Repos Root: ${appConfig.reposRoot}`);
 console.log(`  First Run: ${config.isFirstRun()}`);
 console.log('========================================\n');
+logEvent('CORTEX backend started');
 
 // ==========================================
 // Configuration API
@@ -262,6 +271,16 @@ app.get('/api/categories', (req, res) => {
   }
 });
 
+app.get('/api/category-sizes', (req, res) => {
+  try {
+    const sizes = repoManager.getCategorySizes();
+    res.json(sizes);
+  } catch (e) {
+    console.error('Category size error:', e);
+    res.status(500).json({ error: 'Failed to compute category sizes' });
+  }
+});
+
 // Scan for repositories (cross-platform Node.js)
 app.post('/api/scan', (req, res) => {
   try {
@@ -287,8 +306,14 @@ app.post('/api/add', async (req, res) => {
     return res.status(400).json({ error: 'URL required' });
   }
 
+  const trimmedUrl = url.trim();
+  const isValidUrl = /^(https?:\/\/|git@)[^\s]+$/i.test(trimmedUrl);
+  if (!isValidUrl) {
+    return res.status(400).json({ success: false, code: 'INVALID_URL', error: 'Invalid repository URL' });
+  }
+
   try {
-    const result = await repoManager.cloneRepository(url, (msg) => {
+    const result = await repoManager.cloneRepository(trimmedUrl, (msg) => {
       console.log(`[CLONE] ${msg}`);
     });
 
@@ -299,7 +324,12 @@ app.post('/api/add', async (req, res) => {
         repo: result.repo
       });
     } else {
-      res.status(400).json({ success: false, error: result.error });
+      res.status(400).json({
+        success: false,
+        code: result.code,
+        error: result.error,
+        repo: result.repo
+      });
     }
   } catch (e) {
     console.error('[CLONE ERROR]', e);
@@ -338,17 +368,21 @@ app.post('/api/repos/:name/update', (req, res) => {
 // ==========================================
 
 app.post('/api/spawn', (req, res) => {
-  const { goal } = req.body;
+  const { goal, format } = req.body;
   if (!goal) {
     return res.status(400).json({ error: 'Goal required' });
   }
 
   const orchestratorPath = path.join(__dirname, 'orchestrator.js');
+  const allowedFormats = new Set(['universal', 'chatgpt', 'claude', 'gemini']);
+  const normalizedFormat = allowedFormats.has((format || '').toLowerCase())
+    ? format.toLowerCase()
+    : 'universal';
 
-  console.log(`[ORCHESTRATOR] Spawning: ${goal}`);
+  console.log(`[ORCHESTRATOR] Spawning: ${goal} (format: ${normalizedFormat})`);
 
   // Use spawn with array arguments (cross-platform safe)
-  const child = spawn('node', [orchestratorPath, goal], {
+  const child = spawn('node', [orchestratorPath, goal, normalizedFormat], {
     cwd: path.join(__dirname, '..'),
     env: {
       ...process.env,

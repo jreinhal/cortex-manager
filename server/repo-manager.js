@@ -9,6 +9,12 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 const { getConfig } = require('./config');
 
+const SIZE_CACHE_TTL_MS = 0;
+const sizeCache = {
+  timestamp: 0,
+  data: {}
+};
+
 /**
  * Execute git command and return result
  */
@@ -16,6 +22,7 @@ function gitExec(args, cwd = null) {
   try {
     const result = execSync(`git ${args}`, {
       cwd: cwd || process.cwd(),
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -293,17 +300,53 @@ async function cloneRepository(url, progressCallback = null) {
     return { success: false, error: 'Git is not installed or not in PATH' };
   }
 
+  const trimmedUrl = (url || '').trim().replace(/\/+$/, '');
+
   // Extract repo name from URL
-  const repoName = path.basename(url, '.git').replace(/\.git$/, '');
+  const repoName = path.basename(trimmedUrl, '.git').replace(/\.git$/i, '');
+  if (!repoName) {
+    return { success: false, error: 'Invalid repository URL' };
+  }
+
+  // Check for existing repo (by name or path)
+  const existingRegistry = loadRegistry();
+  const existingRepo = existingRegistry.find(r => r.Name.toLowerCase() === repoName.toLowerCase());
+  if (existingRepo) {
+    return {
+      success: false,
+      code: 'REPO_EXISTS',
+      error: `Repository already exists at: ${existingRepo.Path}`,
+      repo: existingRepo
+    };
+  }
+
+  const categoryDirs = ['agents', 'skills', 'knowledge', 'tools', 'benchmarks'];
+  for (const category of categoryDirs) {
+    const repoPath = path.join(reposRoot, category, repoName);
+    if (fs.existsSync(path.join(repoPath, '.git'))) {
+      return {
+        success: false,
+        code: 'REPO_EXISTS',
+        error: `Repository already exists at: ${repoPath}`,
+        repo: { Name: repoName, Path: repoPath, Category: category }
+      };
+    }
+  }
 
   if (progressCallback) progressCallback(`Cloning: ${repoName}`);
+
+  // Validate remote URL before cloning
+  const remoteCheck = gitExec(`ls-remote --heads --tags "${trimmedUrl}"`);
+  if (!remoteCheck.success) {
+    return { success: false, error: 'Repository not found or inaccessible' };
+  }
 
   // Clone to temp location first
   const tempDir = path.join(require('os').tmpdir(), `cortex-clone-${Date.now()}`);
 
   try {
     // Clone repository
-    const cloneResult = gitExec(`clone "${url}" "${tempDir}"`);
+    const cloneResult = gitExec(`clone "${trimmedUrl}" "${tempDir}"`);
     if (!cloneResult.success) {
       return { success: false, error: `Clone failed: ${cloneResult.error}` };
     }
@@ -454,6 +497,64 @@ function getCategories() {
     .map(d => d.name);
 }
 
+function getDirSizeBytes(targetPath) {
+  if (!fs.existsSync(targetPath)) return 0;
+  let total = 0;
+  const stack = [targetPath];
+
+  while (stack.length) {
+    const current = stack.pop();
+    let stats;
+    try {
+      stats = fs.statSync(current);
+    } catch {
+      continue;
+    }
+
+    if (stats.isFile()) {
+      total += stats.size;
+      continue;
+    }
+
+    if (stats.isDirectory()) {
+      let entries;
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        stack.push(path.join(current, entry.name));
+      }
+    }
+  }
+
+  return total;
+}
+
+function getCategorySizes() {
+  const now = Date.now();
+  if (SIZE_CACHE_TTL_MS > 0 && now - sizeCache.timestamp < SIZE_CACHE_TTL_MS) {
+    return sizeCache.data;
+  }
+
+  const config = getConfig();
+  const reposRoot = config.reposRoot;
+  const categories = getCategories();
+  const sizes = {};
+
+  categories.forEach((category) => {
+    const categoryPath = path.join(reposRoot, category);
+    sizes[category] = getDirSizeBytes(categoryPath);
+  });
+
+  sizeCache.timestamp = now;
+  sizeCache.data = sizes;
+  return sizes;
+}
+
 module.exports = {
   scanRepositories,
   cloneRepository,
@@ -462,6 +563,7 @@ module.exports = {
   loadRegistry,
   saveRegistry,
   getCategories,
+  getCategorySizes,
   analyzeRepoContent,
   isGitAvailable,
   detectDefaultBranch

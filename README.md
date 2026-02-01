@@ -2,7 +2,7 @@
 
 ### **Centralized Orchestration & Repository Training for Expert eXecution**
 
-> **The Model-Agnostic AI Operations Platform for Privacy-First Teams**
+> **The Model-Agnostic AI Operations Platform for Local-First Teams**
 
 ![CORTEX Dashboard](https://via.placeholder.com/1200x600/0f172a/38bdf8?text=CORTEX+Operations+Dashboard)
 
@@ -16,7 +16,7 @@
 
 Modern AI tools suffer from three critical flaws:
 1. **Vendor Lock-In**: Teams become dependent on a single AI provider (OpenAI, Anthropic, Google)
-2. **Privacy Risks**: Codebases upload to external servers for indexing and RAG
+2. **Data Transfer Overhead**: Codebases upload to external servers for indexing and RAG
 3. **Context Chaos**: Developers manually copy-paste files into chats, wasting tokens and losing structure
 
 ### The CORTEX Solution
@@ -48,7 +48,7 @@ We decouple **Data** (your local repositories) from **Intelligence** (the LLM), 
 └─────────────────────┘
 ```
 
-**Result**: You control the data, choose the model, and maintain an auditable AI workflow.
+**Result**: You control the data, choose the model, and maintain an auditable AI workflow—locally or with remote inference as needed.
 
 ---
 
@@ -61,10 +61,11 @@ Spawn specialized AI agents using natural language prompts. CORTEX analyzes your
 - **Your Input**: *"Audit the authentication module for security vulnerabilities"*
 - **CORTEX Output**: A specialized Agent Plan referencing your exact auth files, security best practices from your knowledge base, and step-by-step instructions
 
-### 🔒 **Privacy-First Architecture**
-- **No Cloud Dependencies**: Everything runs on `localhost`
+### 🔒 **Local-First Architecture**
+- **Runs Locally by Default**: Everything works on `localhost` out of the box
+- **Optional Remote LLMs**: You can connect to a cloud or LAN LLM endpoint when desired
 - **File Path References**: Instead of uploading code, CORTEX generates plans with file paths
-- **Air-Gapped Execution**: You manually copy the plan to your chosen LLM (or integrate via API)
+- **Flexible Execution**: Copy/paste plans or integrate via API
 
 ### 🎨 **Premium Dashboard UI**
 Built with React, Tailwind CSS, and Framer Motion, featuring:
@@ -240,27 +241,28 @@ Your `reference-repos` folder structure might look like:
 CORTEX automatically categorizes repos based on their content.
 
 ### Decision Matrix (AGENTS‑First)
-CORTEX uses a deterministic decision matrix with an optional Qwen2.5 rerank layer. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
+CORTEX uses a deterministic decision matrix with query expansion, routing, and RRF fusion plus an optional Qwen2.5 rerank layer. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
 
 ```mermaid
 flowchart TD
     A[User goal] --> B[Goal analysis]
-    B --> C[Deterministic scoring]
-    C --> D{AGENTS.md present?}
-    D -->|Yes| E[Inject AGENTS.md as highest priority]
-    D -->|No| F[Proceed]
-    E --> G[Gate checks: low confidence / ambiguity]
-    F --> G
-    G -->|Needs review| H[Require human review]
-    G -->|OK| I{LLM rerank enabled?}
-    I -->|Yes| J[Qwen2.5 14B rerank top N]
-    J --> K{Rerank valid?}
-    K -->|No| L[Fallback to deterministic]
-    K -->|Yes| M[Apply reranked order]
-    I -->|No| L
-    L --> N[Generate flight plan]
-    M --> N
-    N --> O[Output]
+    B --> C[Query expansion + signal extraction]
+    C --> D[Deterministic scoring + RRF fusion]
+    D --> E{AGENTS.md present?}
+    E -->|Yes| F[Inject AGENTS.md as highest priority]
+    E -->|No| G[Proceed]
+    F --> H[Routing + uncertainty gates]
+    G --> H
+    H -->|Needs review| I[Require human review]
+    H -->|OK| J{LLM rerank enabled?}
+    J -->|Yes| K[Qwen2.5 14B rerank top N]
+    K --> L{Rerank valid?}
+    L -->|No| M[Fallback to deterministic]
+    L -->|Yes| N[Apply reranked order]
+    J -->|No| M
+    M --> O[Generate flight plan]
+    N --> O
+    O --> P[Output]
 ```
 
 See `docs/decision-matrix.md` for the full spec and gating rules.

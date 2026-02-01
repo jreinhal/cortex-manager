@@ -16,6 +16,14 @@ This document defines the selection pipeline for CORTEX. It blends a determinist
 
 ## Deterministic Baseline
 
+### Query Expansion + Routing
+We expand goals deterministically (synonyms + reformulations) and compute an expanded keyword set. This improves recall without requiring any model calls.
+
+Routing modes:
+- **NO_RESOURCES**: Goal is too vague (no keywords + no tech signals). Ask for clarification.
+- **DOCUMENT**: Default document-level retrieval.
+- **HIGH_RECALL**: Complex or ambiguous goals; broaden the candidate pool.
+
 ### Agent Selection
 Weights and logic:
 - Intent match
@@ -35,6 +43,10 @@ Scoring signals:
 - Quality heuristic (file size)
 - Path priority (entrypoints > docs > references)
 - Instruction boost for AGENTS.md
+- Reciprocal Rank Fusion (RRF) across key signals (filename, keywords, tech, domain, content, path).
+
+### Uncertainty + Review Gate
+We compute an uncertainty score from intent confidence, keyword coverage, tech signals, and complexity. High uncertainty automatically flips **Requires Review** to yes, enforcing a human checkpoint.
 
 ## Instruction Priority (AGENTS.md)
 AGENTS.md instructions are treated as the highest priority:
@@ -71,6 +83,9 @@ Rules for the model:
 - Keep AGENTS.md first if present.
 - Use minimal output, JSON only.
 - Never remove candidates; only reorder.
+
+## Decision Trace
+Every run emits a lightweight decision trace summary in the flight plan (goal analysis, routing mode, uncertainty, agent selection, and resource counts). This mirrors structured reasoning traces from RAG systems while keeping output deterministic and auditable.
 
 ## D: Drive Installation (Windows)
 Install and store all local model artifacts on D:\:

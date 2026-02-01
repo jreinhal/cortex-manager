@@ -23,12 +23,12 @@
 
 ### What is CORTEX?
 
-CORTEX (Centralized Orchestration & Repository Training for Expert eXecution) is a privacy-first AI orchestration platform designed for development teams who need powerful AI assistance without sacrificing data security or vendor independence.
+CORTEX (Centralized Orchestration & Repository Training for Expert eXecution) is a local-first AI orchestration platform designed for development teams who need powerful AI assistance with flexible deployment options.
 
 ### Key Benefits
 
 - **Model Agnostic**: Works with any LLM (GPT-4, Claude, Gemini, Llama)
-- **Privacy First**: Your code never leaves your machine
+- **Local-First**: Your code stays local by default; optional remote LLM endpoints are supported
 - **Cost Efficient**: "Lazy loading" reduces token usage by 10x
 - **Auditable**: Every AI operation is documented and reviewable
 - **Team Ready**: Standardize AI workflows across your organization

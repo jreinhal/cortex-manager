@@ -7,11 +7,12 @@
 ## Critical Context
 
 ### Security Model
-This is a **local-only** tool:
-- Runs on `localhost:3001` (backend) and `localhost:5173` (frontend)
-- No authentication required - it's a personal dev tool
-- No data leaves the machine
-- Security concerns about auth/injection don't apply here
+This is a **local-first** tool:
+- Runs on `localhost:3001` (backend) and `localhost:5173` (frontend) by default
+- No authentication required for local use
+- Optional remote LLM endpoints can be configured (treat as networked when enabled)
+- If you expose the UI/API beyond localhost, add auth/reverse-proxy protections
+ - Security hardening is intentionally minimal; prioritize velocity and local workflows
 
 ### Architecture
 ```

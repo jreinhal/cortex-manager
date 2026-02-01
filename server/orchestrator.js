@@ -13,6 +13,7 @@ const { selectAgent } = require('./agent-selector');
 const { findResources, formatForFlightPlan } = require('./resource-matcher');
 const { getConfig } = require('./config');
 const { rerankAgents, rerankResources } = require('./llm-reranker');
+const { createDecisionTrace } = require('./decision-trace');
 
 let REPOS_ROOT;
 let OUTPUT_DIR;
@@ -88,10 +89,19 @@ async function orchestrate(goal, format = 'universal') {
   console.log(`\n📋 Goal: "${goal}"\n`);
 
   refreshIndex(REPOS_ROOT);
+  const trace = createDecisionTrace(goal);
 
   // Step 1: Analyze the goal semantically
   console.log("🔍 Analyzing goal...");
-  const analysis = analyzeGoal(goal);
+  const analysis = analyzeGoal(goal, { decisionConfig });
+  trace.addStep('goal_analysis', {
+    intent: analysis.intent.primary,
+    confidence: analysis.intent.confidence,
+    keywords: analysis.keywords.length,
+    expandedKeywords: analysis.expandedKeywords.length,
+    routing: analysis.routing.mode,
+    uncertainty: analysis.uncertainty.score
+  });
 
   console.log(`   Intent: ${analysis.intent.primary} (${Math.round(analysis.intent.confidence * 100)}% confidence)`);
   if (analysis.intent.secondary.length > 0) {
@@ -129,8 +139,12 @@ async function orchestrate(goal, format = 'universal') {
       ambiguous: false
     },
     resourceSelection: {
-      rerankUsed: false
+      rerankUsed: false,
+      rrfUsed: false
     },
+    routing: analysis.routing,
+    queryExpansion: analysis.queryExpansion,
+    uncertainty: analysis.uncertainty,
     llm: {
       provider: llmConfig.provider,
       model: llmConfig.model,
@@ -181,13 +195,24 @@ async function orchestrate(goal, format = 'universal') {
   if (alternatives.length > 0) {
     console.log(`   Alternatives: ${alternatives.map(a => `${a.agentId}(${Math.round(a.score)})`).join(', ')}`);
   }
+  trace.addStep('agent_selection', {
+    selected: selectedAgent.agentId,
+    lowConfidence,
+    ambiguous,
+    rerankUsed: decisionMeta.agentSelection.rerankUsed
+  });
 
   // Step 3: Find relevant resources with tech filtering
   console.log("\n📚 Searching resources...");
   const resources = findResources(analysis, REPOS_ROOT, {
     maxResults: decisionConfig.maxCandidates || 5,
-    minScore: 0.15
+    minScore: 0.15,
+    rrf: decisionConfig.rrf || {},
+    includeMeta: true,
+    agentsMdPriority: decisionConfig.agentsMdPriority === true
   });
+  const resourceMeta = resources.__meta || {};
+  decisionMeta.resourceSelection.rrfUsed = resourceMeta.rrfUsed === true;
   let formatted = formatForFlightPlan(resources);
 
   const resourceRerank = await rerankResources({
@@ -219,6 +244,13 @@ async function orchestrate(goal, format = 'universal') {
   formatted.tools.slice(0, 3).forEach(r => {
     console.log(`     + ${path.basename(r.file)} (score: ${r.score})`);
   });
+  trace.addStep('resource_selection', {
+    knowledge: knowledgeCount,
+    skills: skillsCount,
+    tools: toolsCount,
+    rrfUsed: decisionMeta.resourceSelection.rrfUsed,
+    routingMode: resourceMeta.routingMode || analysis.routing.mode
+  });
 
   // Step 4: Get agent template path
   const templatePath = getAgentTemplatePath(selectedAgent.agentId, AGENTS_DIR);
@@ -236,7 +268,13 @@ async function orchestrate(goal, format = 'universal') {
     resources: formatted,
     templatePath,
     format,
-    decisionMeta
+    decisionMeta: {
+      ...decisionMeta,
+      trace: trace.finalize({
+        selectedAgent: selectedAgent.agentId,
+        resources: { knowledge: knowledgeCount, skills: skillsCount, tools: toolsCount }
+      })
+    }
   });
 
   // Step 6: Save flight plan
@@ -321,8 +359,27 @@ function generateFlightPlan({ goal, analysis, selectedAgent, selection, resource
 
   const directivePreamble = buildDirectivePreamble(format, goal);
 
+  const routingLabel = decisionMeta?.routing?.mode
+    ? `${decisionMeta.routing.mode} (${decisionMeta.routing.reasons?.join('; ') || 'n/a'})`
+    : 'n/a';
+  const queryExpansionLabel = decisionMeta?.queryExpansion
+    ? `${decisionMeta.queryExpansion.variants?.length || 0} variants, ${decisionMeta.queryExpansion.expandedKeywordCount || 0} keywords`
+    : 'n/a';
+  const uncertaintyLabel = decisionMeta?.uncertainty
+    ? `${Math.round(decisionMeta.uncertainty.score * 100)}%`
+    : 'n/a';
+
   const decisionMatrixSection = decisionMeta
-    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Agent rerank: ${decisionMeta.agentSelection.rerankUsed ? (decisionMeta.agentSelection.rerankAccepted ? 'used (accepted)' : 'used (ignored)') : 'not used'}\n- Resource rerank: ${decisionMeta.resourceSelection.rerankUsed ? 'used' : 'not used'}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
+    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Query expansion: ${queryExpansionLabel}\n- Routing: ${routingLabel}\n- RRF fusion: ${decisionMeta.resourceSelection.rrfUsed ? 'enabled' : 'disabled'}\n- Agent rerank: ${decisionMeta.agentSelection.rerankUsed ? (decisionMeta.agentSelection.rerankAccepted ? 'used (accepted)' : 'used (ignored)') : 'not used'}\n- Resource rerank: ${decisionMeta.resourceSelection.rerankUsed ? 'used' : 'not used'}\n- Uncertainty: ${uncertaintyLabel}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
+    : '';
+
+  const decisionTraceSection = decisionMeta?.trace?.steps?.length
+    ? `\n## 2.6 DECISION TRACE (SUMMARY)\n${decisionMeta.trace.steps.slice(0, 6).map(step => {
+        const payload = step.data ? Object.entries(step.data)
+          .map(([key, value]) => `${key}=${typeof value === 'number' ? Math.round(value * 1000) / 1000 : value}`)
+          .join(', ') : '';
+        return `- ${step.name}: ${payload}`;
+      }).join('\n')}\n`
     : '';
 
   return `${directivePreamble}
@@ -365,7 +422,7 @@ ${Object.entries(analysis.capabilities)
   .map(([k]) => `- ${k}`)
   .join('\n') || '- No specific capabilities required'}
 ${risksSection}
-${decisionMatrixSection}
+${decisionMatrixSection}${decisionTraceSection}
 ## 3. INTELLIGENCE BRIEFING
 
 The Orchestrator has identified the following resources using **semantic matching** and **tech stack filtering**.

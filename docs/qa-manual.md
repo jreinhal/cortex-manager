@@ -26,6 +26,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - Copy to Clipboard toggles to “Copied!” then resets.
 - Decision Matrix:
   - Flight Plan includes a **Decision Matrix** section.
+  - Matrix shows **Query expansion**, **Routing**, **RRF fusion**, and **Uncertainty** lines.
   - If any AGENTS.md is present, it appears first in Required Reading.
   - Skill usage note appears (explore context first, then consult skills).
   - For an ambiguous or low-confidence goal, “Requires Review” is flagged in the plan.
@@ -39,7 +40,34 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - After a spawn, a new session appears.
   - Clicking a session fills the goal input.
 
-## 3) Repositories
+## 3) UI Controls Checklist (All Buttons/Toggles)
+### Setup Wizard
+- **Browse** opens directory browser; selecting a folder fills the repos root input.
+- **Create directory structure** toggle updates checkbox state and tooltip text.
+- **Complete Setup** disabled until path is non-empty; warnings may appear for invalid paths but do not block.
+
+### Directory Browser
+- **Parent** navigates up one level (if available).
+- **Select This Folder** enabled only when a path is selected.
+- **Cancel** closes the browser without selection.
+
+### Agent Factory
+- **Save Prompt** opens modal; **Cancel** closes; **Save** persists prompt.
+- **Generate Flight Plan** runs orchestration and renders output.
+- **Copy to Clipboard** updates to “Copied!” then resets.
+- **Saved Prompt** click fills goal; **Delete** removes the prompt.
+- **Recent Session** click fills goal input.
+
+### Repositories
+- **Clone** validates URL and logs result.
+- **Scan** runs discovery and logs results.
+- **Repo notice** appears on success/error.
+
+### Settings
+- **Save Settings** persists valid paths and shows saved state.
+- **Test Connection** pings the configured LLM endpoint(s) and reports reachability.
+
+## 4) Repositories
 - Stats cards show:
   - Correct repo counts per category.
   - Size label (not “—”) updates when folder size changes.
@@ -53,22 +81,22 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - “Starting System Scan…” + completion log appear.
   - Table updates if new repos exist.
 
-## 4) System Logs
+## 5) System Logs
 - Latest log entries appear at the top.
 - Logs show clone completion with classification folder.
 - Logs persist when switching views.
 
-## 5) Settings
+## 6) Settings
 - Empty repos root shows validation error.
 - Valid path saves successfully and shows “Saved!” state.
 
-## 6) Accessibility & Usability
+## 7) Accessibility & Usability
 - Keyboard-only: all controls are reachable; focus ring is visible.
 - Contrast: headings, labels, and disabled states are legible.
 - Touch targets: buttons feel ≥ 44px (iOS) / 48dp (Android).
 - Reduced motion: check animations don’t overwhelm.
 
-## 7) Telemetry / Analytics
+## 8) Telemetry / Analytics
 **Current implementation:** internal analytics at `/api/analytics`.
 - After a successful spawn, `totalSpawns` increments.
 - `recentSpawns` contains the latest goal.
@@ -79,7 +107,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 > - No args/paths, `$ip: null`
 > - Opt-out env vars disable events
 
-## 8) Visual Regression
+## 9) Visual Regression
 - Quick Access sections visually separated and labeled clearly.
 - Cards & tables maintain spacing on mobile and wide layouts.
 - Logs view supports long lines without overlap.

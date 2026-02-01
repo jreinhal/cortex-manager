@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-:root {
+html {
   color-scheme: dark;
 }
 
@@ -11,8 +11,32 @@ body {
     radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.1) 0px, transparent 50%),
     radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
   color: #f8fafc;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Space Grotesk', 'IBM Plex Sans', sans-serif;
   overflow-x: hidden;
+}
+
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.6);
+  outline-offset: 2px;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Scrollbar */
@@ -46,13 +70,21 @@ body {
   background: rgba(30, 41, 59, 0.4);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  transition: all 0.2s ease;
+  transition-property: transform, opacity;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
 }
 
 .glass-card:hover {
   background: rgba(30, 41, 59, 0.6);
   border-color: rgba(255, 255, 255, 0.1);
   transform: translateY(-2px);
+}
+
+.transition-ui {
+  transition-property: transform, opacity;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
 }
 
 /* Animations */
@@ -70,4 +102,28 @@ body {
 
 .animate-pulse-subtle {
   animation: pulse-subtle 3s infinite ease-in-out;
+}
+
+@keyframes brain-glow-pulse {
+  0%, 100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+.brain-glow {
+  animation: brain-glow-pulse 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

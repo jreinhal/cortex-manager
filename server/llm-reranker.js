@@ -5,6 +5,17 @@
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
+function isLocalEndpoint(endpoint) {
+  if (!endpoint || typeof endpoint !== 'string') return true;
+  try {
+    const url = new URL(endpoint);
+    const host = url.hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '[::1]';
+  } catch {
+    return true;
+  }
+}
+
 function isDDrivePath(value) {
   if (!value || typeof value !== 'string') return false;
   return value.toLowerCase().startsWith('d:\\') || value.toLowerCase().startsWith('d:/');
@@ -12,6 +23,10 @@ function isDDrivePath(value) {
 
 function checkDDriveRequirement(llmConfig, decisionConfig) {
   if (!decisionConfig?.requireDDrive || process.platform !== 'win32') {
+    return { ok: true };
+  }
+
+  if (llmConfig?.allowRemote && !isLocalEndpoint(llmConfig.endpoint)) {
     return { ok: true };
   }
 
@@ -124,6 +139,21 @@ async function callLlm(llmConfig, messages) {
   return callOpenAICompatible(llmConfig, messages);
 }
 
+async function callLlmWithFallback(llmConfig, messages) {
+  try {
+    return await callLlm(llmConfig, messages);
+  } catch (error) {
+    if (!llmConfig?.fallbackEndpoint) {
+      throw error;
+    }
+    const fallbackConfig = {
+      ...llmConfig,
+      endpoint: llmConfig.fallbackEndpoint
+    };
+    return callLlm(fallbackConfig, messages);
+  }
+}
+
 function buildAgentMessages(goal, candidates) {
   const candidateText = candidates.map((c, index) => {
     return `${index + 1}) id: ${c.agentId}, name: ${c.agentName}, score: ${Math.round(c.score)}, confidence: ${Math.round(c.confidence * 100)}%`;
@@ -173,7 +203,7 @@ async function rerankAgents({ goal, candidates, llmConfig, decisionConfig }) {
 
   const messages = buildAgentMessages(goal, candidates);
   try {
-    const response = await callLlm(llmConfig, messages);
+    const response = await callLlmWithFallback(llmConfig, messages);
     const json = extractJson(response);
     if (!json) return { candidates, used: false, reason: 'invalid json' };
 
@@ -210,7 +240,7 @@ async function rerankResources({ goal, resourcesByCategory, llmConfig, decisionC
     const candidates = resources.slice(0, topN);
     const messages = buildResourceMessages(goal, category, candidates);
     try {
-      const response = await callLlm(llmConfig, messages);
+      const response = await callLlmWithFallback(llmConfig, messages);
       const json = extractJson(response);
       if (!json) {
         reranked[category] = resources;

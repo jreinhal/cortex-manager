@@ -12,7 +12,7 @@ import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import brainIcon from './assets/brain.png'
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
 // --- Utils ---
 function cn(...inputs) {
@@ -205,7 +205,7 @@ function SetupWizard({ onComplete, defaultPath }) {
       const data = await res.json();
       setValidation(data);
     } catch (e) {
-      setValidation({ valid: false, errors: ['Failed to validate path. Check the directory and try again.'] });
+      setValidation({ valid: false, errors: ['Unable to validate path. Will attempt to continue anyway.'] });
     }
   };
 
@@ -248,14 +248,16 @@ function SetupWizard({ onComplete, defaultPath }) {
           <div className="bg-slate-950/80 rounded-[2.2rem] p-10">
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
-              <div className="bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-2xl p-4 border border-white/10 shadow-2xl">
+              <div className="bg-black rounded-2xl p-4 relative overflow-visible">
+                <div className="brain-glow absolute -inset-2 rounded-[20px] bg-[radial-gradient(circle_at_28%_35%,rgba(34,211,238,0.65),transparent_63%),radial-gradient(circle_at_72%_55%,rgba(168,85,247,0.6),transparent_66%)] blur-xl opacity-80 pointer-events-none"></div>
                 <img
                   src={brainIcon}
                   alt="Cortex"
-                  width="48"
-                  height="48"
+                  width="56"
+                  height="56"
                   fetchpriority="high"
-                  className="w-12 h-12 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
+                  className="relative z-10 w-14 h-14 object-contain"
+                  style={{ filter: 'drop-shadow(0 0 11px rgba(34,211,238,0.7)) drop-shadow(0 0 16px rgba(168,85,247,0.65))' }}
                 />
               </div>
               <div>
@@ -311,18 +313,20 @@ function SetupWizard({ onComplete, defaultPath }) {
                   "mt-3 p-3 rounded-xl text-sm flex items-start gap-2",
                   validation.valid
                     ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
-                    : "bg-red-500/10 border border-red-500/20 text-red-400"
+                    : "bg-amber-500/10 border border-amber-500/20 text-amber-300"
                 )} role="status" aria-live="polite">
-                  {validation.valid ? <Check size={16} aria-hidden="true" /> : <X size={16} aria-hidden="true" />}
+                  {validation.valid ? <Check size={16} aria-hidden="true" /> : <Clock size={16} aria-hidden="true" />}
                   <div>
                     {validation.valid ? (
                       <>
-                        Path is valid
+                        Path looks good
                         {validation.exists && <span className="text-slate-400"> (directory exists)</span>}
                         {validation.hasStructure && <span className="text-emerald-300"> with CORTEX structure</span>}
                       </>
                     ) : (
-                      validation.errors?.join(', ')
+                      <>
+                        Path warnings: {(validation.errors || []).concat(validation.warnings || []).join(', ') || 'Validation not available.'}
+                      </>
                     )}
                   </div>
                 </div>
@@ -362,7 +366,7 @@ function SetupWizard({ onComplete, defaultPath }) {
             {/* Submit Button */}
             <button
               onClick={handleSetup}
-              disabled={loading || !reposRoot || (validation && !validation.valid)}
+              disabled={loading || !reposRoot}
               className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 px-6 rounded-2xl transition-ui flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 disabled:shadow-none"
             >
                 {loading ? (
@@ -403,6 +407,10 @@ function SetupWizard({ onComplete, defaultPath }) {
 function SettingsPanel({ config, onSave, onClose }) {
   // config is the full API response: { config: { reposRoot, ... }, system, isFirstRun }
   const [reposRoot, setReposRoot] = useState(config?.config?.reposRoot || '');
+  const [llmEndpoint, setLlmEndpoint] = useState(config?.config?.llm?.endpoint || '');
+  const [llmFallbackEndpoint, setLlmFallbackEndpoint] = useState(config?.config?.llm?.fallbackEndpoint || '');
+  const [llmAllowRemote, setLlmAllowRemote] = useState(config?.config?.llm?.allowRemote ?? true);
+  const [llmTest, setLlmTest] = useState({ status: 'idle', results: [] });
   const [loading, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -418,10 +426,17 @@ function SettingsPanel({ config, onSave, onClose }) {
     setError('');
     setSaving(true);
     try {
+      const baseConfig = config?.config?.llm || {};
+      const llm = {
+        ...baseConfig,
+        endpoint: llmEndpoint.trim(),
+        fallbackEndpoint: llmFallbackEndpoint.trim() || null,
+        allowRemote: llmAllowRemote
+      };
       const res = await fetch(`${API_BASE}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reposRoot: reposRoot.trim() })
+        body: JSON.stringify({ reposRoot: reposRoot.trim(), llm })
       });
       const data = await res.json();
       if (data.success) {
@@ -440,6 +455,36 @@ function SettingsPanel({ config, onSave, onClose }) {
       reposRootInputRef.current?.focus();
     }
     setSaving(false);
+  };
+
+  const handleTestLlm = async () => {
+    const endpoints = [llmEndpoint.trim(), llmFallbackEndpoint.trim()].filter(Boolean);
+    if (endpoints.length === 0) {
+      setLlmTest({ status: 'error', results: [{ endpoint: '', reachable: false, error: 'Add an endpoint to test.' }] });
+      return;
+    }
+
+    setLlmTest({ status: 'testing', results: [] });
+    const results = [];
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(`${API_BASE}/llm/ping`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint })
+        });
+        const data = await res.json();
+        results.push({
+          endpoint,
+          reachable: data.reachable === true,
+          status: data.status,
+          error: data.error
+        });
+      } catch (e) {
+        results.push({ endpoint, reachable: false, error: e.message });
+      }
+    }
+    setLlmTest({ status: 'done', results });
   };
 
   return (
@@ -469,6 +514,7 @@ function SettingsPanel({ config, onSave, onClose }) {
               id="settings-repos-root"
               name="settingsReposRoot"
               type="text"
+              data-testid="settings-repos-root"
               value={reposRoot}
               onChange={(e) => setReposRoot(e.target.value)}
               autoComplete="off"
@@ -479,6 +525,7 @@ function SettingsPanel({ config, onSave, onClose }) {
               className="flex-1 bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
             />
             <button
+              data-testid="settings-save"
               onClick={handleSave}
               disabled={loading || saved}
               className={cn(
@@ -495,10 +542,94 @@ function SettingsPanel({ config, onSave, onClose }) {
           <p className="text-slate-500 text-xs mt-2">
             This is where CORTEX looks for Agents, Skills, Knowledge, and Tools
           </p>
-        {error && (
-          <p className="text-red-400 text-sm mt-2" role="alert">{error}</p>
-        )}
-      </div>
+          {error && (
+            <p className="text-red-400 text-sm mt-2" role="alert" data-testid="settings-error">{error}</p>
+          )}
+        </div>
+
+        {/* LLM Endpoints */}
+        <div>
+          <label htmlFor="settings-llm-endpoint" className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            LLM Endpoint
+          </label>
+          <div className="flex flex-col gap-3">
+            <input
+              id="settings-llm-endpoint"
+              name="settingsLlmEndpoint"
+              type="text"
+              value={llmEndpoint}
+              onChange={(e) => setLlmEndpoint(e.target.value)}
+              placeholder="http://localhost:8080/v1/chat/completions"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
+            />
+
+            <input
+              id="settings-llm-fallback"
+              name="settingsLlmFallback"
+              type="text"
+              value={llmFallbackEndpoint}
+              onChange={(e) => setLlmFallbackEndpoint(e.target.value)}
+              placeholder="Fallback endpoint (optional)"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
+            />
+
+            <label className="flex items-center gap-3 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={llmAllowRemote}
+                onChange={(e) => setLlmAllowRemote(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Allow remote LLM endpoints
+            </label>
+          </div>
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              type="button"
+              onClick={handleTestLlm}
+              disabled={llmTest.status === 'testing'}
+              className={cn(
+                "px-4 py-2 rounded-xl text-sm font-semibold transition-ui",
+                llmTest.status === 'testing'
+                  ? "bg-slate-700 text-slate-300"
+                  : "bg-slate-800 hover:bg-slate-700 text-slate-200"
+              )}
+            >
+              {llmTest.status === 'testing' ? 'Testing…' : 'Test Connection'}
+            </button>
+            <span className="text-xs text-slate-500">Pings the configured endpoint(s).</span>
+          </div>
+
+          {llmTest.results.length > 0 && (
+            <div className="mt-3 space-y-2 text-xs">
+              {llmTest.results.map((result) => (
+                <div key={result.endpoint} className={cn(
+                  "rounded-lg border px-3 py-2",
+                  result.reachable ? "border-emerald-500/30 text-emerald-300" : "border-red-500/30 text-red-300"
+                )}>
+                  <div className="font-mono">{result.endpoint || 'Unknown endpoint'}</div>
+                  <div>
+                    {result.reachable
+                      ? `Reachable (HTTP ${result.status ?? 'n/a'})`
+                      : `Unreachable${result.error ? `: ${result.error}` : ''}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-xs text-slate-500 mt-2">
+            Set a primary endpoint and optional fallback for automatic failover.
+          </p>
+        </div>
       </div>
     </motion.div>
   );
@@ -509,7 +640,7 @@ function SettingsPanel({ config, onSave, onClose }) {
 // ==========================================
 function SpawnTimeline({ steps }) {
   return (
-    <div className="space-y-2" role="status" aria-live="polite">
+    <div className="space-y-2" role="status" aria-live="polite" data-testid="spawn-steps">
       {steps.map((step, i) => (
         <motion.div
           key={i}
@@ -544,12 +675,13 @@ function SpawnTimeline({ steps }) {
 // Main Components
 // ==========================================
 
-function StatCard({ title, count, sizeLabel, icon: Icon, color, delay }) {
+function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId, sizeTestId }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
+      data-testid={testId}
       className="glass-card p-6 rounded-3xl relative overflow-hidden h-full border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl shadow-xl"
     >
       <div className={cn("absolute -right-4 -top-4 w-32 h-32 rounded-full opacity-10 blur-3xl transition-opacity", color.replace('text-', 'bg-'))} />
@@ -562,7 +694,7 @@ function StatCard({ title, count, sizeLabel, icon: Icon, color, delay }) {
         <div>
           <div className="text-4xl font-bold text-slate-100 tracking-tight tabular-nums">{count}</div>
           <div className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-2">{title}</div>
-          <div className="text-slate-500 text-[11px] font-medium mt-2">Size {sizeLabel}</div>
+          <div className="text-slate-500 text-[11px] font-medium mt-2" data-testid={sizeTestId}>Size {sizeLabel}</div>
         </div>
       </div>
     </motion.div>
@@ -700,6 +832,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                   <select
                     id="format-select"
                     name="format"
+                    data-testid="format-select"
                     autoComplete="off"
                     value={format}
                     onChange={(e) => setFormat(e.target.value)}
@@ -716,6 +849,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 <textarea
                   id="goal-input"
                   name="goal"
+                  data-testid="goal-input"
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
                   placeholder="Example: Audit the dashboard UI for clarity, accessibility, and visual hierarchy…"
@@ -728,6 +862,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                     type="button"
                     onClick={() => setShowSaveModal(true)}
                     disabled={!goal}
+                    data-testid="save-prompt-btn"
                     className={cn(
                       "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-ui border",
                       justSaved
@@ -743,6 +878,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                     type="button"
                     onClick={handleSpawn}
                     disabled={loading || !goal}
+                    data-testid="generate-flight-plan"
                     className="flex items-center gap-2 px-5 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-2xl shadow-lg shadow-cyan-500/20 transition-ui text-sm font-bold disabled:opacity-50 disabled:shadow-none"
                     title="Generate Flight Plan"
                   >
@@ -775,6 +911,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 </div>
                 <button
                   onClick={handleCopy}
+                  data-testid="copy-flight-plan"
                   className={cn(
                     "text-xs px-3 py-1.5 rounded-lg transition-ui font-medium border flex items-center gap-2",
                     copied
@@ -786,7 +923,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 </button>
               </div>
               <div className="p-0 overflow-x-auto bg-slate-950/90 max-h-[500px] overflow-y-auto">
-                <pre className="p-6 text-sm font-mono text-slate-300 whitespace-pre-wrap leading-loose">{result}</pre>
+                <pre className="p-6 text-sm font-mono text-slate-300 whitespace-pre-wrap leading-loose" data-testid="flight-plan-output">{result}</pre>
               </div>
             </motion.div>
           )}
@@ -795,14 +932,14 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
         {/* Sidebar */}
         <div className="lg:col-span-4 space-y-4">
           {(savedPrompts.length > 0 || (sessions && sessions.length > 0)) && (
-            <div className="glass-panel p-5 rounded-3xl space-y-6">
+            <div className="glass-panel p-5 rounded-3xl space-y-6" data-testid="quick-access">
               <div className="flex items-center gap-2">
                 <History size={16} className="text-cyan-400" aria-hidden="true" />
                 <h3 className="font-bold text-slate-200">Quick Access</h3>
               </div>
 
               {savedPrompts.length > 0 && (
-                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner">
+                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner" data-testid="saved-prompts-section">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-amber-300 uppercase tracking-[0.3em]">Saved Prompts</div>
                     <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
@@ -841,7 +978,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
               )}
 
               {sessions && sessions.length > 0 && (
-                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner">
+                <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner" data-testid="recent-sessions-section">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-cyan-300 uppercase tracking-[0.3em]">Recent Sessions</div>
                     <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
@@ -888,6 +1025,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
               role="dialog"
               aria-modal="true"
               aria-labelledby="save-prompt-title"
+              data-testid="save-prompt-modal"
               className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-md p-6 shadow-2xl overscroll-contain"
             >
               <div className="flex items-center gap-3 mb-4">
@@ -906,6 +1044,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 id="prompt-title"
                 name="promptTitle"
                 type="text"
+                data-testid="prompt-title-input"
                 value={promptTitle}
                 onChange={(e) => setPromptTitle(e.target.value)}
                 placeholder="e.g., UI Test, Security Audit…"
@@ -932,6 +1071,7 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
                 <button
                   type="button"
                   onClick={handleSavePrompt}
+                  data-testid="confirm-save-prompt"
                   className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold transition-ui flex items-center justify-center gap-2"
                 >
                   <Star size={16} aria-hidden="true" />
@@ -1005,7 +1145,7 @@ function RepoRow({ repo, delay }) {
 
 function RepoTable({ repos }) {
   return (
-    <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl shadow-black/20 border border-slate-800/50">
+    <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl shadow-black/20 border border-slate-800/50" data-testid="repos-table">
       <div className="px-8 py-5 border-b border-slate-800/50 flex justify-between items-center bg-slate-900/30 backdrop-blur-md">
         <h3 className="font-bold text-slate-200 flex items-center gap-2">
           <Database size={16} className="text-slate-500" aria-hidden="true" />
@@ -1038,7 +1178,7 @@ function RepoTable({ repos }) {
   )
 }
 
-function NavItem({ icon: Icon, label, active, badge, href, onClick }) {
+function NavItem({ icon: Icon, label, active, badge, href, onClick, testId }) {
   const handleClick = (event) => {
     if (!onClick) return;
     if (event.defaultPrevented) return;
@@ -1053,6 +1193,7 @@ function NavItem({ icon: Icon, label, active, badge, href, onClick }) {
       href={href}
       onClick={handleClick}
       aria-current={active ? 'page' : undefined}
+      data-testid={testId}
       className={cn(
         "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-ui text-sm font-semibold group relative overflow-hidden no-underline",
         active
@@ -1450,14 +1591,16 @@ function App() {
       <nav className="w-72 glass-panel border-r border-slate-800/50 flex flex-col fixed h-full z-50 backdrop-blur-xl bg-slate-950/80">
         <div className="p-8">
           <div className="flex items-center gap-4 text-cyan-400 mb-10 pl-2">
-            <div className="bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-2xl p-3 border border-white/10 shadow-2xl">
+            <div className="bg-black rounded-2xl p-3 relative overflow-visible">
+              <div className="brain-glow absolute -inset-2 rounded-[20px] bg-[radial-gradient(circle_at_28%_35%,rgba(34,211,238,0.65),transparent_63%),radial-gradient(circle_at_72%_55%,rgba(168,85,247,0.6),transparent_66%)] blur-xl opacity-80 pointer-events-none"></div>
               <img
                 src={brainIcon}
                 alt="Cortex Brain"
-                width="32"
-                height="32"
+                width="40"
+                height="40"
                 fetchpriority="high"
-                className="w-8 h-8 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]"
+                className="relative z-10 w-10 h-10 object-contain"
+                style={{ filter: 'drop-shadow(0 0 11px rgba(34,211,238,0.7)) drop-shadow(0 0 16px rgba(168,85,247,0.65))' }}
               />
             </div>
             <span className="font-bold text-3xl tracking-tighter text-white">CORTEX</span>
@@ -1470,6 +1613,7 @@ function App() {
               active={view === 'agents'}
               href="?view=agents"
               onClick={() => handleViewChange('agents')}
+              testId="nav-agents"
             />
             <NavItem
               icon={GitBranch}
@@ -1478,6 +1622,7 @@ function App() {
               active={view === 'repos'}
               href="?view=repos"
               onClick={() => handleViewChange('repos')}
+              testId="nav-repos"
             />
             <NavItem
               icon={Terminal}
@@ -1485,6 +1630,7 @@ function App() {
               active={view === 'logs'}
               href="?view=logs"
               onClick={() => handleViewChange('logs')}
+              testId="nav-logs"
             />
             <NavItem
               icon={Settings}
@@ -1492,6 +1638,7 @@ function App() {
               active={view === 'settings'}
               href="?view=settings"
               onClick={() => handleViewChange('settings')}
+              testId="nav-settings"
             />
           </div>
         </div>
@@ -1546,6 +1693,7 @@ function App() {
                 {categories.map((cat, i) => {
                   const config = CATEGORY_CONFIG[cat.toLowerCase()] || DEFAULT_CATEGORY;
                   const sizeBytes = categorySizes[cat.toLowerCase()];
+                  const testKey = cat.toLowerCase();
                   return (
                     <StatCard
                       key={cat}
@@ -1556,6 +1704,8 @@ function App() {
                       color={config.color}
                       delay={i * 0.05}
                       description={config.desc}
+                      testId={`stat-card-${testKey}`}
+                      sizeTestId={`stat-size-${testKey}`}
                     />
                   );
                 })}
@@ -1581,6 +1731,7 @@ function App() {
                       id="repo-url"
                       name="repoUrl"
                       type="url"
+                      data-testid="repo-url-input"
                       inputMode="url"
                       value={url}
                       onChange={e => setUrl(e.target.value)}
@@ -1596,6 +1747,7 @@ function App() {
                     type="button"
                     onClick={handleAdd}
                     disabled={repoLoading || !url}
+                    data-testid="repo-clone-btn"
                     className="px-6 py-3 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl font-bold transition-ui disabled:opacity-50 text-sm shadow-lg shadow-white/5 active:scale-95 flex items-center gap-2"
                   >
                     {repoLoading && repoAction === 'clone' ? (
@@ -1611,6 +1763,7 @@ function App() {
                     type="button"
                     onClick={handleScan}
                     disabled={repoLoading}
+                    data-testid="repo-scan-btn"
                     className="group flex items-center gap-2 px-5 py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-300 rounded-2xl border border-slate-700/50 transition-ui text-sm font-bold disabled:opacity-50"
                   >
                     <RefreshCw size={14} className={cn("transition-transform group-hover:rotate-180 duration-500", repoLoading && repoAction === 'scan' ? "animate-spin" : "")} aria-hidden="true" />
@@ -1629,6 +1782,7 @@ function App() {
                     )}
                     role="status"
                     aria-live="polite"
+                    data-testid="repo-notice"
                   >
                     {repoNotice.message}
                   </div>
@@ -1650,7 +1804,7 @@ function App() {
               <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex justify-between border-b border-slate-800 pb-6">
                 <span>System Logs</span>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2 font-mono text-sm" role="log" aria-live="polite" aria-relevant="additions">
+              <div className="flex-1 overflow-y-auto space-y-2 font-mono text-sm" role="log" aria-live="polite" aria-relevant="additions" data-testid="system-logs">
                 {logs.length === 0 && <div className="text-slate-600 italic">No activity recorded.</div>}
                 {logs.map((log, i) => (
                   <div key={i} className="text-slate-300 border-l-2 border-slate-700 pl-4 py-1.5 hover:bg-slate-800/30 rounded-r-lg break-words">

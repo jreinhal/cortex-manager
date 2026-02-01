@@ -298,6 +298,7 @@ function scoreIntentMatch(agent, intent) {
     refactoring: 'refactoring',
     testing: 'testing',
     research: 'research',
+    analysis: 'review',
     documentation: 'documentation',
     automation: 'automation',
     deployment: 'automation',
@@ -340,6 +341,7 @@ function scoreTaskTypeAffinity(agent, intentPrimary) {
     refactoring: 'refactoring',
     testing: 'testing',
     research: 'research',
+    analysis: 'review',
     documentation: 'documentation',
     automation: 'automation'
   };

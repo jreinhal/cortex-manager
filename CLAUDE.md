@@ -123,11 +123,7 @@ const repos = repoManager.scanRepositories();
 
 ## Testing
 
-No automated tests yet. Manual testing:
-1. First-run wizard appears on fresh install
-2. Settings panel updates config correctly
-3. Agent Factory generates valid flight plans
-4. Session history persists
+No automated tests yet. Use the manual checklist in `TESTING.md`.
 
 ## Future Improvements (Roadmap)
 

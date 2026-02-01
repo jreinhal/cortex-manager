@@ -348,6 +348,9 @@ npm start
 # Frontend runs on port 5173 with hot reload
 ```
 
+### Testing
+Manual QA checklist lives in `TESTING.md`.
+
 ---
 
 ## 📜 License

@@ -1084,6 +1084,10 @@ function App() {
   const [status, setStatus] = useState('Online');
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [repoLoading, setRepoLoading] = useState(false);
+  const [repoAction, setRepoAction] = useState(null);
+  const [repoNotice, setRepoNotice] = useState(null);
+  const repoNoticeTimeoutRef = useRef(null);
   const [logs, setLogs] = useState([]);
   const [view, setView] = useState('agents');
   const [spawnResult, setSpawnResult] = useState('');
@@ -1175,6 +1179,28 @@ function App() {
     }
   }, [isFirstRun]);
 
+  const pushRepoNotice = (message, type = 'info', timeoutMs = 4000) => {
+    if (repoNoticeTimeoutRef.current) {
+      clearTimeout(repoNoticeTimeoutRef.current);
+      repoNoticeTimeoutRef.current = null;
+    }
+    setRepoNotice({ message, type });
+    if (timeoutMs > 0) {
+      repoNoticeTimeoutRef.current = setTimeout(() => {
+        setRepoNotice(null);
+        repoNoticeTimeoutRef.current = null;
+      }, timeoutMs);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (repoNoticeTimeoutRef.current) {
+        clearTimeout(repoNoticeTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const fetchData = () => {
     fetchRepos();
     fetchCategories();
@@ -1244,18 +1270,23 @@ function App() {
   };
 
   const handleScan = async () => {
-    setLoading(true);
+    setRepoLoading(true);
+    setRepoAction('scan');
+    pushRepoNotice('Scanning repositories…', 'info', 0);
     try {
       addLog("Starting System Scan…");
       const res = await fetch(`${API_BASE}/scan`, { method: 'POST' });
       const data = await res.json();
       addLog(data.output || "Scan Complete");
+      pushRepoNotice(data.output || 'Scan complete.', 'success');
       fetchData();
       fetchCategorySizes();
     } catch (e) {
       addLog("Scan failed. Check the server and try again.");
+      pushRepoNotice('Scan failed. Check the server and try again.', 'error');
     }
-    setLoading(false);
+    setRepoLoading(false);
+    setRepoAction(null);
   };
 
   const handleAdd = async () => {
@@ -1264,11 +1295,14 @@ function App() {
     const repoName = trimmedUrl.split('/').pop()?.replace(/\.git$/i, '');
     if (repoName && repos.some(r => r.Name?.toLowerCase() === repoName.toLowerCase())) {
       addLog(`Repo already exists: ${repoName}`);
+      pushRepoNotice(`Repository already exists: ${repoName}`, 'error');
       return;
     }
 
-    setLoading(true);
+    setRepoLoading(true);
+    setRepoAction('clone');
     addLog(`Cloning ${url}…`);
+    pushRepoNotice(`Cloning ${repoName || 'repository'}…`, 'info', 0);
     let shouldClear = false;
     let shouldRefresh = false;
     try {
@@ -1282,23 +1316,30 @@ function App() {
         if (data.code === 'REPO_EXISTS') {
           const location = data.repo?.Path || data.error || 'Repository already exists.';
           addLog(`Repo already exists: ${location}`);
+          pushRepoNotice(`Repository already exists: ${location}`, 'error');
         } else if (data.code === 'INVALID_URL') {
           addLog('Invalid repository URL. Check the URL and try again.');
+          pushRepoNotice('Invalid repository URL. Check the URL and try again.', 'error');
         } else if (data.error) {
           addLog(`Add failed: ${data.error}`);
+          pushRepoNotice(`Add failed: ${data.error}`, 'error');
         } else {
           addLog('Add failed. Check the URL and try again.');
+          pushRepoNotice('Add failed. Check the URL and try again.', 'error');
         }
       } else {
         addLog(data.output || "Clone Complete");
+        pushRepoNotice(data.output || 'Clone complete.', 'success');
         shouldClear = true;
         shouldRefresh = true;
         fetchCategorySizes();
       }
     } catch (e) {
       addLog("Add failed. Check the URL and try again.");
+      pushRepoNotice('Add failed. Check the URL and try again.', 'error');
     }
-    setLoading(false);
+    setRepoLoading(false);
+    setRepoAction(null);
     if (shouldClear) setUrl('');
     if (shouldRefresh) fetchData();
   };
@@ -1526,11 +1567,16 @@ function App() {
               </div>
 
               <div className="glass-panel rounded-3xl p-6 mb-8 border border-slate-800/60 bg-slate-950/40">
+                <div className="mb-3">
+                  <label
+                    htmlFor="repo-url"
+                    className="text-xs font-bold text-slate-500 uppercase tracking-widest inline-flex items-center w-fit bg-slate-950 px-2 py-1 rounded-lg border border-slate-800/70"
+                  >
+                    Add Repository
+                  </label>
+                </div>
                 <div className="flex flex-wrap items-center gap-3 rounded-3xl focus-within:ring-2 focus-within:ring-cyan-500/20">
                   <div className="flex-1 min-w-[260px]">
-                    <label htmlFor="repo-url" className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">
-                      Add Repository
-                    </label>
                     <input
                       id="repo-url"
                       name="repoUrl"
@@ -1549,21 +1595,44 @@ function App() {
                   <button
                     type="button"
                     onClick={handleAdd}
-                    disabled={loading || !url}
-                    className="px-6 py-3 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl font-bold transition-ui disabled:opacity-50 text-sm shadow-lg shadow-white/5 active:scale-95"
+                    disabled={repoLoading || !url}
+                    className="px-6 py-3 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl font-bold transition-ui disabled:opacity-50 text-sm shadow-lg shadow-white/5 active:scale-95 flex items-center gap-2"
                   >
-                    Clone
+                    {repoLoading && repoAction === 'clone' ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" aria-hidden="true" />
+                        Cloning…
+                      </>
+                    ) : (
+                      'Clone'
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={handleScan}
-                    disabled={loading}
+                    disabled={repoLoading}
                     className="group flex items-center gap-2 px-5 py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-300 rounded-2xl border border-slate-700/50 transition-ui text-sm font-bold disabled:opacity-50"
                   >
-                    <RefreshCw size={14} className={cn("transition-transform group-hover:rotate-180 duration-500", loading ? "animate-spin" : "")} aria-hidden="true" />
-                    {loading ? "Syncing…" : "Scan"}
+                    <RefreshCw size={14} className={cn("transition-transform group-hover:rotate-180 duration-500", repoLoading && repoAction === 'scan' ? "animate-spin" : "")} aria-hidden="true" />
+                    {repoLoading && repoAction === 'scan' ? "Syncing…" : "Scan"}
                   </button>
                 </div>
+                {repoNotice && (
+                  <div
+                    className={cn(
+                      "mt-3 px-4 py-2 rounded-xl text-sm border",
+                      repoNotice.type === 'success'
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                        : repoNotice.type === 'error'
+                          ? "bg-red-500/10 border-red-500/20 text-red-400"
+                          : "bg-slate-900/60 border-slate-700/60 text-slate-300"
+                    )}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {repoNotice.message}
+                  </div>
+                )}
               </div>
               <RepoTable repos={repos} />
             </motion.div>

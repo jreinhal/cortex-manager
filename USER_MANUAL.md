@@ -480,6 +480,10 @@ Before spawning complex audit agents, test with simple requests like:
 
 This helps you understand how your LLM interprets CORTEX plans.
 
+### 8. Use the Testing Checklist
+
+Manual QA steps are tracked in `TESTING.md`. Use it to verify UI polish issues (like label/border overlaps) and core workflows after changes.
+
 ---
 
 ## Appendix: Keyboard Shortcuts

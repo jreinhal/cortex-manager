@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Terminal, LayoutDashboard, Database, Cpu, Wrench,
   BarChart3, Search, Plus, RefreshCw, CheckCircle2,
   AlertCircle, ChevronRight, Activity, GitBranch, Folder,
-  Package
+  Package, Settings, FolderOpen, Check, X, Clock,
+  TrendingUp, Zap, History, ExternalLink
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -28,7 +29,402 @@ const CATEGORY_CONFIG = {
 
 const DEFAULT_CATEGORY = { icon: Folder, color: 'text-slate-400', desc: "General repository collection." };
 
-// --- Components ---
+// ==========================================
+// Setup Wizard Component
+// ==========================================
+function SetupWizard({ onComplete, defaultPath }) {
+  const [reposRoot, setReposRoot] = useState(defaultPath || '');
+  const [createStructure, setCreateStructure] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [validation, setValidation] = useState(null);
+
+  const validatePath = async (path) => {
+    if (!path) {
+      setValidation(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/validate-path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+      const data = await res.json();
+      setValidation(data);
+    } catch (e) {
+      setValidation({ valid: false, errors: ['Failed to validate path'] });
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => validatePath(reposRoot), 500);
+    return () => clearTimeout(timer);
+  }, [reposRoot]);
+
+  const handleSetup = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reposRoot, createStructure })
+      });
+      const data = await res.json();
+      if (data.success) {
+        onComplete(data);
+      } else {
+        setError(data.error || 'Setup failed');
+      }
+    } catch (e) {
+      setError('Failed to connect to server');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#0B0C15] p-8">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-xl w-full"
+      >
+        <div className="glass-panel p-1 rounded-[2.5rem] bg-slate-800/40 border border-slate-700/30 shadow-2xl backdrop-blur-3xl">
+          <div className="bg-slate-950/80 rounded-[2.2rem] p-10">
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-8">
+              <div className="bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-2xl p-4 border border-white/10 shadow-2xl">
+                <img src={brainIcon} alt="Cortex" className="w-12 h-12 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Welcome to CORTEX</h1>
+                <p className="text-slate-400">Let's set up your workspace</p>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="mb-8 p-4 bg-slate-900/50 rounded-2xl border border-slate-800">
+              <p className="text-slate-300 text-sm leading-relaxed">
+                CORTEX needs a directory to store your reference repositories. This is where your Agents, Skills, Knowledge, and Tools will live.
+              </p>
+            </div>
+
+            {/* Path Input */}
+            <div className="mb-6">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 block">
+                Repository Root Directory
+              </label>
+              <div className="relative">
+                <FolderOpen size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={reposRoot}
+                  onChange={(e) => setReposRoot(e.target.value)}
+                  placeholder="/path/to/reference-repos"
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-slate-200 focus:outline-none focus:border-cyan-500/50 focus:ring-4 focus:ring-cyan-500/10 transition-all font-mono text-sm"
+                />
+              </div>
+
+              {/* Validation Status */}
+              {validation && (
+                <div className={cn(
+                  "mt-3 p-3 rounded-xl text-sm flex items-start gap-2",
+                  validation.valid
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                    : "bg-red-500/10 border border-red-500/20 text-red-400"
+                )}>
+                  {validation.valid ? <Check size={16} /> : <X size={16} />}
+                  <div>
+                    {validation.valid ? (
+                      <>
+                        Path is valid
+                        {validation.exists && <span className="text-slate-400"> (directory exists)</span>}
+                        {validation.hasStructure && <span className="text-emerald-300"> with CORTEX structure</span>}
+                      </>
+                    ) : (
+                      validation.errors?.join(', ')
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Create Structure Checkbox */}
+            <label className="flex items-center gap-3 mb-8 cursor-pointer group">
+              <div className={cn(
+                "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                createStructure
+                  ? "bg-cyan-500 border-cyan-500"
+                  : "border-slate-600 group-hover:border-slate-500"
+              )}>
+                {createStructure && <Check size={14} className="text-white" />}
+              </div>
+              <input
+                type="checkbox"
+                checked={createStructure}
+                onChange={(e) => setCreateStructure(e.target.checked)}
+                className="sr-only"
+              />
+              <span className="text-slate-300 text-sm">
+                Create directory structure if it doesn't exist
+              </span>
+            </label>
+
+            {/* Error Display */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              onClick={handleSetup}
+              disabled={loading || !reposRoot || (validation && !validation.valid)}
+              className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 disabled:shadow-none"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw size={20} className="animate-spin" />
+                  Setting up...
+                </>
+              ) : (
+                <>
+                  <Check size={20} />
+                  Complete Setup
+                </>
+              )}
+            </button>
+
+            {/* Help Text */}
+            <p className="text-center text-slate-500 text-xs mt-6">
+              You can change this later in Settings
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ==========================================
+// Settings Panel Component
+// ==========================================
+function SettingsPanel({ config, onSave, onClose }) {
+  const [reposRoot, setReposRoot] = useState(config?.reposRoot || '');
+  const [loading, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reposRoot })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSaved(true);
+        setTimeout(() => {
+          setSaved(false);
+          onSave(data.config);
+        }, 1000);
+      }
+    } catch (e) {
+      console.error('Save failed:', e);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <motion.div
+      key="settings"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="max-w-3xl mx-auto"
+    >
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Settings</h2>
+          <p className="text-slate-400">Configure CORTEX preferences</p>
+        </div>
+      </div>
+
+      <div className="glass-panel rounded-3xl p-8 space-y-8">
+        {/* Repos Root */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Repository Root Directory
+          </label>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={reposRoot}
+              onChange={(e) => setReposRoot(e.target.value)}
+              className="flex-1 bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus:outline-none focus:border-cyan-500/50 font-mono text-sm"
+            />
+            <button
+              onClick={handleSave}
+              disabled={loading || saved}
+              className={cn(
+                "px-6 py-4 rounded-2xl font-bold transition-all flex items-center gap-2",
+                saved
+                  ? "bg-emerald-500 text-white"
+                  : "bg-cyan-500 hover:bg-cyan-400 text-white"
+              )}
+            >
+              {saved ? <Check size={20} /> : loading ? <RefreshCw size={20} className="animate-spin" /> : null}
+              {saved ? 'Saved!' : 'Save'}
+            </button>
+          </div>
+          <p className="text-slate-500 text-xs mt-2">
+            This is where CORTEX looks for Agents, Skills, Knowledge, and Tools
+          </p>
+        </div>
+
+        {/* System Info */}
+        <div className="pt-6 border-t border-slate-800">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">
+            System Information
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="bg-slate-900/50 rounded-xl p-4">
+              <div className="text-slate-500 text-xs uppercase mb-1">Platform</div>
+              <div className="text-slate-200 font-mono">{config?.system?.platform || 'Unknown'}</div>
+            </div>
+            <div className="bg-slate-900/50 rounded-xl p-4">
+              <div className="text-slate-500 text-xs uppercase mb-1">Node Version</div>
+              <div className="text-slate-200 font-mono">{config?.system?.nodeVersion || 'Unknown'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ==========================================
+// Analytics Panel Component
+// ==========================================
+function AnalyticsPanel({ analytics }) {
+  return (
+    <div className="glass-panel rounded-3xl p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="p-2.5 bg-purple-500/10 rounded-xl">
+          <TrendingUp size={20} className="text-purple-400" />
+        </div>
+        <h3 className="font-bold text-lg text-slate-200">Analytics</h3>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-slate-900/50 rounded-xl p-4">
+          <div className="text-3xl font-bold text-cyan-400">{analytics?.thisMonthSpawns || 0}</div>
+          <div className="text-slate-500 text-xs uppercase mt-1">This Month</div>
+        </div>
+        <div className="bg-slate-900/50 rounded-xl p-4">
+          <div className="text-3xl font-bold text-purple-400">{analytics?.totalSpawns || 0}</div>
+          <div className="text-slate-500 text-xs uppercase mt-1">Total Spawns</div>
+        </div>
+      </div>
+
+      {analytics?.topAgent && (
+        <div className="bg-slate-900/50 rounded-xl p-4">
+          <div className="text-slate-500 text-xs uppercase mb-2">Most Used Agent</div>
+          <div className="flex items-center gap-2">
+            <Cpu size={16} className="text-purple-400" />
+            <span className="text-slate-200 font-medium">{analytics.topAgent.name}</span>
+            <span className="text-slate-500 text-sm">({analytics.topAgent.count}x)</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// Session History Component
+// ==========================================
+function SessionHistory({ sessions, onReuse }) {
+  if (!sessions || sessions.length === 0) return null;
+
+  return (
+    <div className="glass-panel rounded-3xl p-6 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="p-2.5 bg-cyan-500/10 rounded-xl">
+          <History size={20} className="text-cyan-400" />
+        </div>
+        <h3 className="font-bold text-lg text-slate-200">Recent Sessions</h3>
+      </div>
+
+      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+        {sessions.slice(0, 5).map((session) => (
+          <button
+            key={session.id}
+            onClick={() => onReuse(session.goal)}
+            className="w-full text-left bg-slate-900/50 hover:bg-slate-800/50 rounded-xl p-3 transition-colors group"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-slate-200 text-sm truncate group-hover:text-cyan-400 transition-colors">
+                  {session.goal}
+                </div>
+                <div className="text-slate-500 text-xs mt-1 flex items-center gap-2">
+                  <Clock size={12} />
+                  {new Date(session.timestamp).toLocaleDateString()}
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-slate-600 group-hover:text-cyan-400 transition-colors mt-1" />
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// Spawn Status Timeline Component
+// ==========================================
+function SpawnTimeline({ steps }) {
+  return (
+    <div className="space-y-2">
+      {steps.map((step, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.1 }}
+          className="flex items-center gap-3"
+        >
+          <div className={cn(
+            "w-6 h-6 rounded-full flex items-center justify-center text-xs",
+            step.done
+              ? "bg-emerald-500/20 text-emerald-400"
+              : step.error
+                ? "bg-red-500/20 text-red-400"
+                : "bg-cyan-500/20 text-cyan-400"
+          )}>
+            {step.done ? <Check size={14} /> : step.error ? <X size={14} /> : <RefreshCw size={14} className="animate-spin" />}
+          </div>
+          <span className={cn(
+            "text-sm",
+            step.done ? "text-slate-400" : step.error ? "text-red-400" : "text-slate-200"
+          )}>
+            {step.text}
+          </span>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+// ==========================================
+// Main Components
+// ==========================================
 
 function StatCard({ title, count, icon: Icon, color, delay, description }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -45,7 +441,6 @@ function StatCard({ title, count, icon: Icon, color, delay, description }) {
         transition={{ delay }}
         className="glass-card p-6 rounded-3xl relative overflow-hidden h-full border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl shadow-xl"
       >
-        {/* Apple-style smooth gradient blur background */}
         <div className={cn("absolute -right-4 -top-4 w-32 h-32 rounded-full opacity-10 blur-3xl transition-opacity", color.replace('text-', 'bg-'))} />
 
         <div className="relative z-10 flex flex-col h-full justify-between">
@@ -63,7 +458,6 @@ function StatCard({ title, count, icon: Icon, color, delay, description }) {
         </div>
       </motion.div>
 
-      {/* Modern Tooltip */}
       <div className={cn(
         "absolute top-full mt-4 left-1/2 -translate-x-1/2 w-52 p-4 bg-slate-950/95 backdrop-blur-2xl border border-slate-800 rounded-2xl shadow-2xl transition-all duration-300 pointer-events-none z-50 text-xs text-slate-300 text-center leading-relaxed",
         isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
@@ -74,7 +468,6 @@ function StatCard({ title, count, icon: Icon, color, delay, description }) {
   )
 }
 
-// [REFLECTED CHANGE] Agent Reflection Badge for UI
 function AgentReflectionBadge() {
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full w-fit">
@@ -84,16 +477,35 @@ function AgentReflectionBadge() {
   )
 }
 
-function OrchestratorView({ onSpawn, loading, result }) {
+function OrchestratorView({ onSpawn, loading, result, sessions, analytics, onReuseSession }) {
   const [goal, setGoal] = useState('');
+  const [spawnSteps, setSpawnSteps] = useState([]);
 
-  const handleSpawn = () => {
+  const handleSpawn = async () => {
     if (!goal) return;
-    onSpawn(goal);
+
+    // Initialize timeline
+    setSpawnSteps([
+      { text: 'Analyzing goal keywords...', done: false }
+    ]);
+
+    // Simulate progress (actual progress comes from backend)
+    setTimeout(() => setSpawnSteps(s => [...s.slice(0, 1).map(x => ({ ...x, done: true })), { text: 'Selecting best agent...', done: false }]), 300);
+    setTimeout(() => setSpawnSteps(s => [...s.slice(0, 2).map(x => ({ ...x, done: true })), { text: 'Searching knowledge base...', done: false }]), 600);
+    setTimeout(() => setSpawnSteps(s => [...s.slice(0, 3).map(x => ({ ...x, done: true })), { text: 'Generating flight plan...', done: false }]), 900);
+
+    await onSpawn(goal);
+
+    // Mark all done
+    setSpawnSteps(s => s.map(x => ({ ...x, done: true })));
   };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(result);
+  };
+
+  const handleReuseSession = (sessionGoal) => {
+    setGoal(sessionGoal);
   };
 
   return (
@@ -114,11 +526,10 @@ function OrchestratorView({ onSpawn, loading, result }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Input Area (Premium Conversational - Apple/Google Style) */}
+        {/* Input Area */}
         <div className="lg:col-span-8 flex flex-col gap-6">
           <div className="glass-panel p-1 rounded-[2.5rem] bg-slate-800/40 border border-slate-700/30 shadow-2xl backdrop-blur-3xl">
             <div className="bg-slate-950/60 rounded-[2.2rem] p-8 h-full relative overflow-hidden group">
-              {/* Subtle ambient glow */}
               <div className="absolute top-0 right-0 w-64 h-64 bg-slate-800/20 rounded-full blur-3xl -z-10 transition-opacity group-hover:opacity-100 opacity-50 pointer-events-none" />
 
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 block pl-1">How can we help today?</label>
@@ -141,6 +552,13 @@ function OrchestratorView({ onSpawn, loading, result }) {
                   </button>
                 </div>
               </div>
+
+              {/* Status Timeline */}
+              {loading && spawnSteps.length > 0 && (
+                <div className="mt-6 p-4 bg-slate-900/50 rounded-2xl">
+                  <SpawnTimeline steps={spawnSteps} />
+                </div>
+              )}
             </div>
           </div>
 
@@ -163,15 +581,16 @@ function OrchestratorView({ onSpawn, loading, result }) {
                   Copy to Clipboard
                 </button>
               </div>
-              <div className="p-0 overflow-x-auto bg-slate-950/90">
+              <div className="p-0 overflow-x-auto bg-slate-950/90 max-h-[500px] overflow-y-auto">
                 <pre className="p-6 text-sm font-mono text-slate-300 whitespace-pre-wrap leading-loose">{result}</pre>
               </div>
             </motion.div>
           )}
         </div>
 
-        {/* Sidebar Info (Google Material Inspired - Information Density) */}
+        {/* Sidebar */}
         <div className="lg:col-span-4 space-y-4">
+          {/* Capabilities */}
           <div className="glass-panel p-6 rounded-3xl space-y-6">
             <h3 className="font-bold text-slate-200 text-lg">Capabilities</h3>
 
@@ -182,7 +601,7 @@ function OrchestratorView({ onSpawn, loading, result }) {
                 </div>
                 <div>
                   <div className="font-bold text-slate-200">Standard Agent</div>
-                  <div className="text-xs text-slate-500">Logic & Reasoning Chasis</div>
+                  <div className="text-xs text-slate-500">Logic & Reasoning Chassis</div>
                 </div>
               </div>
 
@@ -199,13 +618,19 @@ function OrchestratorView({ onSpawn, loading, result }) {
 
             <div className="pt-6 border-t border-slate-800/50">
               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Compatible Models</h4>
-              <div className="flex gap-2">
-                {['Gemini', 'Claude', 'GPT-4'].map(m => (
+              <div className="flex gap-2 flex-wrap">
+                {['Gemini', 'Claude', 'GPT-4', 'Llama'].map(m => (
                   <span key={m} className="px-3 py-1 bg-slate-800 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-700 cursor-default transition-colors">{m}</span>
                 ))}
               </div>
             </div>
           </div>
+
+          {/* Analytics */}
+          {analytics && <AnalyticsPanel analytics={analytics} />}
+
+          {/* Session History */}
+          <SessionHistory sessions={sessions} onReuse={handleReuseSession} />
         </div>
       </div>
     </motion.div>
@@ -214,7 +639,7 @@ function OrchestratorView({ onSpawn, loading, result }) {
 
 function RepoRow({ repo, delay }) {
   const getIcon = (purpose) => {
-    const p = purpose.toLowerCase();
+    const p = purpose?.toLowerCase() || '';
     if (p.includes("agent")) return Cpu;
     if (p.includes("skill")) return Terminal;
     if (p.includes("knowledge")) return Database;
@@ -224,7 +649,7 @@ function RepoRow({ repo, delay }) {
   }
 
   const getPurposeColor = (purpose) => {
-    const p = purpose.toLowerCase();
+    const p = purpose?.toLowerCase() || '';
     if (p.includes("agent")) return { text: "text-purple-400", bg: "bg-purple-400/10", badge: "bg-purple-400/10 text-purple-300 border-purple-400/20" };
     if (p.includes("skill")) return { text: "text-yellow-400", bg: "bg-yellow-400/10", badge: "bg-yellow-400/10 text-yellow-300 border-yellow-400/20" };
     if (p.includes("knowledge")) return { text: "text-blue-400", bg: "bg-blue-400/10", badge: "bg-blue-400/10 text-blue-300 border-blue-400/20" };
@@ -332,6 +757,10 @@ function NavItem({ icon: Icon, label, active, badge, onClick }) {
   )
 }
 
+// ==========================================
+// Main App
+// ==========================================
+
 function App() {
   const [repos, setRepos] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -339,18 +768,85 @@ function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [view, setView] = useState('dashboard'); // dashboard | settings | agents
+  const [view, setView] = useState('dashboard');
   const [spawnResult, setSpawnResult] = useState('');
 
+  // New state for config/setup
+  const [appConfig, setAppConfig] = useState(null);
+  const [isFirstRun, setIsFirstRun] = useState(null); // null = loading
+  const [defaultPaths, setDefaultPaths] = useState({});
+  const [sessions, setSessions] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+
+  // Check configuration on mount
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    checkConfig();
   }, []);
+
+  const checkConfig = async () => {
+    try {
+      const [configRes, pathsRes] = await Promise.all([
+        fetch(`${API_BASE}/config`),
+        fetch(`${API_BASE}/default-paths`)
+      ]);
+
+      const configData = await configRes.json();
+      const pathsData = await pathsRes.json();
+
+      setAppConfig(configData);
+      setDefaultPaths(pathsData);
+      setIsFirstRun(configData.isFirstRun);
+
+      if (!configData.isFirstRun) {
+        // Normal startup - fetch data
+        fetchData();
+        fetchSessions();
+        fetchAnalytics();
+      }
+    } catch (e) {
+      console.error('Failed to check config:', e);
+      setIsFirstRun(false); // Assume not first run if can't connect
+    }
+  };
+
+  const handleSetupComplete = (result) => {
+    setIsFirstRun(false);
+    setAppConfig(prev => ({ ...prev, config: { ...prev?.config, reposRoot: result.reposRoot } }));
+    fetchData();
+    addLog(`Setup complete! Repos root: ${result.reposRoot}`);
+  };
+
+  useEffect(() => {
+    if (isFirstRun === false) {
+      fetchData();
+      const interval = setInterval(fetchData, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isFirstRun]);
 
   const fetchData = () => {
     fetchRepos();
     fetchCategories();
+  };
+
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions`);
+      const data = await res.json();
+      setSessions(data);
+    } catch (e) {
+      console.error('Failed to fetch sessions:', e);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/analytics`);
+      const data = await res.json();
+      setAnalytics(data);
+    } catch (e) {
+      console.error('Failed to fetch analytics:', e);
+    }
   };
 
   const fetchCategories = async () => {
@@ -365,13 +861,12 @@ function App() {
     }
   };
 
-  const derivePurpose = (path) => {
-    if (!path) return "Unknown";
-    const normalize = path.replace(/\\/g, '/');
+  const derivePurpose = (repoPath) => {
+    if (!repoPath) return "Unknown";
+    const normalize = repoPath.replace(/\\/g, '/');
     const sections = normalize.split('/');
     if (sections.length < 2) return "Unknown";
     const parent = sections[sections.length - 2];
-    // Capitalize first letter
     return parent.charAt(0).toUpperCase() + parent.slice(1);
   };
 
@@ -381,9 +876,10 @@ function App() {
       const data = await res.json();
       const enriched = data.map(repo => ({
         ...repo,
-        Purpose: derivePurpose(repo.Path)
+        Purpose: repo.Category || derivePurpose(repo.Path)
       }));
       setRepos(enriched);
+      setStatus('Online');
     } catch (e) {
       console.error(e);
       setStatus('Offline');
@@ -438,6 +934,15 @@ function App() {
       if (data.success) {
         setSpawnResult(data.output);
         addLog("Agent Spawned Successfully");
+
+        // Save session
+        await fetch(`${API_BASE}/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ goal, agent: 'std-agent', output: data.output })
+        });
+        fetchSessions();
+        fetchAnalytics();
       } else {
         addLog(`Spawn Error: ${data.error}`);
       }
@@ -451,10 +956,27 @@ function App() {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
   };
 
+  // Show loading state while checking config
+  if (isFirstRun === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0B0C15]">
+        <div className="flex items-center gap-4 text-cyan-400">
+          <RefreshCw size={24} className="animate-spin" />
+          <span className="text-xl">Loading CORTEX...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show setup wizard if first run
+  if (isFirstRun) {
+    return <SetupWizard onComplete={handleSetupComplete} defaultPath={defaultPaths.reposRoot} />;
+  }
+
   // Group repos by category (dynamic)
   const categorized = {};
   categories.forEach(cat => {
-    categorized[cat] = repos.filter(r => r.Purpose.toLowerCase().includes(cat.toLowerCase()));
+    categorized[cat] = repos.filter(r => r.Purpose?.toLowerCase().includes(cat.toLowerCase()));
   });
 
   return (
@@ -497,6 +1019,12 @@ function App() {
               active={view === 'repos'}
               onClick={() => setView('repos')}
             />
+            <NavItem
+              icon={Settings}
+              label="Settings"
+              active={view === 'settings'}
+              onClick={() => setView('settings')}
+            />
           </div>
         </div>
 
@@ -508,7 +1036,7 @@ function App() {
             </div>
             <span className={`text-xs font-bold uppercase tracking-wider ${status === 'Online' ? 'text-emerald-400' : 'text-red-400'}`}>System {status}</span>
           </div>
-          <div className="text-[10px] text-slate-600 font-mono mt-2">v2.0.0 • PROD</div>
+          <div className="text-[10px] text-slate-600 font-mono mt-2">v2.1.0 • Cross-Platform</div>
         </div>
       </nav>
 
@@ -639,7 +1167,13 @@ function App() {
           )}
 
           {view === 'agents' && (
-            <OrchestratorView onSpawn={handleSpawn} loading={loading} result={spawnResult} />
+            <OrchestratorView
+              onSpawn={handleSpawn}
+              loading={loading}
+              result={spawnResult}
+              sessions={sessions}
+              analytics={analytics}
+            />
           )}
 
           {view === 'repos' && (
@@ -678,6 +1212,13 @@ function App() {
                 ))}
               </div>
             </motion.div>
+          )}
+
+          {view === 'settings' && (
+            <SettingsPanel
+              config={appConfig}
+              onSave={(newConfig) => setAppConfig(prev => ({ ...prev, config: newConfig }))}
+            />
           )}
         </AnimatePresence>
 

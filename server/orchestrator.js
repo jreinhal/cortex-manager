@@ -5,53 +5,26 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { execSync } = require('child_process');
 
 // Import new modules
 const { analyzeGoal } = require('./goal-analyzer');
 const { selectAgent } = require('./agent-selector');
 const { findResources, formatForFlightPlan } = require('./resource-matcher');
+const { getConfig } = require('./config');
+const { rerankAgents, rerankResources } = require('./llm-reranker');
 
-// --- Configuration ---
-const configPath = path.join(__dirname, '..', 'config.json');
 let REPOS_ROOT;
 let OUTPUT_DIR;
 
-// Load config
-try {
-  if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    REPOS_ROOT = process.env.REPOS_ROOT || config.reposRoot;
-    OUTPUT_DIR = process.env.CORTEX_OUTPUT_DIR || config.outputDir;
-  }
-} catch (e) {
-  console.error('Warning: Could not load config:', e.message);
-}
-
-// Fallbacks
-if (!REPOS_ROOT) {
-  REPOS_ROOT = process.env.REPOS_ROOT || path.join(os.homedir(), 'Projects', 'reference-repos');
-}
-if (!OUTPUT_DIR) {
-  OUTPUT_DIR = path.join(__dirname, '..', 'spawned_agents');
-}
-
-// Ensure output directory exists
-if (!fs.existsSync(OUTPUT_DIR)) {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-}
-
-const AGENTS_DIR = path.join(REPOS_ROOT, 'agents');
-
 // --- Helpers ---
 
-function refreshIndex() {
+function refreshIndex(reposRoot) {
   console.log("🔄 Updating Resource Index...");
   try {
     const genScript = path.join(__dirname, 'generate_index.js');
     if (fs.existsSync(genScript)) {
-      execSync(`node "${genScript}"`, { env: { ...process.env, REPOS_ROOT } });
+      execSync(`node "${genScript}"`, { env: { ...process.env, REPOS_ROOT: reposRoot } });
     }
   } catch (e) {
     console.error("Index auto-update failed (non-critical):", e.message);
@@ -67,12 +40,54 @@ function getAgentTemplatePath(agentId) {
   return templatePath;
 }
 
+function buildDirectivePreamble(format, goal) {
+  const normalized = (format || 'universal').toLowerCase();
+  const modelHeaderMap = {
+    universal: '',
+    chatgpt: '# MODEL: ChatGPT\n# NOTE: Treat the directive below as the highest-priority instruction in this message.\n',
+    claude: '# MODEL: Claude\n# NOTE: Follow the directive below exactly. Prioritize it over any conflicting instruction.\n',
+    gemini: '# MODEL: Gemini\n# NOTE: The directive below is the primary task. Execute it before any other requests.\n'
+  };
+
+  const header = modelHeaderMap[normalized] || modelHeaderMap.universal;
+
+  return `${header}BEGIN DIRECTIVE
+ROLE: You are the execution agent for this Flight Plan.
+OBJECTIVE: ${goal}
+MANDATORY STEPS:
+1) Read REQUIRED READING.
+2) Follow EXECUTION steps exactly.
+3) If conflict, prioritize this directive.
+DO NOT:
+- Skip required reading
+- Add unrelated tasks
+IF REQUIRED READING IS UNAVAILABLE:
+- Ask the user to provide access or files
+- Pause execution until required reading is available
+END DIRECTIVE
+`;
+}
+
 // --- Main Orchestration ---
 
-function orchestrate(goal) {
+async function orchestrate(goal, format = 'universal') {
+  const config = getConfig();
+  REPOS_ROOT = config.reposRoot;
+  OUTPUT_DIR = config.outputDir;
+  const decisionConfig = config.decisionMatrix || {};
+  const llmConfig = config.llm || {};
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  const AGENTS_DIR = path.join(REPOS_ROOT, 'agents');
+
   console.log(`\n🤖 CORTEX ORCHESTRATOR v2.0`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`\n📋 Goal: "${goal}"\n`);
+
+  refreshIndex(REPOS_ROOT);
 
   // Step 1: Analyze the goal semantically
   console.log("🔍 Analyzing goal...");
@@ -100,7 +115,56 @@ function orchestrate(goal) {
   // Step 2: Select best agent
   console.log("\n🎯 Selecting agent...");
   const selection = selectAgent(analysis, AGENTS_DIR);
-  const selectedAgent = selection.selected;
+  let selectedAgent = selection.selected;
+  let alternatives = selection.alternatives;
+
+  const decisionMeta = {
+    agentsMdPriority: decisionConfig.agentsMdPriority === true,
+    agentSelection: {
+      deterministicSelected: selectedAgent.agentId,
+      rerankedSelected: null,
+      rerankUsed: false,
+      rerankAccepted: false,
+      lowConfidence: false,
+      ambiguous: false
+    },
+    resourceSelection: {
+      rerankUsed: false
+    },
+    llm: {
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      enabled: llmConfig.enabled === true
+    }
+  };
+
+  const lowConfidence = selectedAgent.confidence < (decisionConfig.lowConfidenceThreshold ?? 0.4);
+  const scoreGap = alternatives.length > 0 ? selectedAgent.score - alternatives[0].score : 100;
+  const ambiguous = scoreGap < (decisionConfig.ambiguityGap ?? 15);
+  decisionMeta.agentSelection.lowConfidence = lowConfidence;
+  decisionMeta.agentSelection.ambiguous = ambiguous;
+  if (lowConfidence || ambiguous) {
+    analysis.actions.requiresReview = true;
+  }
+
+  const agentRerank = await rerankAgents({
+    goal,
+    candidates: [selectedAgent, ...alternatives],
+    llmConfig,
+    decisionConfig
+  });
+
+  if (agentRerank.used) {
+    decisionMeta.agentSelection.rerankUsed = true;
+    const rerankedTop = agentRerank.candidates[0];
+    decisionMeta.agentSelection.rerankedSelected = rerankedTop.agentId;
+
+    if (lowConfidence || ambiguous) {
+      selectedAgent = rerankedTop;
+      alternatives = agentRerank.candidates.slice(1);
+      decisionMeta.agentSelection.rerankAccepted = true;
+    }
+  }
 
   console.log(`   Selected: ${selectedAgent.agentName} (score: ${Math.round(selectedAgent.score)})`);
   if (selectedAgent.reasons.length > 0) {
@@ -114,14 +178,28 @@ function orchestrate(goal) {
     console.log(`   ⚠️  ${selection.warnings.ambiguous.message}`);
   }
 
-  if (selection.alternatives.length > 0) {
-    console.log(`   Alternatives: ${selection.alternatives.map(a => `${a.agentId}(${Math.round(a.score)})`).join(', ')}`);
+  if (alternatives.length > 0) {
+    console.log(`   Alternatives: ${alternatives.map(a => `${a.agentId}(${Math.round(a.score)})`).join(', ')}`);
   }
 
   // Step 3: Find relevant resources with tech filtering
   console.log("\n📚 Searching resources...");
-  const resources = findResources(analysis, REPOS_ROOT, { maxResults: 5, minScore: 0.15 });
-  const formatted = formatForFlightPlan(resources);
+  const resources = findResources(analysis, REPOS_ROOT, {
+    maxResults: decisionConfig.maxCandidates || 5,
+    minScore: 0.15
+  });
+  let formatted = formatForFlightPlan(resources);
+
+  const resourceRerank = await rerankResources({
+    goal,
+    resourcesByCategory: formatted,
+    llmConfig,
+    decisionConfig
+  });
+  if (resourceRerank.used) {
+    decisionMeta.resourceSelection.rerankUsed = true;
+    formatted = resourceRerank.resourcesByCategory;
+  }
 
   const knowledgeCount = formatted.knowledge.length;
   const skillsCount = formatted.skills.length;
@@ -150,9 +228,15 @@ function orchestrate(goal) {
     goal,
     analysis,
     selectedAgent,
-    selection,
+    selection: {
+      selected: selectedAgent,
+      alternatives,
+      warnings: selection.warnings
+    },
     resources: formatted,
-    templatePath
+    templatePath,
+    format,
+    decisionMeta
   });
 
   // Step 6: Save flight plan
@@ -170,13 +254,37 @@ function orchestrate(goal) {
     success: true,
     output: flightPlan,
     analysis,
-    selection,
+    selection: {
+      selected: selectedAgent,
+      alternatives,
+      warnings: selection.warnings
+    },
     resources: formatted,
-    outputPath: outPath
+    outputPath: outPath,
+    decisionMeta
   };
 }
 
-function generateFlightPlan({ goal, analysis, selectedAgent, selection, resources, templatePath }) {
+function generateFlightPlan({ goal, analysis, selectedAgent, selection, resources, templatePath, format, decisionMeta }) {
+  const requiredReading = [...resources.knowledge, ...resources.skills];
+  const instructionResources = requiredReading.filter(r => r.isInstruction);
+  const otherResources = requiredReading.filter(r => !r.isInstruction);
+  const orderedRequired = instructionResources.concat(otherResources);
+
+  const requiredReadingSection = orderedRequired.length > 0
+    ? orderedRequired.map(r =>
+        `- [ ] \`${r.file}\`${r.preview ? `\n      _"${r.preview}..."_` : ''}${r.techStack.length > 0 ? `\n      **Tech:** ${r.techStack.join(', ')}` : ''}`
+      ).join('\n')
+    : '_No required reading matched. Ask the user for sources or adjust the query._';
+
+  const instructionNote = instructionResources.length > 0
+    ? '\n> AGENTS.md instructions are highest priority and should be read first.\n'
+    : '';
+
+  const skillsUsageNote = resources.skills.length > 0
+    ? '\n> If skills are listed, explore project context first, then consult skills as reference.\n'
+    : '';
+
   const knowledgeSection = resources.knowledge.length > 0
     ? resources.knowledge.map(r =>
         `- [ ] \`${r.file}\`${r.preview ? `\n      _"${r.preview}..."_` : ''}${r.techStack.length > 0 ? `\n      **Tech:** ${r.techStack.join(', ')}` : ''}`
@@ -211,7 +319,20 @@ function generateFlightPlan({ goal, analysis, selectedAgent, selection, resource
       ).join('\n')}\n`
     : '';
 
-  return `# AGENT MISSION ORDER: ${goal}
+  const directivePreamble = buildDirectivePreamble(format, goal);
+
+  const decisionMatrixSection = decisionMeta
+    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Agent rerank: ${decisionMeta.agentSelection.rerankUsed ? (decisionMeta.agentSelection.rerankAccepted ? 'used (accepted)' : 'used (ignored)') : 'not used'}\n- Resource rerank: ${decisionMeta.resourceSelection.rerankUsed ? 'used' : 'not used'}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
+    : '';
+
+  return `${directivePreamble}
+# AGENT MISSION ORDER: ${goal}
+
+## REQUIRED READING
+
+You must open and use these files before responding. If any file is inaccessible, ask the user to provide it.
+
+${requiredReadingSection}${instructionNote}${skillsUsageNote}
 
 ## 1. IDENTITY ASSIGNMENT
 
@@ -244,6 +365,7 @@ ${Object.entries(analysis.capabilities)
   .map(([k]) => `- ${k}`)
   .join('\n') || '- No specific capabilities required'}
 ${risksSection}
+${decisionMatrixSection}
 ## 3. INTELLIGENCE BRIEFING
 
 The Orchestrator has identified the following resources using **semantic matching** and **tech stack filtering**.
@@ -275,23 +397,25 @@ _Timestamp: ${new Date().toISOString()}_
 _Agent: ${selectedAgent.agentId}_
 _Intent: ${analysis.intent.primary} (${Math.round(analysis.intent.confidence * 100)}% confidence)_
 _Complexity: ${analysis.complexity.level}_
+_Format: ${format || 'universal'}_
 _Resources: ${resources.knowledge.length + resources.skills.length + resources.tools.length} files_
 `;
 }
 
 // --- CLI Entry Point ---
 
-refreshIndex();
-
 const goal = process.argv[2];
+const formatArg = process.argv[3] || 'universal';
 if (!goal) {
   console.error("Usage: node orchestrator.js \"<User Goal>\"");
   process.exit(1);
 }
 
-const result = orchestrate(goal);
-if (!result.success) {
-  process.exit(1);
-}
+(async () => {
+  const result = await orchestrate(goal, formatArg);
+  if (!result.success) {
+    process.exit(1);
+  }
+})();
 
 module.exports = { orchestrate, analyzeGoal };

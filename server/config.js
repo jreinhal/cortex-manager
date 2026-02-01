@@ -19,6 +19,26 @@ const DEFAULT_CONFIG = {
   pollingInterval: 10000,
   maxRecentSpawns: 20,
   filePreviewLength: 2000,
+  decisionMatrix: {
+    agentsMdPriority: true,
+    lowConfidenceThreshold: 0.4,
+    ambiguityGap: 15,
+    rerankGap: 0.12,
+    maxCandidates: 8,
+    requireDDrive: process.platform === 'win32'
+  },
+  llm: {
+    enabled: true,
+    provider: 'openai-compatible',
+    model: 'qwen2.5-14b-instruct-q4',
+    endpoint: 'http://localhost:8080/v1/chat/completions',
+    modelDir: null,
+    modelPath: null,
+    timeoutMs: 10000,
+    temperature: 0.1,
+    maxTokens: 400,
+    topN: 6
+  },
   // Analytics
   analytics: {
     enabled: true,
@@ -69,6 +89,25 @@ function getDefaultOutputDir() {
 }
 
 /**
+ * Get default local model directory
+ */
+function getDefaultModelDir() {
+  if (process.platform === 'win32') {
+    const windowsPaths = [
+      path.join('D:', 'Models', 'qwen2.5-14b-instruct-q4'),
+      path.join('D:', 'Models'),
+      path.join(os.homedir(), 'Models')
+    ];
+    for (const p of windowsPaths) {
+      if (fs.existsSync(p)) return p;
+    }
+    return path.join('D:', 'Models', 'qwen2.5-14b-instruct-q4');
+  }
+
+  return path.join(os.homedir(), 'models', 'qwen2.5-14b-instruct-q4');
+}
+
+/**
  * Load configuration from file
  */
 function loadConfig() {
@@ -106,6 +145,15 @@ function saveConfig(config) {
 function getConfig() {
   const config = loadConfig();
 
+  config.decisionMatrix = {
+    ...DEFAULT_CONFIG.decisionMatrix,
+    ...(config.decisionMatrix || {})
+  };
+  config.llm = {
+    ...DEFAULT_CONFIG.llm,
+    ...(config.llm || {})
+  };
+
   // Environment variable overrides
   if (process.env.REPOS_ROOT) {
     config.reposRoot = process.env.REPOS_ROOT;
@@ -114,12 +162,51 @@ function getConfig() {
     config.outputDir = process.env.CORTEX_OUTPUT_DIR;
   }
 
+  // LLM env overrides
+  if (process.env.LLM_ENABLED) {
+    config.llm.enabled = /^(1|true|yes)$/i.test(process.env.LLM_ENABLED);
+  }
+  if (process.env.LLM_PROVIDER) {
+    config.llm.provider = process.env.LLM_PROVIDER;
+  }
+  if (process.env.LLM_MODEL) {
+    config.llm.model = process.env.LLM_MODEL;
+  }
+  if (process.env.LLM_ENDPOINT) {
+    config.llm.endpoint = process.env.LLM_ENDPOINT;
+  }
+  if (process.env.LLM_MODEL_DIR) {
+    config.llm.modelDir = process.env.LLM_MODEL_DIR;
+  }
+  if (process.env.LLM_MODEL_PATH) {
+    config.llm.modelPath = process.env.LLM_MODEL_PATH;
+  }
+  if (process.env.LLM_TIMEOUT_MS) {
+    const parsed = Number(process.env.LLM_TIMEOUT_MS);
+    if (!Number.isNaN(parsed)) config.llm.timeoutMs = parsed;
+  }
+  if (process.env.LLM_TEMPERATURE) {
+    const parsed = Number(process.env.LLM_TEMPERATURE);
+    if (!Number.isNaN(parsed)) config.llm.temperature = parsed;
+  }
+  if (process.env.LLM_MAX_TOKENS) {
+    const parsed = Number(process.env.LLM_MAX_TOKENS);
+    if (!Number.isNaN(parsed)) config.llm.maxTokens = parsed;
+  }
+  if (process.env.LLM_TOP_N) {
+    const parsed = Number(process.env.LLM_TOP_N);
+    if (!Number.isNaN(parsed)) config.llm.topN = parsed;
+  }
+
   // Apply defaults if not set
   if (!config.reposRoot) {
     config.reposRoot = getDefaultReposRoot();
   }
   if (!config.outputDir) {
     config.outputDir = getDefaultOutputDir();
+  }
+  if (!config.llm.modelDir) {
+    config.llm.modelDir = getDefaultModelDir();
   }
 
   return config;
@@ -369,6 +456,7 @@ module.exports = {
   validateReposRoot,
   getDefaultReposRoot,
   getDefaultOutputDir,
+  getDefaultModelDir,
   getSystemInfo,
   recordSpawn,
   getAnalytics,

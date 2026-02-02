@@ -3,10 +3,11 @@ import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import {
   Terminal, Database, Cpu, Wrench,
   BarChart3, RefreshCw, CheckCircle2,
-  ChevronRight, GitBranch, Folder,
+  ChevronRight, ChevronDown, GitBranch, Folder,
   Settings, FolderOpen, Check, X, Clock,
   History, HardDrive,
-  ChevronUp, FolderInput, Star, Trash2
+  ChevronUp, FolderInput, Star, Trash2,
+  LayoutDashboard, Activity, FlaskConical, Library, BookOpen
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -30,6 +31,16 @@ function formatBytes(bytes) {
   return `${value.toFixed(precision)} ${sizes[i]}`;
 }
 
+function formatDuration(ms) {
+  if (ms === null || ms === undefined) return '—';
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rem = Math.round(seconds % 60);
+  return `${minutes}m ${rem}s`;
+}
+
 // --- Configuration ---
 const CATEGORY_CONFIG = {
   agents: { icon: Cpu, color: 'text-purple-400', desc: "Autonomous systems that perceive, reason, and act." },
@@ -40,7 +51,7 @@ const CATEGORY_CONFIG = {
 };
 
 const DEFAULT_CATEGORY = { icon: Folder, color: 'text-slate-400', desc: "General repository collection." };
-const VIEW_KEYS = ['agents', 'repos', 'logs', 'settings'];
+const VIEW_KEYS = ['home', 'agents', 'runs', 'evaluations', 'library', 'knowledge', 'logs', 'settings'];
 
 // ==========================================
 // Setup Wizard Component
@@ -639,8 +650,51 @@ function SettingsPanel({ config, onSave, onClose }) {
 // Spawn Status Timeline Component
 // ==========================================
 function SpawnTimeline({ steps }) {
+  const totalSteps = steps.length;
+  const doneCount = steps.filter(step => step.done).length;
+  const hasError = steps.some(step => step.error);
+  const isComplete = totalSteps > 0 && doneCount === totalSteps && !hasError;
+  const currentStep = steps.find(step => !step.done && !step.error);
+  const rawProgress = totalSteps > 0 ? Math.round((doneCount / totalSteps) * 100) : 0;
+  const displayProgress = isComplete ? 100 : Math.max(8, rawProgress);
+
   return (
-    <div className="space-y-2" role="status" aria-live="polite" data-testid="spawn-steps">
+    <div className="space-y-3" role="status" aria-live="polite" data-testid="spawn-steps">
+      {totalSteps > 0 && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span>{isComplete ? 'Complete' : hasError ? 'Error' : 'Working…'}</span>
+            <span>{doneCount}/{totalSteps} · {displayProgress}%</span>
+          </div>
+          <div
+            className="relative h-2 w-full rounded-full bg-slate-800/80 overflow-hidden border border-slate-700/50"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={displayProgress}
+          >
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-700",
+                isComplete
+                  ? "bg-emerald-400"
+                  : hasError
+                    ? "bg-red-400"
+                    : "bg-cyan-400 animate-pulse"
+              )}
+              style={{ width: `${displayProgress}%` }}
+            />
+          </div>
+          {!isComplete && !hasError && (
+            <div className="text-[11px] text-slate-500">
+              {currentStep ? `Now: ${currentStep.text}` : 'Working…'} This can take a few minutes for large prompts.
+            </div>
+          )}
+          {hasError && (
+            <div className="text-[11px] text-red-400">An error occurred. Check System Logs.</div>
+          )}
+        </div>
+      )}
       {steps.map((step, i) => (
         <motion.div
           key={i}
@@ -701,20 +755,37 @@ function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId, s
   )
 }
 
-function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange }) {
+function OrchestratorView({
+  onSpawn,
+  loading,
+  result,
+  sessions,
+  savedPrompts,
+  onSavePrompt,
+  onDeletePrompt,
+  onUsePrompt,
+  onDirtyChange,
+  prefillGoal,
+  onPrefillConsumed
+}) {
   const [goal, setGoal] = useState('');
   const [format, setFormat] = useState('universal');
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
   const [spawnSteps, setSpawnSteps] = useState([]);
   const [copied, setCopied] = useState(false);
-  const [savedPrompts, setSavedPrompts] = useState([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [promptTitle, setPromptTitle] = useState('');
   const [justSaved, setJustSaved] = useState(false);
+  const formatMenuRef = useRef(null);
+  const formatButtonRef = useRef(null);
 
-  // Fetch saved prompts on mount
-  useEffect(() => {
-    fetchSavedPrompts();
-  }, []);
+  const formatOptions = [
+    { value: 'universal', label: 'Universal', accent: 'bg-cyan-400/80' },
+    { value: 'chatgpt', label: 'ChatGPT', accent: 'bg-sky-400/80' },
+    { value: 'claude', label: 'Claude', accent: 'bg-amber-400/80' },
+    { value: 'gemini', label: 'Gemini', accent: 'bg-violet-400/80' }
+  ];
+  const currentFormat = formatOptions.find((option) => option.value === format) || formatOptions[0];
 
   useEffect(() => {
     if (onDirtyChange) {
@@ -722,34 +793,50 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
     }
   }, [goal, onDirtyChange]);
 
-  const fetchSavedPrompts = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/prompts`);
-      const data = await res.json();
-      setSavedPrompts(data);
-    } catch (e) {
-      console.error('Failed to fetch saved prompts:', e);
+  useEffect(() => {
+    if (!prefillGoal) return;
+    setGoal(prefillGoal);
+    if (onPrefillConsumed) {
+      onPrefillConsumed();
     }
-  };
+  }, [prefillGoal, onPrefillConsumed]);
+
+  useEffect(() => {
+    if (!formatMenuOpen) return;
+
+    const handleClick = (event) => {
+      if (!formatMenuRef.current) return;
+      if (!formatMenuRef.current.contains(event.target)) {
+        setFormatMenuOpen(false);
+      }
+    };
+
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        setFormatMenuOpen(false);
+        formatButtonRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('mousedown', handleClick);
+    window.addEventListener('touchstart', handleClick);
+    window.addEventListener('keydown', handleKey);
+
+    return () => {
+      window.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('touchstart', handleClick);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [formatMenuOpen]);
 
   const handleSavePrompt = async () => {
     if (!goal) return;
-    try {
-      const res = await fetch(`${API_BASE}/prompts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: promptTitle || 'Untitled', query: goal })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSavedPrompts(prev => [data.prompt, ...prev]);
-        setShowSaveModal(false);
-        setPromptTitle('');
-        setJustSaved(true);
-        setTimeout(() => setJustSaved(false), 2000);
-      }
-    } catch (e) {
-      console.error('Failed to save prompt:', e);
+    const saved = await onSavePrompt?.(promptTitle || 'Untitled', goal);
+    if (saved) {
+      setShowSaveModal(false);
+      setPromptTitle('');
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
     }
   };
 
@@ -760,19 +847,14 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
       return;
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/prompts/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        setSavedPrompts(prev => prev.filter(p => p.id !== id));
-      }
-    } catch (e) {
-      console.error('Failed to delete prompt:', e);
-    }
+    await onDeletePrompt?.(id);
   };
 
   const handleUsePrompt = (query) => {
     setGoal(query);
+    if (onUsePrompt) {
+      onUsePrompt(query);
+    }
   };
 
   const handleSpawn = async () => {
@@ -827,22 +909,81 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
 
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <label htmlFor="goal-input" className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Describe the outcome</label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" ref={formatMenuRef}>
                   <label htmlFor="format-select" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Format</label>
-                  <select
-                    id="format-select"
-                    name="format"
-                    data-testid="format-select"
-                    autoComplete="off"
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value)}
-                    className="bg-slate-900/70 border border-slate-700/60 text-slate-200 text-xs rounded-xl px-3 py-2 focus-visible:outline-none focus-visible:border-cyan-500/40 focus-visible:ring-2 focus-visible:ring-cyan-500/20"
-                  >
-                    <option value="universal">Universal</option>
-                    <option value="chatgpt">ChatGPT</option>
-                    <option value="claude">Claude</option>
-                    <option value="gemini">Gemini</option>
-                  </select>
+                  <div className="relative">
+                    <button
+                      id="format-select"
+                      name="format"
+                      data-testid="format-select"
+                      type="button"
+                      ref={formatButtonRef}
+                      aria-haspopup="listbox"
+                      aria-expanded={formatMenuOpen}
+                      onClick={() => setFormatMenuOpen((open) => !open)}
+                      className={cn(
+                        "group inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-ui",
+                        "bg-slate-900/70 text-slate-200 border-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+                        "hover:border-cyan-500/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/30",
+                        formatMenuOpen ? "border-cyan-500/50 ring-2 ring-cyan-500/15" : ""
+                      )}
+                    >
+                      <span className="relative flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-400/80 shadow-[0_0_8px_rgba(34,211,238,0.7)]"></span>
+                        {currentFormat.label}
+                      </span>
+                      <ChevronDown
+                        size={14}
+                        className={cn(
+                          "transition-transform duration-200 text-slate-400 group-hover:text-cyan-200",
+                          formatMenuOpen ? "rotate-180 text-cyan-200" : ""
+                        )}
+                        aria-hidden="true"
+                      />
+                    </button>
+
+                    <AnimatePresence>
+                      {formatMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                          transition={{ duration: 0.18, ease: "easeOut" }}
+                          className="absolute right-0 mt-2 w-44 rounded-2xl border border-slate-700/70 bg-slate-950/95 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.9)] backdrop-blur-xl p-1.5 z-30"
+                          role="listbox"
+                          aria-label="Format"
+                        >
+                          <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent"></div>
+                          {formatOptions.map((option, index) => (
+                            <motion.button
+                              key={option.value}
+                              type="button"
+                              role="option"
+                              data-testid={`format-option-${option.value}`}
+                              aria-selected={format === option.value}
+                              initial={{ opacity: 0, x: -4 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.03, duration: 0.15 }}
+                              onClick={() => {
+                                setFormat(option.value);
+                                setFormatMenuOpen(false);
+                                formatButtonRef.current?.focus();
+                              }}
+                              className={cn(
+                                "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-ui flex items-center gap-2",
+                                format === option.value
+                                  ? "bg-cyan-500/15 text-cyan-200"
+                                  : "text-slate-200 hover:bg-slate-800/70 hover:text-white"
+                              )}
+                            >
+                              <span className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.35)]", option.accent)}></span>
+                              <span>{option.label}</span>
+                            </motion.button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
               <div className="relative">
@@ -1086,6 +1227,1060 @@ function OrchestratorView({ onSpawn, loading, result, sessions, onDirtyChange })
   );
 }
 
+function MetricCard({ title, value, subtitle, icon: Icon, accent }) {
+  return (
+    <div className="glass-card p-5 rounded-3xl border border-slate-800/60 bg-slate-900/40 shadow-xl">
+      <div className="flex items-center justify-between">
+        <div className={cn("p-3 rounded-2xl", accent.replace('text-', 'bg-').replace('400', '500/10'))}>
+          <Icon size={22} className={accent} aria-hidden="true" />
+        </div>
+        {subtitle && <span className="text-[11px] text-slate-500 uppercase tracking-widest">{subtitle}</span>}
+      </div>
+      <div className="mt-4 text-3xl font-bold text-white tabular-nums">{value}</div>
+      <div className="text-xs uppercase tracking-widest text-slate-500 mt-2">{title}</div>
+    </div>
+  );
+}
+
+function EmptyState({ title, subtitle }) {
+  return (
+    <div className="text-center text-slate-500 py-10 border border-dashed border-slate-800 rounded-3xl">
+      <div className="text-sm font-semibold text-slate-400">{title}</div>
+      {subtitle && <div className="text-xs text-slate-500 mt-1">{subtitle}</div>}
+    </div>
+  );
+}
+
+function HomeView({
+  repos,
+  runs,
+  datasets,
+  evaluations,
+  savedPrompts,
+  sessions,
+  onNavigate,
+  appConfig
+}) {
+  const totalRepos = repos.length;
+  const runCount = runs.length;
+  const datasetCount = datasets.length;
+  const evalCount = evaluations.length;
+  const promptCount = savedPrompts.length;
+  const recentRuns = runs.slice(0, 4);
+  const recentSessions = (sessions || []).slice(0, 4);
+
+  const steps = [
+    { label: 'Confirm repository root', done: Boolean(appConfig?.config?.reposRoot) },
+    { label: 'Add reference repositories', done: totalRepos > 0 },
+    { label: 'Spawn your first agent', done: runCount > 0 },
+    { label: 'Save a prompt to the library', done: promptCount > 0 },
+    { label: 'Create an evaluation dataset', done: datasetCount > 0 }
+  ];
+
+  return (
+    <motion.div
+      key="home"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-8"
+    >
+      <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
+        <div className="glass-panel rounded-3xl p-8 border border-slate-800/60 bg-slate-950/50">
+          <div className="flex items-center gap-3 text-cyan-400 mb-4">
+            <LayoutDashboard size={22} aria-hidden="true" />
+            <span className="text-xs uppercase tracking-[0.3em] text-cyan-300">Command Center</span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tight text-white mb-3">
+            Command Center
+          </h1>
+          <p className="text-slate-400 text-sm leading-relaxed max-w-xl">
+            Operational snapshot of runs, evaluations, and knowledge coverage. Use the quickstart
+            checklist to keep the system production-ready.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onNavigate('agents')}
+              className="px-5 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold text-sm shadow-lg shadow-cyan-500/20 transition-ui"
+            >
+              Start a new run
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('knowledge')}
+              className="px-5 py-3 rounded-2xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 font-semibold text-sm border border-slate-700/60 transition-ui"
+            >
+              Manage knowledge base
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <MetricCard
+            title="Runs"
+            value={runCount}
+            subtitle="Total"
+            icon={Activity}
+            accent="text-emerald-400"
+          />
+          <MetricCard
+            title="Evaluations"
+            value={evalCount}
+            subtitle="Completed"
+            icon={FlaskConical}
+            accent="text-amber-400"
+          />
+          <MetricCard
+            title="Prompts"
+            value={promptCount}
+            subtitle="Library"
+            icon={Library}
+            accent="text-cyan-400"
+          />
+          <MetricCard
+            title="Repos"
+            value={totalRepos}
+            subtitle="Tracked"
+            icon={BookOpen}
+            accent="text-indigo-400"
+          />
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Quickstart</div>
+            <span className="text-[10px] text-slate-500">Keep momentum</span>
+          </div>
+          <div className="space-y-3">
+            {steps.map((step, index) => (
+              <div key={index} className="flex items-center gap-3">
+                <div className={cn(
+                  "w-6 h-6 rounded-full flex items-center justify-center text-xs",
+                  step.done ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-500"
+                )}>
+                  {step.done ? <Check size={14} aria-hidden="true" /> : <span>{index + 1}</span>}
+                </div>
+                <span className={cn("text-sm", step.done ? "text-slate-400" : "text-slate-200")}>{step.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Recent Runs</div>
+            <button
+              type="button"
+              onClick={() => onNavigate('runs')}
+              className="text-[10px] text-cyan-400 uppercase tracking-[0.3em]"
+            >
+              View all
+            </button>
+          </div>
+          {recentRuns.length === 0 ? (
+            <EmptyState title="No runs yet" subtitle="Spawn an agent to populate run history." />
+          ) : (
+            <div className="space-y-3">
+              {recentRuns.map((run) => (
+                <div key={run.id} className="p-3 bg-slate-900/50 rounded-2xl border border-slate-800/60">
+                  <div className="text-sm text-slate-200 truncate">{run.goal}</div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-2">
+                    <span>Quality {run.metrics?.qualityScore ?? '—'}</span>
+                    <span>Duration {formatDuration(run.durationMs)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Recent Sessions</div>
+            <button
+              type="button"
+              onClick={() => onNavigate('agents')}
+              className="text-[10px] text-cyan-400 uppercase tracking-[0.3em]"
+            >
+              Agent Factory
+            </button>
+          </div>
+          {recentSessions.length === 0 ? (
+            <EmptyState title="No sessions yet" subtitle="Sessions appear after each spawn." />
+          ) : (
+            <div className="space-y-3">
+              {recentSessions.map((session) => (
+                <div key={session.id} className="p-3 bg-slate-900/50 rounded-2xl border border-slate-800/60">
+                  <div className="text-sm text-slate-200 truncate">{session.goal}</div>
+                  <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
+                    <Clock size={12} aria-hidden="true" />
+                    {new Date(session.timestamp).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function RunsView({ runs }) {
+  const [selectedId, setSelectedId] = useState(runs[0]?.id || null);
+  const [query, setQuery] = useState('');
+  const [compareId, setCompareId] = useState('');
+
+  useEffect(() => {
+    if (!selectedId && runs.length > 0) {
+      setSelectedId(runs[0].id);
+    }
+  }, [runs, selectedId]);
+
+  const filtered = runs.filter((run) => {
+    const search = query.trim().toLowerCase();
+    if (!search) return true;
+    return (run.goal || '').toLowerCase().includes(search) || (run.agent?.name || '').toLowerCase().includes(search);
+  });
+
+  const selected = filtered.find((run) => run.id === selectedId) || filtered[0];
+  const compareRun = runs.find((run) => run.id === compareId);
+
+  const delta = compareRun && selected
+    ? {
+        quality: (selected.metrics?.qualityScore ?? 0) - (compareRun.metrics?.qualityScore ?? 0),
+        duration: (selected.durationMs ?? 0) - (compareRun.durationMs ?? 0),
+        uncertainty: (selected.metrics?.uncertainty ?? 0) - (compareRun.metrics?.uncertainty ?? 0),
+        resources: (selected.resources?.total ?? 0) - (compareRun.resources?.total ?? 0)
+      }
+    : null;
+
+  const matrix = selected?.decisionMatrix || {};
+  const retrievalGate = matrix.retrievalGate?.enabled ? 'enabled' : 'disabled';
+  const ragFusion = matrix.resourceSelection?.ragFusionUsed ? `used (${matrix.resourceSelection?.ragFusionVariants || 0} variants)` : 'not used';
+  const hyde = matrix.resourceSelection?.hydeUsed ? 'used' : 'not used';
+  const hybrid = matrix.resourceSelection?.hybridUsed ? 'enabled' : 'disabled';
+  const lateInteraction = matrix.resourceSelection?.lateInteractionUsed ? 'used' : 'not used';
+  const llmPolicy = matrix.agentSelection?.rerankPolicy || 'n/a';
+
+  return (
+    <motion.div
+      key="runs"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="grid lg:grid-cols-3 gap-6"
+    >
+      <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50 h-[calc(100vh-220px)] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run History</div>
+          <span className="text-[10px] text-slate-500">{runs.length} total</span>
+        </div>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search runs…"
+          className="mb-4 w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50"
+        />
+        <div className="space-y-3 overflow-y-auto pr-1">
+          {filtered.length === 0 && <EmptyState title="No runs match" subtitle="Adjust your search or spawn a new run." />}
+          {filtered.map((run) => (
+            <button
+              key={run.id}
+              onClick={() => setSelectedId(run.id)}
+              className={cn(
+                "w-full text-left p-3 rounded-2xl border transition-ui",
+                run.id === selected?.id
+                  ? "bg-slate-800/60 border-cyan-500/40"
+                  : "bg-slate-900/40 border-slate-800/60 hover:border-slate-700"
+              )}
+            >
+              <div className="text-sm text-slate-200 truncate">{run.goal}</div>
+              <div className="flex items-center gap-3 text-xs text-slate-500 mt-2">
+                <span>Quality {run.metrics?.qualityScore ?? '—'}</span>
+                <span>{formatDuration(run.durationMs)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="lg:col-span-2 space-y-6">
+        {!selected && (
+          <EmptyState title="Select a run" subtitle="Choose a run from the list to inspect its trace." />
+        )}
+
+        {selected && (
+          <>
+            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run Detail</div>
+                <span className="text-[10px] text-slate-500 font-mono">{selected.id}</span>
+              </div>
+              <div className="text-lg font-semibold text-white leading-snug mb-4">{selected.goal}</div>
+              <div className="grid sm:grid-cols-2 gap-4 text-sm text-slate-300">
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-widest">Agent</div>
+                  <div>{selected.agent?.name || selected.agent?.id || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-widest">Format</div>
+                  <div>{selected.format || 'universal'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-widest">Duration</div>
+                  <div>{formatDuration(selected.durationMs)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-widest">Tokens (est)</div>
+                  <div>{selected.metrics?.tokensEstimated ?? '—'}</div>
+                </div>
+              </div>
+              {selected.metrics?.issues?.length > 0 && (
+                <div className="mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
+                  {selected.metrics.issues.join(' • ')}
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run Comparison</div>
+                <select
+                  value={compareId}
+                  onChange={(e) => setCompareId(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-xs text-slate-200"
+                >
+                  <option value="">Select baseline</option>
+                  {runs.map((run) => (
+                    <option key={run.id} value={run.id}>{(run.goal || 'Untitled run').substring(0, 50)}</option>
+                  ))}
+                </select>
+              </div>
+              {!delta && (
+                <EmptyState title="Pick a baseline run" subtitle="Compare quality, duration, and uncertainty." />
+              )}
+              {delta && (
+                <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                  <div className={cn("p-3 rounded-2xl border", delta.quality >= 0 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200")}>
+                    Quality Δ {delta.quality >= 0 ? '+' : ''}{delta.quality}
+                  </div>
+                  <div className={cn("p-3 rounded-2xl border", delta.duration <= 0 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200")}>
+                    Duration Δ {delta.duration >= 0 ? '+' : ''}{formatDuration(delta.duration)}
+                  </div>
+                  <div className={cn("p-3 rounded-2xl border", delta.uncertainty <= 0 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200")}>
+                    Uncertainty Δ {delta.uncertainty >= 0 ? '+' : ''}{Math.round(delta.uncertainty * 100)}%
+                  </div>
+                  <div className={cn("p-3 rounded-2xl border", delta.resources >= 0 ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200" : "border-slate-700 bg-slate-800/60 text-slate-300")}>
+                    Resources Δ {delta.resources >= 0 ? '+' : ''}{delta.resources}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {selected.git && (
+              <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+                <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Code Context</div>
+                <div className="grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
+                  <div>Branch: <span className="text-slate-100">{selected.git.branch || '—'}</span></div>
+                  <div>Commit: <span className="text-slate-100">{selected.git.commit?.slice(0, 8) || '—'}</span></div>
+                  <div>Status: <span className="text-slate-100">{selected.git.dirty ? 'Dirty' : 'Clean'}</span></div>
+                  <div>Message: <span className="text-slate-100">{selected.git.message || '—'}</span></div>
+                </div>
+                {selected.git.changedFiles?.length > 0 && (
+                  <div className="mt-4 text-xs text-slate-500">
+                    Changed files: {selected.git.changedFiles.slice(0, 6).join(' • ')}
+                  </div>
+                )}
+                {selected.git.diffStat && (
+                  <pre className="mt-4 text-xs text-slate-400 whitespace-pre-wrap bg-slate-900/60 border border-slate-800/60 rounded-2xl p-3">
+                    {selected.git.diffStat}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+              <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Decision Matrix</div>
+              <div className="grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
+                <div>Retrieval gate: <span className="text-slate-100">{retrievalGate}</span></div>
+                <div>RAG-Fusion: <span className="text-slate-100">{ragFusion}</span></div>
+                <div>HyDE fallback: <span className="text-slate-100">{hyde}</span></div>
+                <div>Hybrid retrieval: <span className="text-slate-100">{hybrid}</span></div>
+                <div>Late-interaction rerank: <span className="text-slate-100">{lateInteraction}</span></div>
+                <div>LLM rerank policy: <span className="text-slate-100">{llmPolicy}</span></div>
+                <div>Uncertainty: <span className="text-slate-100">{Math.round((matrix.uncertainty?.score || 0) * 100)}%</span></div>
+                <div>Requires review: <span className="text-slate-100">{selected.metrics?.requiresReview ? 'yes' : 'no'}</span></div>
+              </div>
+            </div>
+
+            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+              <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Trace</div>
+              {selected.trace?.steps?.length ? (
+                <div className="space-y-3">
+                  {selected.trace.steps.map((step, index) => (
+                    <div key={`${step.name}-${index}`} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/60">
+                      <div className="text-sm text-slate-200">{step.name}</div>
+                      {step.data && (
+                        <div className="text-xs text-slate-500 mt-2">
+                          {Object.entries(step.data).map(([key, value]) => (
+                            <span key={key} className="mr-3">{key}: {String(value)}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No trace steps" subtitle="Spawn a new run to populate trace data." />
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function EvaluationsView({
+  datasets,
+  runs,
+  evaluations,
+  templates = [],
+  onCreateDataset,
+  onDeleteDataset,
+  onAddDatasetItem,
+  onCreateEvaluation,
+  onImportDataset
+}) {
+  const [selectedDatasetId, setSelectedDatasetId] = useState(datasets[0]?.id || '');
+  const [datasetName, setDatasetName] = useState('');
+  const [datasetDescription, setDatasetDescription] = useState('');
+  const [itemInput, setItemInput] = useState('');
+  const [itemExpected, setItemExpected] = useState('');
+  const [itemWeight, setItemWeight] = useState('1');
+  const [itemRubric, setItemRubric] = useState('');
+  const [itemExpectedType, setItemExpectedType] = useState('contains');
+  const [evalDatasetId, setEvalDatasetId] = useState('');
+  const [evalRunId, setEvalRunId] = useState('');
+  const [selectedEvaluationId, setSelectedEvaluationId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [compareLeftId, setCompareLeftId] = useState('');
+  const [compareRightId, setCompareRightId] = useState('');
+  const [compareResult, setCompareResult] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const importInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedDatasetId && datasets.length > 0) {
+      setSelectedDatasetId(datasets[0].id);
+    }
+  }, [datasets, selectedDatasetId]);
+
+  useEffect(() => {
+    if (!evalDatasetId && selectedDatasetId) {
+      setEvalDatasetId(selectedDatasetId);
+    }
+  }, [selectedDatasetId, evalDatasetId]);
+
+  useEffect(() => {
+    if (!compareLeftId && evaluations.length > 0) {
+      setCompareLeftId(evaluations[0].id);
+    }
+    if (!compareRightId && evaluations.length > 1) {
+      setCompareRightId(evaluations[1].id);
+    }
+  }, [evaluations, compareLeftId, compareRightId]);
+
+  useEffect(() => {
+    if (compareResult) {
+      setCompareResult(null);
+    }
+  }, [compareLeftId, compareRightId]);
+
+  const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId);
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+
+  const handleCreateDataset = async () => {
+    if (!datasetName.trim()) return;
+    const created = await onCreateDataset?.(datasetName.trim(), datasetDescription.trim());
+    if (created) {
+      setSelectedDatasetId(created.id);
+      setDatasetName('');
+      setDatasetDescription('');
+    }
+  };
+
+  const handleAddItem = async () => {
+    if (!selectedDataset || !itemInput.trim()) return;
+    const added = await onAddDatasetItem?.(selectedDataset.id, {
+      input: itemInput.trim(),
+      expected: itemExpected.trim(),
+      weight: Number(itemWeight) || 1,
+      expectedType: itemExpectedType,
+      rubric: itemRubric.trim()
+    });
+    if (added) {
+      setItemInput('');
+      setItemExpected('');
+      setItemWeight('1');
+      setItemRubric('');
+      setItemExpectedType('contains');
+    }
+  };
+
+  const handleTemplateApply = () => {
+    if (!selectedTemplate) return;
+    if (selectedTemplate.rubric) {
+      setItemRubric(selectedTemplate.rubric);
+    }
+    if (selectedTemplate.expectedType) {
+      setItemExpectedType(selectedTemplate.expectedType);
+    }
+  };
+
+  const handleExportDataset = async () => {
+    if (!selectedDataset) return;
+    try {
+      const res = await fetch(`${API_BASE}/datasets/${selectedDataset.id}/export`);
+      const data = await res.json();
+      const payload = data.dataset || data;
+      if (!payload) return;
+      const safeName = (payload.name || 'dataset').replace(/[^a-z0-9-_]+/gi, '_');
+      const blob = new Blob([JSON.stringify({ dataset: payload }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${safeName}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Failed to export dataset:', e);
+    }
+  };
+
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = parsed.dataset || parsed;
+      const created = await onImportDataset?.(payload);
+      if (created) {
+        setSelectedDatasetId(created.id);
+      }
+    } catch (e) {
+      console.error('Failed to import dataset:', e);
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleCreateEvaluation = async () => {
+    if (!evalDatasetId || !evalRunId) return;
+    const created = await onCreateEvaluation?.(evalDatasetId, evalRunId);
+    if (created) {
+      setSelectedEvaluationId(created.id);
+    }
+  };
+
+  const handleCompareEvaluations = async () => {
+    if (!compareLeftId || !compareRightId) return;
+    setCompareLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/evaluations/compare?left=${encodeURIComponent(compareLeftId)}&right=${encodeURIComponent(compareRightId)}`);
+      const data = await res.json();
+      if (res.ok) {
+        setCompareResult(data);
+      } else {
+        console.error(data?.error || 'Failed to compare evaluations');
+      }
+    } catch (e) {
+      console.error('Failed to compare evaluations:', e);
+    }
+    setCompareLoading(false);
+  };
+
+  const selectedEvaluation = evaluations.find((evaluation) => evaluation.id === selectedEvaluationId);
+  const deltaScore = compareResult?.delta?.score ?? 0;
+  const deltaPassRate = compareResult?.delta?.passRate ?? 0;
+  const deltaItemCount = compareResult?.delta?.itemCount ?? 0;
+
+  const handleDeleteSelected = async () => {
+    if (!selectedDataset) return;
+    const label = selectedDataset.name ? `“${selectedDataset.name}”` : 'this dataset';
+    if (!window.confirm(`Delete ${label}?`)) return;
+    await onDeleteDataset?.(selectedDataset.id);
+  };
+
+  return (
+    <motion.div
+      key="evaluations"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="grid lg:grid-cols-3 gap-6"
+    >
+      <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50 space-y-5">
+        <div>
+          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Datasets</div>
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            {datasets.length === 0 && <EmptyState title="No datasets yet" subtitle="Create one to start evaluations." />}
+            {datasets.map((dataset) => (
+              <button
+                key={dataset.id}
+                onClick={() => setSelectedDatasetId(dataset.id)}
+                className={cn(
+                  "w-full text-left p-3 rounded-2xl border transition-ui",
+                  dataset.id === selectedDatasetId
+                    ? "bg-slate-800/60 border-cyan-500/40"
+                    : "bg-slate-900/40 border-slate-800/60 hover:border-slate-700"
+                )}
+              >
+                <div className="text-sm text-slate-200 truncate">{dataset.name}</div>
+                <div className="text-xs text-slate-500 mt-1">{dataset.items?.length || 0} items</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Create Dataset</div>
+          <input
+            type="text"
+            value={datasetName}
+            onChange={(e) => setDatasetName(e.target.value)}
+            placeholder="Dataset name"
+            className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+          />
+          <textarea
+            value={datasetDescription}
+            onChange={(e) => setDatasetDescription(e.target.value)}
+            placeholder="Description (optional)"
+            rows={3}
+            className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+          />
+          <button
+            type="button"
+            onClick={handleCreateDataset}
+            className="w-full py-2 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold text-sm"
+          >
+            Create dataset
+          </button>
+        </div>
+      </div>
+
+      <div className="lg:col-span-2 space-y-6">
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Dataset Detail</div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportDataset}
+                disabled={!selectedDataset}
+                className="text-xs px-3 py-1 rounded-full border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 disabled:opacity-50"
+              >
+                Export
+              </button>
+              <button
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+                className="text-xs px-3 py-1 rounded-full border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+              >
+                Import
+              </button>
+              {selectedDataset && (
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          {!selectedDataset ? (
+            <EmptyState title="Select a dataset" subtitle="Choose one from the list to add items." />
+          ) : (
+            <>
+              <div className="mb-4">
+                <div className="text-lg font-semibold text-white">{selectedDataset.name}</div>
+                <div className="text-sm text-slate-400 mt-1">{selectedDataset.description || 'No description provided.'}</div>
+              </div>
+              <div className="grid md:grid-cols-4 gap-4 mb-4">
+                <input
+                  type="text"
+                  value={itemInput}
+                  onChange={(e) => setItemInput(e.target.value)}
+                  placeholder="Prompt / input"
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                />
+                <input
+                  type="text"
+                  value={itemExpected}
+                  onChange={(e) => setItemExpected(e.target.value)}
+                  placeholder="Expected text or regex:..."
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                />
+                <select
+                  value={itemExpectedType}
+                  onChange={(e) => setItemExpectedType(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                >
+                  <option value="contains">Contains</option>
+                  <option value="regex">Regex</option>
+                  <option value="llm">LLM Rubric</option>
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={itemWeight}
+                  onChange={(e) => setItemWeight(e.target.value)}
+                  placeholder="Weight"
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 min-w-[220px]"
+                >
+                  <option value="">Rubric template (optional)</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleTemplateApply}
+                  disabled={!selectedTemplate}
+                  className="px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm border border-slate-700/60 disabled:opacity-50"
+                >
+                  Use template
+                </button>
+                {selectedTemplate && (
+                  <span className="text-xs text-slate-500">{selectedTemplate.description}</span>
+                )}
+              </div>
+              <textarea
+                value={itemRubric}
+                onChange={(e) => setItemRubric(e.target.value)}
+                placeholder="Optional rubric (used by LLM grader)"
+                rows={3}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 mb-4"
+              />
+              <button
+                type="button"
+                onClick={handleAddItem}
+                className="mb-4 px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm border border-slate-700/60"
+              >
+                Add item
+              </button>
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {(selectedDataset.items || []).length === 0 && (
+                  <EmptyState title="No items yet" subtitle="Add prompts to make this dataset usable." />
+                )}
+                {(selectedDataset.items || []).map((item) => (
+                  <div key={item.id} className="p-3 rounded-2xl bg-slate-900/50 border border-slate-800/60">
+                    <div className="text-sm text-slate-200 truncate">{item.input}</div>
+                    {item.expected && <div className="text-xs text-slate-500 mt-1 truncate">Expected: {item.expected}</div>}
+                    {item.expectedType && (
+                      <div className="text-[10px] text-slate-600 mt-1">Type: {item.expectedType}</div>
+                    )}
+                    {item.rubric && (
+                      <div className="text-[10px] text-slate-600 mt-1 truncate">Rubric: {item.rubric}</div>
+                    )}
+                    {item.weight && <div className="text-[10px] text-slate-600 mt-1">Weight: {item.weight}</div>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Run Evaluation</div>
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            <select
+              value={evalDatasetId}
+              onChange={(e) => setEvalDatasetId(e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+            >
+              <option value="">Select dataset</option>
+              {datasets.map((dataset) => (
+                <option key={dataset.id} value={dataset.id}>{dataset.name}</option>
+              ))}
+            </select>
+            <select
+              value={evalRunId}
+              onChange={(e) => setEvalRunId(e.target.value)}
+              className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+            >
+              <option value="">Select run</option>
+              {runs.map((run) => (
+                <option key={run.id} value={run.id}>{(run.goal || 'Untitled run').substring(0, 60)}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleCreateEvaluation}
+            disabled={!evalDatasetId || !evalRunId}
+            className="px-4 py-2 rounded-2xl bg-emerald-500/90 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 text-sm font-semibold transition-ui"
+          >
+            Create evaluation
+          </button>
+          <div className="mt-6 space-y-3">
+            {evaluations.length === 0 && <EmptyState title="No evaluations yet" subtitle="Create one to capture scores." />}
+            {evaluations.map((evaluation) => (
+              <button
+                key={evaluation.id}
+                type="button"
+                onClick={() => setSelectedEvaluationId(evaluation.id)}
+                className={cn(
+                  "w-full text-left p-3 rounded-2xl border transition-ui",
+                  evaluation.id === selectedEvaluationId
+                    ? "border-cyan-500/40 bg-slate-800/60"
+                    : "border-slate-800/60 bg-slate-900/50 hover:border-slate-700"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm text-slate-200">{evaluation.name}</div>
+                  <span className={cn(
+                    "text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border",
+                    evaluation.status === 'pass'
+                      ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                      : evaluation.status === 'warn'
+                        ? "border-amber-500/40 text-amber-300 bg-amber-500/10"
+                        : evaluation.status === 'fail'
+                          ? "border-red-500/40 text-red-300 bg-red-500/10"
+                          : "border-slate-700 text-slate-400 bg-slate-800/60"
+                  )}>
+                    {evaluation.status || 'needs-review'}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Score {evaluation.metrics?.score ?? '—'} · Pass {Math.round((evaluation.metrics?.passRate || 0) * 100)}% · Items {evaluation.metrics?.itemCount ?? 0}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-6">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-3">Compare Evaluations</div>
+            <div className="grid md:grid-cols-2 gap-4 mb-3">
+              <select
+                value={compareLeftId}
+                onChange={(e) => setCompareLeftId(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              >
+                <option value="">Left evaluation</option>
+                {evaluations.map((evaluation) => (
+                  <option key={evaluation.id} value={evaluation.id}>{evaluation.name}</option>
+                ))}
+              </select>
+              <select
+                value={compareRightId}
+                onChange={(e) => setCompareRightId(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              >
+                <option value="">Right evaluation</option>
+                {evaluations.map((evaluation) => (
+                  <option key={evaluation.id} value={evaluation.id}>{evaluation.name}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleCompareEvaluations}
+              disabled={!compareLeftId || !compareRightId || compareLeftId === compareRightId || compareLoading}
+              className="px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm border border-slate-700/60 disabled:opacity-50"
+            >
+              {compareLoading ? 'Comparing…' : 'Compare'}
+            </button>
+            <div className="text-[10px] text-slate-500 mt-2">Delta = right − left</div>
+            {evaluations.length < 2 && (
+              <div className="text-xs text-slate-500 mt-3">Add at least two evaluations to compare results.</div>
+            )}
+            {compareResult && (
+              <div className="mt-4 grid md:grid-cols-3 gap-3 text-xs">
+                <div className={cn(
+                  "p-3 rounded-xl border",
+                  deltaScore >= 0
+                    ? "border-emerald-500/30 text-emerald-300 bg-emerald-500/10"
+                    : "border-red-500/30 text-red-300 bg-red-500/10"
+                )}>
+                  Score Δ {deltaScore >= 0 ? '+' : ''}{deltaScore.toFixed(2)}
+                </div>
+                <div className={cn(
+                  "p-3 rounded-xl border",
+                  deltaPassRate >= 0
+                    ? "border-emerald-500/30 text-emerald-300 bg-emerald-500/10"
+                    : "border-red-500/30 text-red-300 bg-red-500/10"
+                )}>
+                  Pass Rate Δ {deltaPassRate >= 0 ? '+' : ''}{Math.round(deltaPassRate * 100)}%
+                </div>
+                <div className="p-3 rounded-xl border border-slate-700 text-slate-300 bg-slate-800/60">
+                  Items Δ {deltaItemCount >= 0 ? '+' : ''}{deltaItemCount}
+                </div>
+              </div>
+            )}
+          </div>
+          {selectedEvaluation && (
+            <div className="mt-6">
+              <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-3">Per-item grading</div>
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {(selectedEvaluation.items || []).length === 0 && (
+                  <EmptyState title="No item results" subtitle="Evaluation details not available." />
+                )}
+                {(selectedEvaluation.items || []).map((item) => (
+                  <div key={item.id} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/60">
+                    <div className="flex items-center justify-between text-sm text-slate-200">
+                      <span className="truncate">{item.input}</span>
+                      <span className={cn(
+                        "text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border",
+                        item.status === 'pass'
+                          ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                          : item.status === 'fail'
+                            ? "border-red-500/40 text-red-300 bg-red-500/10"
+                            : "border-amber-500/40 text-amber-300 bg-amber-500/10"
+                      )}>
+                        {item.status}
+                      </span>
+                    </div>
+                    {item.expected && (
+                      <div className="text-xs text-slate-500 mt-1 truncate">Expected: {item.expected}</div>
+                    )}
+                    <div className="text-[10px] text-slate-500 mt-2">
+                      Score {Math.round((item.score || 0) * 100)} · Weight {item.weight || 1} · {item.method}
+                    </div>
+                    {item.notes && (
+                      <div className="text-[10px] text-slate-500 mt-2">Notes: {item.notes}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function LibraryView({
+  savedPrompts,
+  agents,
+  tools,
+  onDeletePrompt,
+  onUsePrompt
+}) {
+  const handleDeletePrompt = (prompt) => {
+    const label = prompt?.title ? `“${prompt.title}”` : 'this prompt';
+    if (!window.confirm(`Delete ${label}?`)) return;
+    onDeletePrompt?.(prompt.id);
+  };
+
+  return (
+    <motion.div
+      key="library"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-6"
+    >
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="text-xs uppercase tracking-[0.3em] text-amber-300 font-bold mb-4">Saved Prompts</div>
+          {savedPrompts.length === 0 && (
+            <EmptyState title="No prompts saved" subtitle="Save prompts from Agent Factory." />
+          )}
+          <div className="space-y-3">
+            {savedPrompts.map((prompt) => (
+              <div key={prompt.id} className="p-3 rounded-2xl bg-slate-900/50 border border-slate-800/60">
+                <div className="text-sm text-slate-200 truncate">{prompt.title}</div>
+                <div className="text-xs text-slate-500 mt-1 truncate">{prompt.query}</div>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => onUsePrompt?.(prompt.query)}
+                    className="text-xs px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30"
+                  >
+                    Use
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePrompt(prompt)}
+                    className="text-xs px-3 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/30"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="text-xs uppercase tracking-[0.3em] text-cyan-300 font-bold mb-4">Agent Templates</div>
+          {agents.length === 0 && (
+            <EmptyState title="No agent templates" subtitle="Add templates in your reference repos." />
+          )}
+          <div className="space-y-3">
+            {agents.map((agent) => (
+              <div key={agent.id} className="p-3 rounded-2xl bg-slate-900/50 border border-slate-800/60">
+                <div className="text-sm text-slate-200">{agent.name}</div>
+                <div className="text-xs text-slate-500 mt-1">{agent.description}</div>
+                {agent.keywords?.length > 0 && (
+                  <div className="text-[10px] text-slate-500 mt-2">
+                    {agent.keywords.slice(0, 4).join(' • ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+          <div className="text-xs uppercase tracking-[0.3em] text-emerald-300 font-bold mb-4">Tools & Utilities</div>
+          {tools.length === 0 && (
+            <EmptyState title="No tools detected" subtitle="Add tools in the reference repos tools folder." />
+          )}
+          <div className="space-y-3">
+            {tools.map((tool) => (
+              <div key={tool.id || tool.name} className="p-3 rounded-2xl bg-slate-900/50 border border-slate-800/60">
+                <div className="text-sm text-slate-200">{tool.name}</div>
+                <div className="text-xs text-slate-500 mt-1">{tool.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function RepoRow({ repo, delay }) {
   const getIcon = (purpose) => {
     const p = purpose?.toLowerCase() || '';
@@ -1230,9 +2425,17 @@ function App() {
   const [repoNotice, setRepoNotice] = useState(null);
   const repoNoticeTimeoutRef = useRef(null);
   const [logs, setLogs] = useState([]);
-  const [view, setView] = useState('agents');
+  const [view, setView] = useState('home');
   const [spawnResult, setSpawnResult] = useState('');
   const [dirtyGoal, setDirtyGoal] = useState(false);
+  const [runs, setRuns] = useState([]);
+  const [datasets, setDatasets] = useState([]);
+  const [evaluations, setEvaluations] = useState([]);
+  const [agents, setAgents] = useState([]);
+  const [tools, setTools] = useState([]);
+  const [savedPrompts, setSavedPrompts] = useState([]);
+  const [prefillGoal, setPrefillGoal] = useState('');
+  const [evaluationTemplates, setEvaluationTemplates] = useState([]);
 
   // New state for config/setup
   const [appConfig, setAppConfig] = useState(null);
@@ -1243,7 +2446,11 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    const normalizedView = urlView === 'dashboard' ? 'repos' : urlView;
+    const normalizedView = urlView === 'dashboard'
+      ? 'home'
+      : urlView === 'repos' || urlView === 'repositories'
+        ? 'knowledge'
+        : urlView;
     if (normalizedView && VIEW_KEYS.includes(normalizedView)) {
       setView(normalizedView);
     }
@@ -1345,6 +2552,13 @@ function App() {
   const fetchData = () => {
     fetchRepos();
     fetchCategories();
+    fetchRuns();
+    fetchDatasets();
+    fetchEvaluations();
+    fetchAgents();
+    fetchTools();
+    fetchSavedPrompts();
+    fetchEvaluationTemplates();
   };
 
   const fetchSessions = async () => {
@@ -1354,6 +2568,76 @@ function App() {
       setSessions(data);
     } catch (e) {
       console.error('Failed to fetch sessions:', e);
+    }
+  };
+
+  const fetchRuns = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/runs`);
+      const data = await res.json();
+      setRuns(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch runs:', e);
+    }
+  };
+
+  const fetchDatasets = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/datasets`);
+      const data = await res.json();
+      setDatasets(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch datasets:', e);
+    }
+  };
+
+  const fetchEvaluations = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/evaluations`);
+      const data = await res.json();
+      setEvaluations(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch evaluations:', e);
+    }
+  };
+
+  const fetchAgents = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/agents`);
+      const data = await res.json();
+      setAgents(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch agents:', e);
+    }
+  };
+
+  const fetchTools = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/tools`);
+      const data = await res.json();
+      setTools(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch tools:', e);
+    }
+  };
+
+  const fetchSavedPrompts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/prompts`);
+      const data = await res.json();
+      setSavedPrompts(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch saved prompts:', e);
+    }
+  };
+
+  const fetchEvaluationTemplates = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/evaluation-templates`);
+      const data = await res.json();
+      setEvaluationTemplates(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch evaluation templates:', e);
     }
   };
 
@@ -1408,6 +2692,125 @@ function App() {
       console.error(e);
       setStatus('Offline');
     }
+  };
+
+  const savePrompt = async (title, query) => {
+    if (!query) return null;
+    try {
+      const res = await fetch(`${API_BASE}/prompts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, query })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSavedPrompts(prev => [data.prompt, ...prev]);
+        return data.prompt;
+      }
+    } catch (e) {
+      console.error('Failed to save prompt:', e);
+    }
+    return null;
+  };
+
+  const deletePrompt = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/prompts/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setSavedPrompts(prev => prev.filter(prompt => prompt.id !== id));
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to delete prompt:', e);
+    }
+    return false;
+  };
+
+  const createDataset = async (name, description) => {
+    try {
+      const res = await fetch(`${API_BASE}/datasets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDatasets(prev => [data.dataset, ...prev]);
+        return data.dataset;
+      }
+    } catch (e) {
+      console.error('Failed to create dataset:', e);
+    }
+    return null;
+  };
+
+  const deleteDataset = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/datasets/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setDatasets(prev => prev.filter(dataset => dataset.id !== id));
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to delete dataset:', e);
+    }
+    return false;
+  };
+
+  const addDatasetItem = async (datasetId, item) => {
+    try {
+      const res = await fetch(`${API_BASE}/datasets/${datasetId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchDatasets();
+        return data.item;
+      }
+    } catch (e) {
+      console.error('Failed to add dataset item:', e);
+    }
+    return null;
+  };
+
+  const createEvaluation = async (datasetId, runId) => {
+    try {
+      const res = await fetch(`${API_BASE}/evaluations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ datasetId, runId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEvaluations(prev => [data.evaluation, ...prev]);
+        return data.evaluation;
+      }
+    } catch (e) {
+      console.error('Failed to create evaluation:', e);
+    }
+    return null;
+  };
+
+  const importDataset = async (datasetPayload) => {
+    try {
+      const res = await fetch(`${API_BASE}/datasets/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset: datasetPayload })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDatasets(prev => [data.dataset, ...prev]);
+        return data.dataset;
+      }
+    } catch (e) {
+      console.error('Failed to import dataset:', e);
+    }
+    return null;
   };
 
   const handleScan = async () => {
@@ -1507,6 +2910,7 @@ function App() {
           body: JSON.stringify({ goal, agent: 'std-agent', output: data.output, format })
         });
         fetchSessions();
+        fetchRuns();
       } else {
         addLog(`Spawn Error: ${data.error}`);
       }
@@ -1550,12 +2954,28 @@ function App() {
   });
 
   const viewMeta = {
+    home: {
+      title: 'Command Center',
+      subtitle: 'Operational overview of runs, evaluations, and knowledge coverage.'
+    },
     agents: {
       title: 'Agent Factory',
       subtitle: 'Spawn specialized autonomous agents using natural language.'
     },
-    repos: {
-      title: 'Repositories',
+    runs: {
+      title: 'Run Explorer',
+      subtitle: 'Inspect decision matrices, traces, and performance signals.'
+    },
+    evaluations: {
+      title: 'Evaluations',
+      subtitle: 'Create datasets and score runs against them.'
+    },
+    library: {
+      title: 'Library',
+      subtitle: 'Prompts, agent templates, and reusable assets.'
+    },
+    knowledge: {
+      title: 'Knowledge Base',
       subtitle: 'Scan, add, and manage reference repos.'
     },
     logs: {
@@ -1568,8 +2988,8 @@ function App() {
     }
   };
 
-  const headerMeta = viewMeta[view] || viewMeta.repos;
-  const showHeader = view !== 'agents';
+  const headerMeta = viewMeta[view] || viewMeta.home;
+  const showHeader = !['agents', 'home'].includes(view);
   const handleViewChange = (nextView) => {
     if (nextView === view) return;
     if (dirtyGoal && view === 'agents') {
@@ -1578,6 +2998,15 @@ function App() {
       setDirtyGoal(false);
     }
     setView(nextView);
+  };
+
+  const handleLibraryUsePrompt = (query) => {
+    setPrefillGoal(query);
+    handleViewChange('agents');
+  };
+
+  const handlePrefillConsumed = () => {
+    setPrefillGoal('');
   };
 
   return (
@@ -1608,6 +3037,14 @@ function App() {
 
           <div className="space-y-3">
             <NavItem
+              icon={LayoutDashboard}
+              label="Command Center"
+              active={view === 'home'}
+              href="?view=home"
+              onClick={() => handleViewChange('home')}
+              testId="nav-home"
+            />
+            <NavItem
               icon={Cpu}
               label="Agent Factory"
               active={view === 'agents'}
@@ -1616,13 +3053,40 @@ function App() {
               testId="nav-agents"
             />
             <NavItem
-              icon={GitBranch}
-              label="Repositories"
+              icon={Activity}
+              label="Runs"
+              badge={runs.length}
+              active={view === 'runs'}
+              href="?view=runs"
+              onClick={() => handleViewChange('runs')}
+              testId="nav-runs"
+            />
+            <NavItem
+              icon={FlaskConical}
+              label="Evaluations"
+              badge={evaluations.length}
+              active={view === 'evaluations'}
+              href="?view=evaluations"
+              onClick={() => handleViewChange('evaluations')}
+              testId="nav-evaluations"
+            />
+            <NavItem
+              icon={Library}
+              label="Library"
+              badge={savedPrompts.length}
+              active={view === 'library'}
+              href="?view=library"
+              onClick={() => handleViewChange('library')}
+              testId="nav-library"
+            />
+            <NavItem
+              icon={BookOpen}
+              label="Knowledge Base"
               badge={repos.length}
-              active={view === 'repos'}
-              href="?view=repos"
-              onClick={() => handleViewChange('repos')}
-              testId="nav-repos"
+              active={view === 'knowledge'}
+              href="?view=knowledge"
+              onClick={() => handleViewChange('knowledge')}
+              testId="nav-knowledge"
             />
             <NavItem
               icon={Terminal}
@@ -1670,19 +3134,66 @@ function App() {
 
         {/* Content Views */}
         <AnimatePresence mode="wait">
+          {view === 'home' && (
+            <HomeView
+              repos={repos}
+              runs={runs}
+              datasets={datasets}
+              evaluations={evaluations}
+              savedPrompts={savedPrompts}
+              sessions={sessions}
+              onNavigate={handleViewChange}
+              appConfig={appConfig}
+            />
+          )}
+
           {view === 'agents' && (
             <OrchestratorView
               onSpawn={handleSpawn}
               loading={loading}
               result={spawnResult}
               sessions={sessions}
+              savedPrompts={savedPrompts}
+              onSavePrompt={savePrompt}
+              onDeletePrompt={deletePrompt}
+              onUsePrompt={() => {}}
               onDirtyChange={setDirtyGoal}
+              prefillGoal={prefillGoal}
+              onPrefillConsumed={handlePrefillConsumed}
             />
           )}
 
-          {view === 'repos' && (
+          {view === 'runs' && (
+            <RunsView runs={runs} />
+          )}
+
+          {view === 'evaluations' && (
+            <EvaluationsView
+              datasets={datasets}
+              runs={runs}
+              evaluations={evaluations}
+              templates={evaluationTemplates}
+              onCreateDataset={createDataset}
+              onDeleteDataset={deleteDataset}
+              onAddDatasetItem={addDatasetItem}
+              onCreateEvaluation={createEvaluation}
+              onImportDataset={importDataset}
+            />
+          )}
+
+          {view === 'library' && (
+            <LibraryView
+              savedPrompts={savedPrompts}
+              agents={agents}
+              tools={tools}
+              onDeletePrompt={deletePrompt}
+              onUsePrompt={handleLibraryUsePrompt}
+            />
+          )}
+
+          {view === 'knowledge' && (
             <motion.div
-              key="repos"
+              key="knowledge"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}

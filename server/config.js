@@ -9,6 +9,7 @@ const os = require('os');
 
 // Config file location (in project root)
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
+const PROMPTS_PATH = path.join(__dirname, '..', 'saved_prompts.json');
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -35,6 +36,26 @@ const DEFAULT_CONFIG = {
       noResourceKeywordCount: 0,
       lowConfidenceThreshold: 0.35
     },
+    retrievalGate: {
+      enabled: true,
+      minKeywordCount: 2,
+      minGoalTokens: 4,
+      skipIntents: [],
+      forceIntents: ['research', 'analysis', 'documentation'],
+      disablePatterns: [
+        '\\bno\\s+retrieval\\b',
+        '\\bno\\s+references?\\b',
+        '\\bno\\s+sources?\\b',
+        '\\bno\\s+research\\b',
+        '\\bjust\\s+answer\\b'
+      ],
+      forcePatterns: [
+        '\\bresearch\\b',
+        '\\bcompare\\b',
+        '\\bbenchmark\\b',
+        '\\bliterature\\b'
+      ]
+    },
     uncertainty: {
       requiresReviewThreshold: 0.6,
       highComplexityPenalty: 0.1,
@@ -42,6 +63,41 @@ const DEFAULT_CONFIG = {
       lowTechPenalty: 0.12,
       shortGoalPenalty: 0.08,
       minKeywordCount: 2
+    },
+    ragFusion: {
+      enabled: true,
+      k: 60,
+      weight: 0.5,
+      includeOriginal: true,
+      maxVariants: 4
+    },
+    hyde: {
+      enabled: true,
+      mode: 'fallback',
+      minResults: 2,
+      minScore: 0.3
+    },
+    hybridRetrieval: {
+      enabled: true,
+      semanticWeight: 0.35,
+      minSemanticScore: 0.05
+    },
+    lateInteraction: {
+      enabled: true,
+      topK: 8,
+      weight: 0.35,
+      minScore: 0.15
+    },
+    llmRerank: {
+      mode: 'lowConfidence',
+      minUncertainty: 0.55,
+      minTopScore: 0.32,
+      minResourceCount: 3,
+      allowWhenAmbiguous: true,
+      allowWhenLowConfidence: true
+    },
+    performance: {
+      slowRunMs: 20000
     },
     rrf: {
       enabled: true,
@@ -62,6 +118,13 @@ const DEFAULT_CONFIG = {
     temperature: 0.1,
     maxTokens: 400,
     topN: 6
+  },
+  evaluation: {
+    passThreshold: 0.75,
+    warnThreshold: 0.6,
+    maxOutputChars: 120000,
+    llmGraderEnabled: true,
+    llmMaxItems: 12
   },
   // Analytics
   analytics: {
@@ -261,6 +324,10 @@ function getConfig() {
   config.llm = {
     ...DEFAULT_CONFIG.llm,
     ...(config.llm || {})
+  };
+  config.evaluation = {
+    ...DEFAULT_CONFIG.evaluation,
+    ...(config.evaluation || {})
   };
 
   // Environment variable overrides
@@ -517,20 +584,48 @@ function getAnalytics() {
   };
 }
 
+function loadPromptsFromFile() {
+  if (!fs.existsSync(PROMPTS_PATH)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(PROMPTS_PATH, 'utf8'));
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.error('Error loading saved prompts:', e.message);
+    return null;
+  }
+}
+
+function savePromptsToFile(prompts) {
+  try {
+    fs.writeFileSync(PROMPTS_PATH, JSON.stringify(prompts, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('Error saving prompts:', e.message);
+    return false;
+  }
+}
+
 /**
  * Get all saved prompts
  */
 function getSavedPrompts() {
+  const fromFile = loadPromptsFromFile();
+  if (fromFile) return fromFile;
+
   const config = loadConfig();
-  return config.savedPrompts || [];
+  const legacy = config.savedPrompts || [];
+  if (legacy.length > 0) {
+    savePromptsToFile(legacy);
+    return legacy;
+  }
+  return [];
 }
 
 /**
  * Save a new prompt
  */
 function savePrompt(title, query) {
-  const config = loadConfig();
-  if (!config.savedPrompts) config.savedPrompts = [];
+  const prompts = getSavedPrompts();
 
   const newPrompt = {
     id: Date.now().toString(),
@@ -539,8 +634,8 @@ function savePrompt(title, query) {
     createdAt: new Date().toISOString()
   };
 
-  config.savedPrompts.unshift(newPrompt); // Add to beginning
-  saveConfig(config);
+  prompts.unshift(newPrompt); // Add to beginning
+  savePromptsToFile(prompts);
   return newPrompt;
 }
 
@@ -548,34 +643,32 @@ function savePrompt(title, query) {
  * Update an existing prompt
  */
 function updatePrompt(id, updates) {
-  const config = loadConfig();
-  if (!config.savedPrompts) return null;
+  const prompts = getSavedPrompts();
 
-  const index = config.savedPrompts.findIndex(p => p.id === id);
+  const index = prompts.findIndex(p => p.id === id);
   if (index === -1) return null;
 
-  config.savedPrompts[index] = {
-    ...config.savedPrompts[index],
+  prompts[index] = {
+    ...prompts[index],
     ...updates,
     updatedAt: new Date().toISOString()
   };
 
-  saveConfig(config);
-  return config.savedPrompts[index];
+  savePromptsToFile(prompts);
+  return prompts[index];
 }
 
 /**
  * Delete a saved prompt
  */
 function deletePrompt(id) {
-  const config = loadConfig();
-  if (!config.savedPrompts) return false;
+  const prompts = getSavedPrompts();
 
-  const initialLength = config.savedPrompts.length;
-  config.savedPrompts = config.savedPrompts.filter(p => p.id !== id);
+  const initialLength = prompts.length;
+  const next = prompts.filter(p => p.id !== id);
 
-  if (config.savedPrompts.length < initialLength) {
-    saveConfig(config);
+  if (next.length < initialLength) {
+    savePromptsToFile(next);
     return true;
   }
   return false;

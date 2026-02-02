@@ -22,6 +22,26 @@
       "noResourceKeywordCount": 0,
       "lowConfidenceThreshold": 0.35
     },
+    "retrievalGate": {
+      "enabled": true,
+      "minKeywordCount": 2,
+      "minGoalTokens": 4,
+      "skipIntents": [],
+      "forceIntents": ["research", "analysis", "documentation"],
+      "disablePatterns": [
+        "\\bno\\s+retrieval\\b",
+        "\\bno\\s+references?\\b",
+        "\\bno\\s+sources?\\b",
+        "\\bno\\s+research\\b",
+        "\\bjust\\s+answer\\b"
+      ],
+      "forcePatterns": [
+        "\\bresearch\\b",
+        "\\bcompare\\b",
+        "\\bbenchmark\\b",
+        "\\bliterature\\b"
+      ]
+    },
     "uncertainty": {
       "requiresReviewThreshold": 0.6,
       "highComplexityPenalty": 0.1,
@@ -29,6 +49,41 @@
       "lowTechPenalty": 0.12,
       "shortGoalPenalty": 0.08,
       "minKeywordCount": 2
+    },
+    "ragFusion": {
+      "enabled": true,
+      "k": 60,
+      "weight": 0.5,
+      "includeOriginal": true,
+      "maxVariants": 4
+    },
+    "hyde": {
+      "enabled": true,
+      "mode": "fallback",
+      "minResults": 2,
+      "minScore": 0.3
+    },
+    "hybridRetrieval": {
+      "enabled": true,
+      "semanticWeight": 0.35,
+      "minSemanticScore": 0.05
+    },
+    "lateInteraction": {
+      "enabled": true,
+      "topK": 8,
+      "weight": 0.35,
+      "minScore": 0.15
+    },
+    "llmRerank": {
+      "mode": "lowConfidence",
+      "minUncertainty": 0.55,
+      "minTopScore": 0.32,
+      "minResourceCount": 3,
+      "allowWhenAmbiguous": true,
+      "allowWhenLowConfidence": true
+    },
+    "performance": {
+      "slowRunMs": 20000
     },
     "rrf": {
       "enabled": true,
@@ -49,6 +104,13 @@
     "temperature": 0.1,
     "maxTokens": 400,
     "topN": 6
+  },
+  "evaluation": {
+    "passThreshold": 0.75,
+    "warnThreshold": 0.6,
+    "maxOutputChars": 120000,
+    "llmGraderEnabled": true,
+    "llmMaxItems": 12
   },
   "analytics": {
     "enabled": true,

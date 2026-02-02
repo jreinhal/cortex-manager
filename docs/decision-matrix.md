@@ -16,8 +16,13 @@ This document defines the selection pipeline for CORTEX. It blends a determinist
 
 ## Deterministic Baseline
 
+### Retrieval Gate
+Before any retrieval, CORTEX applies a query‑classification gate:
+- Skip retrieval if the goal is too vague (low keyword/tech signals) or the user explicitly opts out.
+- Force retrieval for research/analysis intents or explicit research phrasing.
+
 ### Query Expansion + Routing
-We expand goals deterministically (synonyms + reformulations) and compute an expanded keyword set. This improves recall without requiring any model calls.
+We expand goals deterministically (synonyms + reformulations) and compute an expanded keyword set. When enabled, CORTEX performs multi‑query RAG‑Fusion by running retrieval per variant and fusing results with RRF.
 
 Routing modes:
 - **NO_RESOURCES**: Goal is too vague (no keywords + no tech signals). Ask for clarification.
@@ -43,10 +48,16 @@ Scoring signals:
 - Quality heuristic (file size)
 - Path priority (entrypoints > docs > references)
 - Instruction boost for AGENTS.md
+- Hybrid retrieval (sparse + semantic) with RRF fusion.
+- RAG‑Fusion across query variants with RRF.
+- HyDE fallback: generate a hypothetical query document to boost recall when results are thin.
 - Reciprocal Rank Fusion (RRF) across key signals (filename, keywords, tech, domain, content, path).
 
 ### Uncertainty + Review Gate
 We compute an uncertainty score from intent confidence, keyword coverage, tech signals, and complexity. High uncertainty automatically flips **Requires Review** to yes, enforcing a human checkpoint.
+
+### Late Interaction Rerank (ColBERT‑style)
+Top‑K results receive a token‑level max‑similarity rerank to improve precision without full LLM cost.
 
 ## Instruction Priority (AGENTS.md)
 AGENTS.md instructions are treated as the highest priority:
@@ -63,13 +74,15 @@ These findings drive the "AGENTS-first + explicit skill usage" policy in this pi
 - **Low-confidence gate:** If deterministic confidence is low, require human review.
 - **Ambiguity gate:** If top 2 scores are too close, flag ambiguity.
 - **Instruction gate:** If AGENTS.md exists, it must appear first in required reading.
-- **Rerank gate:** LLM rerank only applies when enabled and valid, otherwise fallback.
+- **Rerank gate:** LLM rerank only applies when enabled and low confidence/uncertainty conditions are met.
 - **Mismatch gate:** If LLM order conflicts with strong deterministic signals, keep deterministic.
 - **Approval gate:** When confidence/ambiguity triggers, require a human review step before finalizing.
 This keeps the selection flow explicit and stateful, with clear fallbacks.
 
 ## Optional LLM Rerank (Qwen2.5 14B Instruct Q4)
 Rerank only the top N candidates, return strict JSON:
+
+Applied only when the low‑confidence/uncertainty gate is triggered (unless explicitly configured to always rerank).
 
 Schema:
 ```

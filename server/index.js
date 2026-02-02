@@ -9,6 +9,11 @@ const fs = require('fs');
 const config = require('./config');
 const repoManager = require('./repo-manager');
 const logStore = require('./log-store');
+const runsStore = require('./runs-store');
+const datasetsStore = require('./datasets-store');
+const evaluationsStore = require('./evaluations-store');
+const { gradeItemWithLlm } = require('./evaluation-grader');
+const { templates: evaluationTemplates } = require('./evaluation-templates');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,6 +29,135 @@ function logEvent(message, level = 'info') {
   logStore.addLog(message, level);
   const prefix = level.toUpperCase();
   console.log(`[${prefix}] ${message}`);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function computeEvaluationMetrics(run, dataset) {
+  const itemCount = Array.isArray(dataset?.items) ? dataset.items.length : 0;
+  const qualityScore = run?.metrics?.qualityScore ?? 0;
+  const baseRate = qualityScore / 100;
+  const normalized = itemCount > 0 ? clamp(baseRate * 0.9 + 0.1, 0, 1) : clamp(baseRate, 0, 1);
+  return {
+    itemCount,
+    qualityScore,
+    passRate: normalized,
+    score: Math.round(normalized * 100)
+  };
+}
+
+function normalizeText(value) {
+  return (value || '')
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenize(value) {
+  return normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function computeTokenOverlap(a, b) {
+  const aTokens = new Set(tokenize(a));
+  const bTokens = new Set(tokenize(b));
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+  let hits = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) hits += 1;
+  }
+  return hits / Math.max(aTokens.size, bTokens.size);
+}
+
+function matchExpected(output, item) {
+  const expected = item.expected || '';
+  const expectedType = item.expectedType || '';
+  if (!expected) return { matched: false, method: 'none' };
+
+  const expectedText = expected.trim();
+  const isRegex = expectedType === 'regex' || expectedText.toLowerCase().startsWith('regex:');
+  if (isRegex) {
+    const pattern = expectedText.toLowerCase().startsWith('regex:')
+      ? expectedText.slice('regex:'.length).trim()
+      : expectedText;
+    try {
+      const regex = new RegExp(pattern, 'i');
+      return { matched: regex.test(output), method: 'regex' };
+    } catch (e) {
+      return { matched: false, method: 'regex-invalid' };
+    }
+  }
+
+  const normalizedOutput = normalizeText(output);
+  const normalizedExpected = normalizeText(expectedText);
+  return { matched: normalizedOutput.includes(normalizedExpected), method: 'contains' };
+}
+
+function scoreDatasetItem(run, item, output) {
+  const weight = Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1;
+  if (!item.expected) {
+    const overlap = computeTokenOverlap(run.goal, item.input);
+    const heuristic = Math.min(1, Math.max(0, overlap * 0.8));
+    return {
+      id: item.id,
+      input: item.input,
+      expected: item.expected,
+      expectedType: item.expectedType || null,
+      weight,
+      score: heuristic,
+      status: 'needs-review',
+      method: 'heuristic',
+      notes: 'No expected string provided; scored via token overlap.'
+    };
+  }
+
+  const match = matchExpected(output, item);
+  return {
+    id: item.id,
+    input: item.input,
+    expected: item.expected,
+    expectedType: item.expectedType || null,
+    rubric: item.rubric || null,
+    weight,
+    score: match.matched ? 1 : 0,
+    status: match.matched ? 'pass' : 'fail',
+    method: match.method,
+    notes: match.method === 'regex-invalid' ? 'Invalid regex pattern.' : null
+  };
+}
+
+function summarizeEvaluation(items, thresholds) {
+  const scoredItems = items.filter(item => item.status !== 'needs-review');
+  const totalWeight = scoredItems.reduce((sum, item) => sum + (item.weight || 1), 0);
+  const weightedScore = scoredItems.reduce((sum, item) => sum + (item.score * (item.weight || 1)), 0);
+  const passRate = totalWeight > 0 ? weightedScore / totalWeight : 0;
+
+  let status = 'needs-review';
+  if (totalWeight > 0) {
+    if (passRate >= thresholds.passThreshold) status = 'pass';
+    else if (passRate >= thresholds.warnThreshold) status = 'warn';
+    else status = 'fail';
+  }
+
+  return {
+    passRate,
+    status,
+    score: Math.round(passRate * 100),
+    scoredCount: scoredItems.length,
+    needsReviewCount: items.length - scoredItems.length
+  };
+}
+
+function readRunOutput(run, maxChars) {
+  if (run?.outputPath && fs.existsSync(run.outputPath)) {
+    try {
+      const data = fs.readFileSync(run.outputPath, 'utf8');
+      return data.length > maxChars ? data.slice(0, maxChars) : data;
+    } catch (e) {}
+  }
+  return run?.outputPreview || '';
 }
 
 // Startup logging
@@ -551,6 +685,278 @@ app.post('/api/sessions', (req, res) => {
   saveSessions(trimmed);
 
   res.json({ success: true, session });
+});
+
+// ==========================================
+// Runs & Observability API
+// ==========================================
+
+app.get('/api/runs', (req, res) => {
+  const runs = runsStore.loadRuns();
+  const limit = Number(req.query.limit);
+  if (!Number.isNaN(limit) && limit > 0) {
+    return res.json(runs.slice(0, limit));
+  }
+  res.json(runs);
+});
+
+app.get('/api/runs/:id', (req, res) => {
+  const run = runsStore.getRun(req.params.id);
+  if (!run) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+  res.json(run);
+});
+
+// ==========================================
+// Agents Registry API
+// ==========================================
+
+app.get('/api/agents', (req, res) => {
+  const currentConfig = config.getConfig();
+  const agentsDir = path.join(currentConfig.reposRoot, 'agents');
+
+  if (!fs.existsSync(agentsDir)) {
+    return res.json([]);
+  }
+
+  const agents = [];
+
+  fs.readdirSync(agentsDir, { withFileTypes: true })
+    .filter(dir => dir.isDirectory() && !dir.name.startsWith('.'))
+    .forEach((dir) => {
+      const agentPath = path.join(agentsDir, dir.name);
+      const templatePath = fs.existsSync(path.join(agentPath, 'template.md'))
+        ? path.join(agentPath, 'template.md')
+        : path.join(agentPath, 'README.md');
+      let description = '';
+      let name = dir.name;
+      let keywords = [];
+
+      const configPath = path.join(agentPath, 'agent.config.json');
+      if (fs.existsSync(configPath)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          name = data.name || name;
+          description = data.description || description;
+          keywords = Array.isArray(data.keywords) ? data.keywords : keywords;
+        } catch (e) {}
+      }
+
+      if (fs.existsSync(templatePath) && !description) {
+        try {
+          const content = fs.readFileSync(templatePath, 'utf8');
+          const firstLine = content.split('\n').find(line => line.trim() && !line.startsWith('#'));
+          if (firstLine) description = firstLine.trim().substring(0, 140);
+        } catch (e) {}
+      }
+
+      agents.push({
+        id: dir.name,
+        name,
+        description: description || 'No description provided.',
+        keywords,
+        path: agentPath,
+        templatePath: fs.existsSync(templatePath) ? templatePath : null
+      });
+    });
+
+  res.json(agents);
+});
+
+// ==========================================
+// Datasets & Evaluations API
+// ==========================================
+
+app.get('/api/datasets', (req, res) => {
+  const datasets = datasetsStore.loadDatasets();
+  res.json(datasets);
+});
+
+app.get('/api/datasets/:id', (req, res) => {
+  const dataset = datasetsStore.getDataset(req.params.id);
+  if (!dataset) {
+    return res.status(404).json({ error: 'Dataset not found' });
+  }
+  res.json(dataset);
+});
+
+app.get('/api/datasets/:id/export', (req, res) => {
+  const dataset = datasetsStore.getDataset(req.params.id);
+  if (!dataset) {
+    return res.status(404).json({ error: 'Dataset not found' });
+  }
+  const safeName = (dataset.name || 'dataset').replace(/[^a-z0-9-_]+/gi, '_');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}.json"`);
+  res.json({ dataset });
+});
+
+app.post('/api/datasets', (req, res) => {
+  const { name, description } = req.body || {};
+  if (!name) {
+    return res.status(400).json({ success: false, error: 'Dataset name is required' });
+  }
+  const dataset = datasetsStore.createDataset({ name, description });
+  res.json({ success: true, dataset });
+});
+
+app.post('/api/datasets/import', (req, res) => {
+  const payload = req.body?.dataset || req.body;
+  if (!payload || !payload.name) {
+    return res.status(400).json({ success: false, error: 'Dataset payload with name is required' });
+  }
+
+  const dataset = datasetsStore.importDataset(payload);
+  if (!dataset) {
+    return res.status(500).json({ success: false, error: 'Failed to import dataset' });
+  }
+  res.json({ success: true, dataset });
+});
+
+app.put('/api/datasets/:id', (req, res) => {
+  const { name, description } = req.body || {};
+  const updated = datasetsStore.updateDataset(req.params.id, { name, description });
+  if (!updated) {
+    return res.status(404).json({ success: false, error: 'Dataset not found' });
+  }
+  res.json({ success: true, dataset: updated });
+});
+
+app.delete('/api/datasets/:id', (req, res) => {
+  const success = datasetsStore.deleteDataset(req.params.id);
+  if (!success) {
+    return res.status(404).json({ success: false, error: 'Dataset not found' });
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/datasets/:id/items', (req, res) => {
+  const { input, expected, tags, weight, expectedType, rubric } = req.body || {};
+  if (!input) {
+    return res.status(400).json({ success: false, error: 'Item input is required' });
+  }
+  const item = datasetsStore.addDatasetItem(req.params.id, { input, expected, tags, weight, expectedType, rubric });
+  if (!item) {
+    return res.status(404).json({ success: false, error: 'Dataset not found' });
+  }
+  res.json({ success: true, item });
+});
+
+app.delete('/api/datasets/:id/items/:itemId', (req, res) => {
+  const success = datasetsStore.removeDatasetItem(req.params.id, req.params.itemId);
+  if (!success) {
+    return res.status(404).json({ success: false, error: 'Item not found' });
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/evaluations', (req, res) => {
+  const evaluations = evaluationsStore.loadEvaluations();
+  res.json(evaluations);
+});
+
+app.get('/api/evaluation-templates', (req, res) => {
+  res.json(evaluationTemplates);
+});
+
+app.post('/api/evaluations', async (req, res) => {
+  const { datasetId, runId, name } = req.body || {};
+  if (!datasetId || !runId) {
+    return res.status(400).json({ success: false, error: 'datasetId and runId are required' });
+  }
+
+  const dataset = datasetsStore.getDataset(datasetId);
+  const run = runsStore.getRun(runId);
+  if (!dataset) {
+    return res.status(404).json({ success: false, error: 'Dataset not found' });
+  }
+  if (!run) {
+    return res.status(404).json({ success: false, error: 'Run not found' });
+  }
+
+  const fullConfig = config.getConfig();
+  const evaluationConfig = fullConfig.evaluation || {};
+  const llmConfig = fullConfig.llm || {};
+  const decisionConfig = fullConfig.decisionMatrix || {};
+  const maxChars = evaluationConfig.maxOutputChars ?? 120000;
+  const output = readRunOutput(run, maxChars);
+  const llmEnabled = evaluationConfig.llmGraderEnabled !== false && llmConfig.enabled === true;
+  const maxLlmItems = evaluationConfig.llmMaxItems ?? 12;
+  let llmUsedCount = 0;
+  const items = [];
+
+  for (const item of (dataset.items || [])) {
+    const wantsLlm = item.expectedType === 'llm' || Boolean(item.rubric);
+    if (llmEnabled && wantsLlm && llmUsedCount < maxLlmItems) {
+      const graded = await gradeItemWithLlm({ run, item, output, llmConfig, decisionConfig });
+      if (graded.used) {
+        llmUsedCount += 1;
+        items.push({
+          id: item.id,
+          input: item.input,
+          expected: item.expected,
+          expectedType: item.expectedType || 'llm',
+          rubric: item.rubric || null,
+          weight: Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1,
+          score: graded.score,
+          status: graded.status,
+          method: 'llm',
+          notes: graded.rationale || null
+        });
+        continue;
+      }
+    }
+
+    items.push(scoreDatasetItem(run, item, output));
+  }
+  const summary = summarizeEvaluation(items, {
+    passThreshold: evaluationConfig.passThreshold ?? 0.75,
+    warnThreshold: evaluationConfig.warnThreshold ?? 0.6
+  });
+  const metrics = {
+    ...computeEvaluationMetrics(run, dataset),
+    passRate: summary.passRate,
+    score: summary.score,
+    status: summary.status,
+    scoredCount: summary.scoredCount,
+    needsReviewCount: summary.needsReviewCount
+  };
+  const evaluation = {
+    id: `eval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: name || `${dataset.name} • ${new Date().toLocaleDateString()}`,
+    datasetId,
+    datasetName: dataset.name,
+    runId,
+    runGoal: run.goal,
+    createdAt: new Date().toISOString(),
+    status: summary.status,
+    metrics,
+    items
+  };
+
+  evaluationsStore.recordEvaluation(evaluation);
+  res.json({ success: true, evaluation });
+});
+
+app.get('/api/evaluations/compare', (req, res) => {
+  const leftId = req.query.left;
+  const rightId = req.query.right;
+  if (!leftId || !rightId) {
+    return res.status(400).json({ error: 'left and right evaluation ids are required' });
+  }
+  const left = evaluationsStore.getEvaluation(leftId);
+  const right = evaluationsStore.getEvaluation(rightId);
+  if (!left || !right) {
+    return res.status(404).json({ error: 'Evaluation not found' });
+  }
+
+  const delta = {
+    score: (right.metrics?.score ?? 0) - (left.metrics?.score ?? 0),
+    passRate: (right.metrics?.passRate ?? 0) - (left.metrics?.passRate ?? 0),
+    itemCount: (right.metrics?.itemCount ?? 0) - (left.metrics?.itemCount ?? 0)
+  };
+
+  res.json({ left, right, delta });
 });
 
 // ==========================================

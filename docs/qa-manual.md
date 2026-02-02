@@ -8,7 +8,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - Repos root configured and valid (Settings or Setup Wizard).
 
 ## 1) Navigation & Layout
-- Sidebar buttons navigate to: Agent Factory, Repositories, System Logs, Settings.
+- Sidebar buttons navigate to: Command Center, Agent Factory, Runs, Evaluations, Library, Knowledge Base, System Logs, Settings.
 - Active nav state highlights the current page.
 - Page header title + subtitle match the view.
 
@@ -26,7 +26,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - Copy to Clipboard toggles to “Copied!” then resets.
 - Decision Matrix:
   - Flight Plan includes a **Decision Matrix** section.
-  - Matrix shows **Query expansion**, **Routing**, **RRF fusion**, and **Uncertainty** lines.
+  - Matrix shows **Retrieval gate**, **Query expansion**, **RAG-Fusion**, **Hybrid retrieval**, **Routing**, **RRF fusion**, and **Uncertainty** lines.
   - If any AGENTS.md is present, it appears first in Required Reading.
   - Skill usage note appears (explore context first, then consult skills).
   - For an ambiguous or low-confidence goal, “Requires Review” is flagged in the plan.
@@ -40,7 +40,21 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - After a spawn, a new session appears.
   - Clicking a session fills the goal input.
 
-## 3) UI Controls Checklist (All Buttons/Toggles)
+## 3) Command Center, Runs, Evaluations, Library
+- Command Center cards show totals for runs, evaluations, prompts, repositories.
+- Recent Runs list populates after a spawn.
+- Runs view lists historical runs; selecting a run shows Decision Matrix and Trace.
+- Runs view comparison dropdown highlights deltas.
+- Runs view shows git metadata (branch/commit/diff) when available.
+- Evaluations view:
+  - Create dataset, add at least one item, and generate an evaluation.
+  - Evaluation status shows pass/warn/fail with per-item grading.
+  - LLM rubric items return rationale when LLM is enabled.
+- Library view:
+  - Saved prompts list renders.
+  - Use button routes to Agent Factory with prompt prefilled.
+
+## 4) UI Controls Checklist (All Buttons/Toggles)
 ### Setup Wizard
 - **Browse** opens directory browser; selecting a folder fills the repos root input.
 - **Create directory structure** toggle updates checkbox state and tooltip text.
@@ -58,7 +72,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - **Saved Prompt** click fills goal; **Delete** removes the prompt.
 - **Recent Session** click fills goal input.
 
-### Repositories
+### Knowledge Base
 - **Clone** validates URL and logs result.
 - **Scan** runs discovery and logs results.
 - **Repo notice** appears on success/error.
@@ -67,7 +81,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - **Save Settings** persists valid paths and shows saved state.
 - **Test Connection** pings the configured LLM endpoint(s) and reports reachability.
 
-## 4) Repositories
+## 5) Knowledge Base
 - Stats cards show:
   - Correct repo counts per category.
   - Size label (not “—”) updates when folder size changes.
@@ -81,22 +95,22 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - “Starting System Scan…” + completion log appear.
   - Table updates if new repos exist.
 
-## 5) System Logs
+## 6) System Logs
 - Latest log entries appear at the top.
 - Logs show clone completion with classification folder.
 - Logs persist when switching views.
 
-## 6) Settings
+## 7) Settings
 - Empty repos root shows validation error.
 - Valid path saves successfully and shows “Saved!” state.
 
-## 7) Accessibility & Usability
+## 8) Accessibility & Usability
 - Keyboard-only: all controls are reachable; focus ring is visible.
 - Contrast: headings, labels, and disabled states are legible.
 - Touch targets: buttons feel ≥ 44px (iOS) / 48dp (Android).
 - Reduced motion: check animations don’t overwhelm.
 
-## 8) Telemetry / Analytics
+## 9) Telemetry / Analytics
 **Current implementation:** internal analytics at `/api/analytics`.
 - After a successful spawn, `totalSpawns` increments.
 - `recentSpawns` contains the latest goal.
@@ -107,7 +121,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 > - No args/paths, `$ip: null`
 > - Opt-out env vars disable events
 
-## 9) Visual Regression
+## 10) Visual Regression
 - Quick Access sections visually separated and labeled clearly.
 - Cards & tables maintain spacing on mobile and wide layouts.
 - Logs view supports long lines without overlap.

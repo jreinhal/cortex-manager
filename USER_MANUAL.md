@@ -10,12 +10,15 @@
 1. [Introduction](#introduction)
 2. [Installation](#installation)
 3. [Getting Started](#getting-started)
-4. [Dashboard Overview](#dashboard-overview)
+4. [Command Center](#command-center)
 5. [Agent Factory](#agent-factory)
-6. [Repository Management](#repository-management)
-7. [Advanced Workflows](#advanced-workflows)
-8. [Troubleshooting](#troubleshooting)
-9. [Best Practices](#best-practices)
+6. [Knowledge Base](#knowledge-base)
+7. [Run Explorer](#run-explorer)
+8. [Evaluations](#evaluations)
+9. [Library](#library)
+10. [Advanced Workflows](#advanced-workflows)
+11. [Troubleshooting](#troubleshooting)
+12. [Best Practices](#best-practices)
 
 ---
 
@@ -95,7 +98,7 @@ npm start
 
 #### 6. Verify Installation
 
-Open your browser to [http://localhost:5173](http://localhost:5173). You should see the CORTEX dashboard.
+Open your browser to [http://localhost:5173](http://localhost:5173). You should see the CORTEX Command Center.
 
 ---
 
@@ -128,36 +131,34 @@ CORTEX automatically analyzes the repository's README and assigns it to a catego
 - **Knowledge**: Reference materials (guidelines, docs)
 - **Tools**: Utility scripts
 
-#### 4. Verify in Dashboard
+#### 4. Verify in Knowledge Base
 
-Refresh the CORTEX dashboard. Your new repository should appear in the appropriate category card.
+Open the Knowledge Base view. Your new repository should appear in the appropriate category card.
 
 ---
 
-## Dashboard Overview
+## Command Center
 
 ### Navigation
 
-The sidebar contains four main sections:
+The sidebar contains the primary workspace areas:
 
-1. **📊 Dashboard**: Overview of all repositories
-2. **⚙️ Settings**: Configuration options
-3. **📜 Logs**: Real-time operation logs
-4. **🏭 Agent Factory**: Spawn specialized AI agents
+1. **🏠 Command Center**: Overview of runs, evaluations, and knowledge coverage
+2. **🏭 Agent Factory**: Spawn specialized AI agents
+3. **🧭 Runs**: Trace explorer with decision matrices and performance signals
+4. **🧪 Evaluations**: Dataset management and run scoring
+5. **📦 Library**: Saved prompts, agent templates, and tools
+6. **📚 Knowledge Base**: Manage reference repositories
+7. **📜 Logs**: Real-time operation logs
+8. **⚙️ Settings**: Configuration options
 
-### Dashboard Cards
+### Command Center Cards
 
-Each card shows:
-- **Icon**: Visual category identifier
-- **Count**: Number of repositories in this category
-- **Name**: Category label
+Each card shows key operational totals (runs, evaluations, prompts, repositories).
 
-### Repository Table
+### Activity Panels
 
-Displays all cloned repositories with:
-- **Name**: Repository identifier
-- **Purpose**: Auto-detected function
-- **Last Updated**: Most recent commit timestamp
+Recent runs and recent sessions appear on the right to help you pick up where you left off.
 
 ---
 
@@ -244,13 +245,13 @@ CORTEX supports multiple agent templates:
 
 ---
 
-## Repository Management
+## Knowledge Base
 
 ### Adding Repositories
 
 #### Via UI
 
-1. Navigate to **Dashboard**
+1. Navigate to **Knowledge Base**
 2. Click **"Add Repository"**
 3. Paste GitHub URL
 4. Click **"Smart Clone"**
@@ -259,7 +260,7 @@ CORTEX will:
 - Clone the repository
 - Analyze its purpose
 - Categorize automatically
-- Update the dashboard
+- Update the Knowledge Base view
 
 #### Via Command Line
 
@@ -268,7 +269,7 @@ cd ~/Projects/reference-repos
 git clone https://github.com/your/repo.git
 ```
 
-Then refresh the CORTEX dashboard.
+Then refresh the Knowledge Base view.
 
 ### Updating Repositories
 
@@ -287,7 +288,63 @@ Simply delete the folder from your reference repositories directory:
 rm -rf ~/Projects/reference-repos/old-repo
 ```
 
-Refresh the CORTEX dashboard to update the view.
+Refresh the Knowledge Base view to update the list.
+
+---
+
+## Run Explorer
+
+The Run Explorer aggregates every spawn with its decision matrix and performance signals.
+
+### Reviewing a Run
+1. Open **Runs** from the sidebar.
+2. Select a run from the left-hand list.
+3. Review the **Decision Matrix**, **Trace**, and **Issues** panels to understand routing choices.
+4. Use the comparison dropdown to compare quality, duration, and uncertainty against a baseline.
+
+### Code Context
+Each run captures git metadata (branch, commit, dirty status) to make run reviews traceable.
+
+---
+
+## Evaluations
+
+Evaluations let you score runs against curated datasets.
+
+### Create a Dataset
+1. Go to **Evaluations**.
+2. Name a dataset and add prompt/expected outcome pairs (use `regex:` or switch the type to Regex).
+3. Use datasets to standardize regression testing.
+
+### Import/Export Datasets
+- Use **Export** to download a dataset JSON file for sharing or versioning.
+- Use **Import** to upload a previously exported dataset (JSON).
+
+### Score a Run
+1. Select a dataset and a recent run.
+2. Click **Create Evaluation** to store the scorecard.
+3. Results include per‑item grading and pass/fail thresholds.
+
+### LLM Rubric Grading
+- Set the item type to **LLM Rubric** and include a rubric for qualitative grading.
+- LLM grading uses your configured local/remote LLM endpoint and respects D: drive enforcement on Windows.
+
+### Rubric Templates
+- Use the rubric template dropdown to prefill common grading criteria (clarity, groundedness, actionability).
+
+---
+
+## Library
+
+The Library keeps reusable assets in one place.
+
+### Saved Prompts
+- Save prompts from Agent Factory.
+- Reuse them directly from the Library.
+
+### Agent Templates & Tools
+- Browse available agent templates from your reference repos.
+- Review tools and utilities registered in the tools folder.
 
 ---
 
@@ -368,7 +425,7 @@ cd server
 npm install
 ```
 
-### Issue: Dashboard shows empty
+### Issue: Knowledge Base shows empty
 
 **Cause**: `REPOS_ROOT` path is incorrect
 
@@ -492,7 +549,7 @@ Manual QA steps are tracked in `TESTING.md`. Use it to verify UI polish issues (
 |----------|--------|
 | `Ctrl + K` | Focus Agent Factory input |
 | `Ctrl + Shift + L` | Open Logs view |
-| `Ctrl + Shift + D` | Return to Dashboard |
+| `Ctrl + Shift + D` | Return to Command Center |
 | `Ctrl + Shift + C` | Copy last Flight Plan |
 
 ---
@@ -528,6 +585,27 @@ Returns all repositories.
   "categories": ["Agents", "Skills", "Knowledge", "Tools"]
 }
 ```
+
+### `GET /api/runs`
+Returns recent run history (decision matrix + metrics).
+
+### `GET /api/datasets`
+Returns evaluation datasets.
+
+### `GET /api/datasets/:id/export`
+Returns a JSON export for a single dataset.
+
+### `POST /api/datasets/import`
+Imports a dataset JSON payload.
+
+### `GET /api/evaluations`
+Returns evaluation results.
+
+### `GET /api/evaluations/compare?left=<id>&right=<id>`
+Returns delta metrics between two evaluations.
+
+### `GET /api/agents`
+Returns available agent templates from the reference repos.
 
 ### `POST /api/spawn`
 Spawns an agent and returns a Flight Plan.

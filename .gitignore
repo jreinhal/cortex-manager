@@ -34,3 +34,7 @@ yarn-error.log*
 
 # Project specific
 scripts/repos.json
+saved_prompts.json
+runs.json
+datasets.json
+evaluations.json

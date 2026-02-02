@@ -27,7 +27,7 @@ async function completeSetupIfNeeded(page) {
 
   await completeButton.click();
   await expect(wizardHeading).toBeHidden({ timeout: 15000 });
-  await expect(page.getByRole('heading', { name: 'Agent Factory' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Command Center' })).toBeVisible();
 }
 
 async function cleanupTestPrompts(request) {
@@ -59,8 +59,20 @@ test.afterEach(async ({ request }) => {
 });
 
 test('navigate between primary views', async ({ page }) => {
-  await page.getByTestId('nav-repos').click();
-  await expect(page.getByRole('heading', { name: 'Repositories', level: 1 })).toBeVisible();
+  await page.getByTestId('nav-home').click();
+  await expect(page.getByRole('heading', { name: 'Command Center', level: 1 })).toBeVisible();
+
+  await page.getByTestId('nav-knowledge').click();
+  await expect(page.getByRole('heading', { name: 'Knowledge Base', level: 1 })).toBeVisible();
+
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByRole('heading', { name: 'Run Explorer', level: 1 })).toBeVisible();
+
+  await page.getByTestId('nav-evaluations').click();
+  await expect(page.getByRole('heading', { name: 'Evaluations', level: 1 })).toBeVisible();
+
+  await page.getByTestId('nav-library').click();
+  await expect(page.getByRole('heading', { name: 'Library', level: 1 })).toBeVisible();
 
   await page.getByTestId('nav-logs').click();
   await expect(page.getByRole('heading', { name: 'System Logs', level: 1 })).toBeVisible();
@@ -73,6 +85,7 @@ test('navigate between primary views', async ({ page }) => {
 });
 
 test('save prompt appears in Quick Access', async ({ page }) => {
+  await page.getByTestId('nav-agents').click();
   await page.getByTestId('goal-input').fill(TEST_PROMPT_QUERY);
   await page.getByTestId('save-prompt-btn').click();
 
@@ -85,7 +98,7 @@ test('save prompt appears in Quick Access', async ({ page }) => {
 });
 
 test('repositories show size labels', async ({ page }) => {
-  await page.getByTestId('nav-repos').click();
+  await page.getByTestId('nav-knowledge').click();
 
   const sizeLabels = page.locator('[data-testid^="stat-size-"]');
   await expect(sizeLabels.first()).toBeVisible();
@@ -98,7 +111,7 @@ test('repositories show size labels', async ({ page }) => {
 });
 
 test('invalid repo URL logs an error', async ({ page }) => {
-  await page.getByTestId('nav-repos').click();
+  await page.getByTestId('nav-knowledge').click();
   await page.getByTestId('repo-url-input').fill('not-a-url');
   await page.getByTestId('repo-clone-btn').click();
 
@@ -118,7 +131,7 @@ test('duplicate repo is ignored with notice', async ({ page, request }) => {
   const existingPath = existingRepo.Path || existingRepo.path;
   if (!existingPath) test.skip('Repo entry missing path.');
 
-  await page.getByTestId('nav-repos').click();
+  await page.getByTestId('nav-knowledge').click();
   await page.getByTestId('repo-url-input').fill(existingPath);
   await page.getByTestId('repo-clone-btn').click();
 
@@ -129,7 +142,7 @@ test('duplicate repo is ignored with notice', async ({ page, request }) => {
 });
 
 test('scan repositories emits logs', async ({ page }) => {
-  await page.getByTestId('nav-repos').click();
+  await page.getByTestId('nav-knowledge').click();
   await page.getByTestId('repo-scan-btn').click();
 
   await page.getByTestId('nav-logs').click();
@@ -157,8 +170,10 @@ test('spawn generates flight plan and telemetry updates', async ({ page, request
   expect(beforeRes.ok()).toBeTruthy();
   const before = await beforeRes.json();
 
+  await page.getByTestId('nav-agents').click();
   await page.getByTestId('goal-input').fill(SPAWN_GOAL);
-  await page.getByTestId('format-select').selectOption('chatgpt');
+  await page.getByTestId('format-select').click();
+  await page.getByTestId('format-option-chatgpt').click();
   await page.getByTestId('generate-flight-plan').click();
 
   const output = page.getByTestId('flight-plan-output');

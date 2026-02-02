@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const stringSimilarity = require('string-similarity');
 
 // Tech stack detection from file extensions and content
 const TECH_DETECTION = {
@@ -145,6 +146,27 @@ const RRF_DEFAULT = {
   weight: 0.45
 };
 
+const RAG_FUSION_DEFAULT = {
+  enabled: false,
+  k: 60,
+  weight: 0.5,
+  includeOriginal: true,
+  maxVariants: 4
+};
+
+const HYDE_DEFAULT = {
+  enabled: false,
+  mode: 'fallback', // 'fallback' | 'always'
+  minResults: 3,
+  minScore: 0.35
+};
+
+const HYBRID_DEFAULT = {
+  enabled: false,
+  semanticWeight: 0.35,
+  minSemanticScore: 0.05
+};
+
 const DOC_EXTENSIONS = ['.md', '.mdx', '.txt', '.rst', '.adoc', '.org', '.markdown'];
 const DATA_EXTENSIONS = [...DOC_EXTENSIONS, '.json', '.yaml', '.yml'];
 const TOOL_EXTENSIONS = [...DATA_EXTENSIONS, '.js', '.ts', '.py', '.sh'];
@@ -265,6 +287,64 @@ function extractKeywords(content, fileName) {
     .map(([word]) => word);
 
   return [...new Set([...fileTokens, ...topContent])].slice(0, 30);
+}
+
+function tokenizeText(value) {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => {
+      if (!t) return false;
+      if (STOP_WORDS.has(t)) return false;
+      if (t.length > 2) return true;
+      return KEYWORD_ALLOWLIST.has(t);
+    });
+}
+
+function extractGoalKeywordsFromText(goalText, techStack = []) {
+  const tokens = tokenizeText(goalText);
+  const combined = new Set(tokens);
+  techStack.forEach((t) => {
+    if (t) combined.add(t.toLowerCase());
+  });
+  return Array.from(combined);
+}
+
+function buildHydeDocument(goalText, analyzedGoal) {
+  const intent = analyzedGoal.intent?.primary || 'task';
+  const techStack = [
+    ...(analyzedGoal.techStack?.languages || []),
+    ...(analyzedGoal.techStack?.frameworks || []),
+    ...(analyzedGoal.techStack?.tools || []),
+    ...(analyzedGoal.techStack?.platforms || []),
+    ...(analyzedGoal.techStack?.inferred || [])
+  ].filter(Boolean);
+
+  const keywords = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
+  const focus = keywords.slice(0, 12).join(', ');
+  const tech = techStack.length > 0 ? `Technology stack: ${techStack.join(', ')}.` : '';
+
+  return `Hypothetical document describing a ${intent} objective. ${goalText}. ${tech} Key topics include ${focus}.`;
+}
+
+function computeSemanticScore(goalText, resource) {
+  if (!goalText || !resource) return 0;
+  const docText = `${resource.fileName || ''} ${resource.relativePath || ''} ${resource.summary || ''}`.trim();
+  if (!docText) return 0;
+
+  const goal = goalText.toLowerCase();
+  const doc = docText.toLowerCase();
+  const similarity = stringSimilarity.compareTwoStrings(goal, doc);
+  const goalTokens = new Set(tokenizeText(goal));
+  const docTokens = new Set(tokenizeText(doc));
+  let overlap = 0;
+  goalTokens.forEach((token) => {
+    if (docTokens.has(token)) overlap += 1;
+  });
+  const overlapRatio = goalTokens.size > 0 ? overlap / goalTokens.size : 0;
+
+  return Math.max(similarity, overlapRatio);
 }
 
 function extractPathTokens(value) {
@@ -416,6 +496,7 @@ function scoreResource(resource, analyzedGoal, techContext) {
   const targetTech = techContext.techStack || [];
   const targetDomains = techContext.domains || [];
   const negativeDomains = techContext.negativeDomains || [];
+  const hybridConfig = techContext.hybrid || { enabled: false };
 
   // Filename match - with word boundary checking
   let filenameScore = 0;
@@ -504,8 +585,22 @@ function scoreResource(resource, analyzedGoal, techContext) {
     preferenceBoost -
     domainPenalty;
 
+  const sparseScore = Math.max(0, Math.min(1, total));
+  const semanticScore = Math.max(
+    hybridConfig.minSemanticScore ?? 0,
+    computeSemanticScore(analyzedGoal.originalGoal, resource)
+  );
+
+  let finalScore = sparseScore;
+  if (hybridConfig.enabled) {
+    const semanticWeight = Math.min(0.9, Math.max(0, hybridConfig.semanticWeight ?? 0.35));
+    finalScore = (1 - semanticWeight) * sparseScore + semanticWeight * semanticScore;
+  }
+
   return {
-    score: Math.max(0, Math.min(1, total)),
+    score: Math.max(0, Math.min(1, finalScore)),
+    sparseScore,
+    semanticScore,
     breakdown: {
       filename: filenameScore,
       keywords: keywordScore,
@@ -516,7 +611,9 @@ function scoreResource(resource, analyzedGoal, techContext) {
       pathPriority,
       instructionBoost,
       preferenceBoost,
-      domainPenalty
+      domainPenalty,
+      sparse: sparseScore,
+      semantic: semanticScore
     }
   };
 }
@@ -535,6 +632,13 @@ function applyRrfFusion(items, config) {
     { name: 'content', accessor: (item) => item.breakdown.content },
     { name: 'path', accessor: (item) => item.breakdown.pathPriority }
   ];
+
+  if (config.includeHybrid) {
+    metrics.push(
+      { name: 'sparse', accessor: (item) => item.sparseScore ?? item.breakdown.sparse ?? item.score },
+      { name: 'semantic', accessor: (item) => item.semanticScore ?? item.breakdown.semantic ?? 0 }
+    );
+  }
 
   const rankMaps = {};
   metrics.forEach((metric) => {
@@ -570,6 +674,119 @@ function applyRrfFusion(items, config) {
   return { used: true, items };
 }
 
+function applyRagFusion(variantLists, config) {
+  if (!config.enabled || variantLists.length < 2) {
+    return { used: false, items: variantLists[0] ? [...variantLists[0]] : [] };
+  }
+
+  const map = new Map();
+  variantLists.forEach((list) => {
+    list.forEach((item, idx) => {
+      const rank = idx + 1;
+      const entry = map.get(item.filePath) || {
+        ...item,
+        ragFusionScore: 0,
+        maxVariantScore: item.score
+      };
+      entry.ragFusionScore += 1 / (config.k + rank);
+      if (item.score > entry.maxVariantScore) {
+        entry.maxVariantScore = item.score;
+        entry.breakdown = item.breakdown;
+        entry.sparseScore = item.sparseScore;
+        entry.semanticScore = item.semanticScore;
+        entry.summary = item.summary;
+      }
+      map.set(item.filePath, entry);
+    });
+  });
+
+  const items = Array.from(map.values());
+  const scores = items.map((i) => i.ragFusionScore);
+  const minScore = Math.min(...scores);
+  const maxScore = Math.max(...scores);
+  const range = maxScore - minScore;
+
+  items.forEach((item) => {
+    const normalized = range > 0 ? (item.ragFusionScore - minScore) / range : 0.5;
+    item.ragFusionNormalized = normalized;
+    const baseScore = item.maxVariantScore ?? item.score;
+    item.score = (1 - config.weight) * baseScore + config.weight * normalized;
+  });
+
+  return { used: true, items };
+}
+
+function buildResourceIndex(files, reposRoot, cat) {
+  return files.map((filePath) => {
+    let content = '';
+    try {
+      const buffer = fs.readFileSync(filePath);
+      if (buffer.length < 50000) {
+        content = buffer.toString('utf8').substring(0, 10000);
+      }
+    } catch {
+      // Skip unreadable files
+    }
+
+    const stat = fs.statSync(filePath);
+    const fileName = path.basename(filePath);
+    const relativePath = path.relative(reposRoot, filePath);
+    const pathTokens = extractPathTokens(relativePath);
+    const fileNameTokens = extractPathTokens(fileName);
+    const pathSignals = analyzePathSignals(relativePath, fileName);
+
+    const keywords = extractKeywords(content, fileName);
+    const mergedKeywords = [...new Set([...keywords, ...pathTokens])];
+
+    return {
+      filePath,
+      relativePath,
+      fileName,
+      category: cat,
+      techStack: detectFileTechStack(filePath, content),
+      domains: detectFileDomains(filePath, content),
+      keywords: mergedKeywords,
+      pathTokens,
+      fileNameTokens,
+      pathSignals,
+      isInstruction: pathSignals.isAgents,
+      summary: extractSummary(content),
+      fileSize: stat.size
+    };
+  });
+}
+
+function scoreResourcesForGoal(resources, analyzedGoal, techContext, options) {
+  const categoryMinScore = options.categoryMinScore ?? 0.15;
+  const hasInstructionSignal = options.hasInstructionSignal;
+
+  const scored = resources.map((resource) => {
+    if (!isTechCompatible(resource.techStack, techContext.techStack)) {
+      return null;
+    }
+
+    const scoring = scoreResource(resource, analyzedGoal, techContext);
+    return {
+      ...resource,
+      score: scoring.score,
+      sparseScore: scoring.sparseScore,
+      semanticScore: scoring.semanticScore,
+      breakdown: scoring.breakdown
+    };
+  }).filter((resource) => {
+    if (!resource) return false;
+    if (!resource.isInstruction) return resource.score >= categoryMinScore;
+    return hasInstructionSignal ? hasInstructionSignal(resource) : true;
+  });
+
+  scored.sort((a, b) => {
+    if (a.isInstruction !== b.isInstruction) return a.isInstruction ? -1 : 1;
+    return b.score - a.score;
+  });
+
+  return scored;
+}
+
 function resolveRoutingOptions(analyzedGoal, options) {
   const baseMaxResults = options.maxResults ?? 10;
   const baseMinScore = options.minScore ?? 0.15;
@@ -598,13 +815,44 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     category = null,
     rrf = {},
     includeMeta = false,
-    agentsMdPriority = false
+    agentsMdPriority = false,
+    retrievalEnabled = true,
+    ragFusion = {},
+    hyde = {},
+    hybrid = {}
   } = options;
+
+  const results = {
+    knowledge: [],
+    skills: [],
+    tools: []
+  };
+
+  if (retrievalEnabled === false) {
+    if (includeMeta) {
+      results.__meta = {
+        retrievalDisabled: true,
+        rrfUsed: false,
+        ragFusionUsed: false,
+        hydeUsed: false,
+        hybridUsed: false,
+        routingMode: analyzedGoal.routing?.mode || 'DOCUMENT'
+      };
+    }
+    return results;
+  }
 
   const routingOptions = resolveRoutingOptions(analyzedGoal, options);
   const maxResults = routingOptions.maxResults;
   const minScore = routingOptions.minScore;
   const rrfConfig = { ...RRF_DEFAULT, ...(rrf || {}) };
+  const ragFusionConfig = { ...RAG_FUSION_DEFAULT, ...(ragFusion || {}) };
+  const hydeConfig = { ...HYDE_DEFAULT, ...(hyde || {}) };
+  const hybridConfig = { ...HYBRID_DEFAULT, ...(hybrid || {}) };
+  rrfConfig.includeHybrid = hybridConfig.enabled === true;
+  if (!ragFusionConfig.k) {
+    ragFusionConfig.k = rrfConfig.k;
+  }
 
   const intent = analyzedGoal.intent?.primary || 'coding';
   const goalKeywords = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
@@ -628,17 +876,12 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
       ...(analyzedGoal.techStack?.inferred || [])
     ],
     domains: goalDomains,
-    negativeDomains: goalDomains.includes('security') ? [] : ['security']
+    negativeDomains: goalDomains.includes('security') ? [] : ['security'],
+    hybrid: hybridConfig
   };
 
   const allowAllInstructions = goalExplicitlyRequestsAgents(goalText) ||
     (agentsMdPriority && (filteredGoalKeywords.length > 0 || goalDomains.length > 0 || techContext.techStack.length > 0));
-
-  const results = {
-    knowledge: [],
-    skills: [],
-    tools: []
-  };
 
   const hasInstructionSignal = (resource) => {
     if (allowAllInstructions) return true;
@@ -660,92 +903,145 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     return filteredGoalKeywords.some((kw) => summary.includes(kw));
   };
 
-  for (const cat of categories) {
-    const catDir = path.join(reposRoot, cat);
-    if (!fs.existsSync(catDir)) continue;
+  const techStackTokens = [
+    ...(analyzedGoal.techStack?.languages || []),
+    ...(analyzedGoal.techStack?.frameworks || []),
+    ...(analyzedGoal.techStack?.tools || []),
+    ...(analyzedGoal.techStack?.platforms || []),
+    ...(analyzedGoal.techStack?.inferred || [])
+  ];
+  const baseKeywordSeed = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
 
+  let variantTexts = [goalText];
+  if (ragFusionConfig.enabled && Array.isArray(analyzedGoal.queryExpansion?.variants)) {
+    const variants = analyzedGoal.queryExpansion.variants.slice(0, ragFusionConfig.maxVariants);
+    variantTexts = ragFusionConfig.includeOriginal ? variantTexts.concat(variants) : variants;
+  }
+  variantTexts = Array.from(new Set(variantTexts.map(v => v && v.trim()).filter(Boolean)));
+  if (variantTexts.length === 0) {
+    variantTexts = [goalText];
+  }
+
+  const variantGoals = variantTexts.map((variantText) => {
+    const variantKeywords = extractGoalKeywordsFromText(variantText, techStackTokens);
+    const merged = [...new Set([...baseKeywordSeed, ...variantKeywords])];
+    return {
+      ...analyzedGoal,
+      originalGoal: variantText,
+      keywords: merged,
+      expandedKeywords: merged
+    };
+  });
+
+  const resourceIndex = {};
+  categories.forEach((cat) => {
+    const catDir = path.join(reposRoot, cat);
+    if (!fs.existsSync(catDir)) {
+      resourceIndex[cat] = [];
+      return;
+    }
     const allowedExtensions = cat === 'tools'
       ? TOOL_EXTENSIONS
       : (cat === 'skills' ? DOC_EXTENSIONS : DATA_EXTENSIONS);
     const files = walkDirectory(catDir, [], { allowedExtensions });
+    resourceIndex[cat] = buildResourceIndex(files, reposRoot, cat);
+  });
 
-    const categoryMinScore =
-      cat === 'knowledge' ? minScore + 0.05 :
-      cat === 'tools' ? minScore + 0.1 :
-      minScore;
+  const variantListsByCategory = {};
+  categories.forEach((cat) => {
+    variantListsByCategory[cat] = [];
+  });
 
-    const scoredFiles = files.map(filePath => {
-      // Read first 10KB of content for analysis
-      let content = '';
-      try {
-        const buffer = fs.readFileSync(filePath);
-        if (buffer.length < 50000) {
-          content = buffer.toString('utf8').substring(0, 10000);
-        }
-      } catch (e) {
-        // Skip unreadable files
-      }
+  const categoryMinScoreMap = {
+    knowledge: minScore + 0.05,
+    tools: minScore + 0.1,
+    skills: minScore
+  };
 
-      const stat = fs.statSync(filePath);
-      const fileName = path.basename(filePath);
-      const relativePath = path.relative(reposRoot, filePath);
-      const pathTokens = extractPathTokens(relativePath);
-      const fileNameTokens = extractPathTokens(fileName);
-      const pathSignals = analyzePathSignals(relativePath, fileName);
+  variantGoals.forEach((variantGoal) => {
+    categories.forEach((cat) => {
+      const categoryMinScore = categoryMinScoreMap[cat] ?? minScore;
+      const list = scoreResourcesForGoal(
+        resourceIndex[cat] || [],
+        variantGoal,
+        techContext,
+        { categoryMinScore, hasInstructionSignal }
+      );
+      variantListsByCategory[cat].push(list);
+    });
+  });
 
-      const keywords = extractKeywords(content, fileName);
-      const mergedKeywords = [...new Set([...keywords, ...pathTokens])];
+  const computeResults = () => {
+    const computed = { knowledge: [], skills: [], tools: [] };
+    const meta = { rrfUsed: false, ragFusionUsed: false };
+    categories.forEach((cat) => {
+      const lists = variantListsByCategory[cat] || [];
+      const ragFusionEnabled = ragFusionConfig.enabled || lists.length > 1;
+      const ragFusion = applyRagFusion(lists, { ...ragFusionConfig, enabled: ragFusionEnabled });
+      meta.ragFusionUsed = meta.ragFusionUsed || ragFusion.used;
 
-      const resource = {
-        filePath,
-        relativePath,
-        fileName,
-        category: cat,
-        techStack: detectFileTechStack(filePath, content),
-        domains: detectFileDomains(filePath, content),
-        keywords: mergedKeywords,
-        pathTokens,
-        fileNameTokens,
-        pathSignals,
-        isInstruction: pathSignals.isAgents,
-        summary: extractSummary(content),
-        fileSize: stat.size
+      const fusion = applyRrfFusion(ragFusion.items, rrfConfig);
+      meta.rrfUsed = meta.rrfUsed || fusion.used;
+      computed[cat] = fusion.items.slice(0, maxResults);
+    });
+    return { computed, meta };
+  };
+
+  let { computed, meta } = computeResults();
+  let hydeUsed = false;
+
+  if (hydeConfig.enabled) {
+    const scored = [...(computed.knowledge || []), ...(computed.skills || [])];
+    const totalMatches = scored.length;
+    const topScore = scored.length > 0 ? Math.max(...scored.map(r => r.score)) : 0;
+    const needsHyde = hydeConfig.mode === 'always' ||
+      totalMatches < hydeConfig.minResults ||
+      topScore < hydeConfig.minScore;
+
+    if (needsHyde) {
+      const hydeText = buildHydeDocument(goalText, analyzedGoal);
+      const hydeKeywords = extractGoalKeywordsFromText(hydeText, techStackTokens);
+      const merged = [...new Set([...baseKeywordSeed, ...hydeKeywords])];
+      const hydeGoal = {
+        ...analyzedGoal,
+        originalGoal: hydeText,
+        keywords: merged,
+        expandedKeywords: merged
       };
 
-      // Check tech compatibility
-      if (!isTechCompatible(resource.techStack, techContext.techStack)) {
-        return null;
-      }
+      categories.forEach((cat) => {
+        const categoryMinScore = categoryMinScoreMap[cat] ?? minScore;
+        const list = scoreResourcesForGoal(
+          resourceIndex[cat] || [],
+          hydeGoal,
+          techContext,
+          { categoryMinScore, hasInstructionSignal }
+        );
+        variantListsByCategory[cat].push(list);
+      });
 
-      const scoring = scoreResource(resource, analyzedGoal, techContext);
-
-      return {
-        ...resource,
-        score: scoring.score,
-        breakdown: scoring.breakdown
-      };
-    }).filter(r => {
-      if (!r) return false;
-      if (!r.isInstruction) return r.score >= categoryMinScore;
-      return hasInstructionSignal(r);
-    });
-
-    const fusion = applyRrfFusion(scoredFiles, rrfConfig);
-
-    // Sort by score and limit
-    fusion.items.sort((a, b) => {
-      if (a.isInstruction !== b.isInstruction) return a.isInstruction ? -1 : 1;
-      return b.score - a.score;
-    });
-    results[cat] = fusion.items.slice(0, maxResults);
-
-    if (includeMeta) {
-      results.__meta = results.__meta || {};
-      results.__meta.rrfUsed = results.__meta.rrfUsed || fusion.used;
-      results.__meta.routingMode = routingOptions.routingMode;
-      results.__meta.maxResults = maxResults;
-      results.__meta.minScore = minScore;
+      const recomputed = computeResults();
+      computed = recomputed.computed;
+      meta = recomputed.meta;
+      hydeUsed = true;
     }
+  }
+
+  results.knowledge = computed.knowledge;
+  results.skills = computed.skills;
+  results.tools = computed.tools;
+
+  if (includeMeta) {
+    results.__meta = {
+      rrfUsed: meta.rrfUsed,
+      ragFusionUsed: meta.ragFusionUsed,
+      ragFusionVariants: variantTexts.length + (hydeUsed ? 1 : 0),
+      hydeUsed,
+      hybridUsed: hybridConfig.enabled === true,
+      routingMode: routingOptions.routingMode,
+      maxResults,
+      minScore
+    };
   }
 
   return results;

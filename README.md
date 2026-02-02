@@ -88,6 +88,25 @@ CORTEX runs on Windows, macOS, and Linux with zero configuration changes.
 - Reuse previous sessions with one click
 - View most-used agents and resources
 
+### 🧭 **Run Explorer**
+- Inspect decision matrices, traces, and quality signals per spawn
+- Review run duration, uncertainty, and resource coverage
+- Surface issues like low-confidence routing or sparse retrieval
+- Compare runs side‑by‑side and view git metadata/diff stats
+
+### 🧪 **Evaluation Lab**
+- Build datasets of prompts + expected outcomes
+  - Per‑item grading with pass/fail thresholds
+  - Optional LLM rubric grading with built‑in templates
+  - Export/import datasets as JSON for sharing and versioning
+- Score runs against datasets for regression testing
+  - Compare run quality metrics over time
+
+### 📦 **Library & Templates**
+- Save and reuse prompts across teams
+- Browse agent templates and tool catalog
+- Jump from library assets directly into Agent Factory
+
 ---
 
 ## 🏗️ Architecture
@@ -103,12 +122,17 @@ cortex/
 │   ├── index.js            # API Server (Port 3001)
 │   ├── orchestrator.js     # Agent Spawning Logic
 │   ├── goal-analyzer.js    # Intent + tech stack analysis
+│   ├── retrieval-gate.js   # Query classification for retrieval skipping
 │   ├── agent-selector.js   # Deterministic agent scoring
 │   ├── resource-matcher.js # Resource scoring + filtering
 │   ├── llm-reranker.js     # Optional Qwen rerank layer
+│   ├── late-interaction-reranker.js # Token-level rerank (ColBERT-style)
 │   ├── config.js           # Configuration Management
 │   └── repo-manager.js     # Cross-platform Git Operations
 ├── config.json             # User Configuration (created on first run)
+├── runs.json               # Run history (auto-generated)
+├── datasets.json           # Evaluation datasets (auto-generated)
+├── evaluations.json        # Evaluation results (auto-generated)
 └── package.json            # Monorepo Root
 ```
 
@@ -167,6 +191,7 @@ CORTEX can be configured via:
    PORT=3001
    ```
 4. **config.json** - Manual editing (see `config.example.json`)
+5. **Saved prompts** - Stored in `saved_prompts.json` (separate from config to avoid accidental loss)
 
 ---
 
@@ -241,28 +266,32 @@ Your `reference-repos` folder structure might look like:
 CORTEX automatically categorizes repos based on their content.
 
 ### Decision Matrix (AGENTS‑First)
-CORTEX uses a deterministic decision matrix with query expansion, routing, and RRF fusion plus an optional Qwen2.5 rerank layer. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
+CORTEX uses a deterministic decision matrix with retrieval gating, query expansion (RAG‑Fusion), hybrid retrieval (sparse + semantic) with RRF fusion, optional HyDE fallback, a late‑interaction rerank, and an optional Qwen2.5 rerank layer for low‑confidence cases. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
 
 ```mermaid
 flowchart TD
     A[User goal] --> B[Goal analysis]
-    B --> C[Query expansion + signal extraction]
-    C --> D[Deterministic scoring + RRF fusion]
-    D --> E{AGENTS.md present?}
-    E -->|Yes| F[Inject AGENTS.md as highest priority]
-    E -->|No| G[Proceed]
-    F --> H[Routing + uncertainty gates]
-    G --> H
-    H -->|Needs review| I[Require human review]
-    H -->|OK| J{LLM rerank enabled?}
-    J -->|Yes| K[Qwen2.5 14B rerank top N]
-    K --> L{Rerank valid?}
-    L -->|No| M[Fallback to deterministic]
-    L -->|Yes| N[Apply reranked order]
-    J -->|No| M
-    M --> O[Generate flight plan]
-    N --> O
-    O --> P[Output]
+    B --> C{Retrieval gate}
+    C -->|Skip| O[Generate flight plan]
+    C -->|Retrieve| D[Query expansion + RAG-Fusion]
+    D --> E[Hybrid retrieval (sparse + semantic)]
+    E --> F[Deterministic scoring + RRF fusion]
+    F --> G{AGENTS.md present?}
+    G -->|Yes| H[Inject AGENTS.md as highest priority]
+    G -->|No| I[Proceed]
+    H --> J[Routing + uncertainty gates]
+    I --> J
+    J -->|Needs review| K[Require human review]
+    J -->|OK| L[Late-interaction rerank]
+    L --> M{LLM rerank enabled + low confidence?}
+    M -->|Yes| N[Qwen2.5 14B rerank top N]
+    N --> P{Rerank valid?}
+    P -->|No| Q[Fallback to deterministic]
+    P -->|Yes| R[Apply reranked order]
+    M -->|No| Q
+    Q --> O
+    R --> O
+    O --> S[Output]
 ```
 
 See `docs/decision-matrix.md` for the full spec and gating rules.
@@ -345,6 +374,7 @@ Optionally add `agent.config.json` for custom keywords:
 - [ ] Human-in-the-Loop Checkpoints
 - [ ] Multi-Repo Knowledge Graphs
 - [ ] Cloud Sync (Encrypted)
+- [ ] Enterprise readiness (SSO/RBAC/audit logs) — deferred to later phase
 
 ---
 

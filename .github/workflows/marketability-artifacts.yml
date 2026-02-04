@@ -1,0 +1,59 @@
+name: Marketability Proof
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  generate-proof:
+    runs-on: [self-hosted, windows]
+
+    env:
+      E2E_REPOS_ROOT: D:\Projects\reference-repos
+      E2E_FRONTEND_PORT: '5174'
+      E2E_BACKEND_PORT: '3002'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Install server dependencies
+        run: npm install
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: ./client
+
+      - name: Capture UI screenshots (Edge)
+        run: npx playwright test --project=edge tests/e2e/screenshots.spec.js tests/e2e/theme-check.spec.js
+
+      - name: Generate marketability demo report
+        run: npm run marketability:demo
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-screenshots
+          path: docs/screenshots
+
+      - name: Upload theme sweeps
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-theme-check
+          path: test-results/theme-check
+
+      - name: Upload demo report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-marketability-report
+          path: docs/marketability-demo-report.md

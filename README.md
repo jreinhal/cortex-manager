@@ -82,6 +82,16 @@ Built with React, Tailwind CSS, and Framer Motion, featuring:
 
 To refresh screenshots: `npm run e2e:edge -- tests/e2e/screenshots.spec.js`
 
+### ✅ **Marketability Proof (Demo Report)**
+Generate a live report from the running system (repos, scans, spawns, evaluations):
+
+```
+npm run marketability:demo
+```
+
+Output: `docs/marketability-demo-report.md`  
+Checklist: `docs/marketability-readiness.md`
+
 ### 📚 **Reference Repository Management**
 Organize your AI knowledge base into structured categories:
 - **Agents**: Pre-configured agent templates (Agent-S, Standard Agent)

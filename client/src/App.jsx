@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import {
   Terminal, Database, Cpu, Wrench,
@@ -688,7 +688,35 @@ function BootstrapAdminScreen({ onBootstrap, loading, error }) {
 }
 
 // ==========================================
+const SPAWN_STEP_DEFS = [
+  {
+    key: 'analyze',
+    label: 'Analyze goal keywords',
+    detail: 'Extract intent, complexity, and routing signals.',
+    type: 'search'
+  },
+  {
+    key: 'route',
+    label: 'Select best agent',
+    detail: 'Score agents against the goal and pick the top match.',
+    type: 'route'
+  },
+  {
+    key: 'retrieve',
+    label: 'Search knowledge base',
+    detail: 'Hybrid retrieval + RRF fusion across knowledge/skills/tools.',
+    type: 'retrieve'
+  },
+  {
+    key: 'compose',
+    label: 'Generate flight plan',
+    detail: 'Assemble directive, required reading, and decision matrix.',
+    type: 'synthesize'
+  }
+];
+
 function SpawnTimeline({ steps }) {
+  const [expanded, setExpanded] = useState(true);
   const totalSteps = steps.length;
   const doneCount = steps.filter(step => step.done).length;
   const hasError = steps.some(step => step.error);
@@ -696,15 +724,29 @@ function SpawnTimeline({ steps }) {
   const currentStep = steps.find(step => !step.done && !step.error);
   const rawProgress = totalSteps > 0 ? Math.round((doneCount / totalSteps) * 100) : 0;
   const displayProgress = isComplete ? 100 : Math.max(8, rawProgress);
+  const totalDuration = steps.reduce((sum, step) => sum + (step.durationMs || 0), 0);
+  const hasTiming = steps.some(step => step.durationMs !== null && step.durationMs !== undefined);
+
+  useEffect(() => {
+    if (steps.some(step => !step.done)) {
+      setExpanded(true);
+    }
+  }, [steps]);
 
   return (
-    <div className="space-y-3" role="status" aria-live="polite" data-testid="spawn-steps">
-      {totalSteps > 0 && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>{isComplete ? 'Complete' : hasError ? 'Error' : 'Working…'}</span>
-            <span>{doneCount}/{totalSteps} · {displayProgress}%</span>
-          </div>
+    <div className="glassbox-accordion" role="status" aria-live="polite" data-testid="spawn-steps">
+      <button
+        type="button"
+        className={cn("glassbox-toggle", expanded && "expanded")}
+        onClick={() => setExpanded((open) => !open)}
+      >
+        <ChevronDown size={14} aria-hidden="true" />
+        <span className="font-semibold">View Generation Chain ({totalSteps} steps)</span>
+        <span className="glassbox-toggle-meta">{doneCount}/{totalSteps} · {displayProgress}%</span>
+        {hasTiming && <span className="glassbox-total-duration">{totalDuration}ms</span>}
+      </button>
+      <div className={cn("glassbox-content", expanded && "visible")}>
+        <div className="space-y-2">
           <div
             className="relative h-2 w-full rounded-full bg-slate-800/80 overflow-hidden border border-slate-700/50"
             role="progressbar"
@@ -726,40 +768,33 @@ function SpawnTimeline({ steps }) {
           </div>
           {!isComplete && !hasError && (
             <div className="text-[11px] text-slate-500">
-              {currentStep ? `Now: ${currentStep.text}` : 'Working…'} This can take a few minutes for large prompts.
+              {currentStep ? `Now: ${currentStep.label || currentStep.text}` : 'Working…'} This can take a few minutes for large prompts.
             </div>
           )}
           {hasError && (
             <div className="text-[11px] text-red-400">An error occurred. Check System Logs.</div>
           )}
         </div>
-      )}
-      {steps.map((step, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ ...SPRING_FAST, delay: i * 0.1 }}
-          className="flex items-center gap-3"
-        >
-          <div className={cn(
-            "w-6 h-6 rounded-full flex items-center justify-center text-xs",
-            step.done
-              ? "bg-emerald-500/20 text-emerald-400"
-              : step.error
-                ? "bg-red-500/20 text-red-400"
-                : "bg-cyan-500/20 text-cyan-400"
-          )}>
-            {step.done ? <Check size={14} aria-hidden="true" /> : step.error ? <X size={14} aria-hidden="true" /> : <RefreshCw size={14} className="animate-spin" aria-hidden="true" />}
-          </div>
-          <span className={cn(
-            "text-sm",
-            step.done ? "text-slate-400" : step.error ? "text-red-400" : "text-slate-200"
-          )}>
-            {step.text}
-          </span>
-        </motion.div>
-      ))}
+
+        <div className="mt-4 space-y-2">
+          {steps.map((step, i) => (
+            <div key={step.key || i} className="glassbox-step">
+              <div className={cn("glassbox-step-icon", step.type || '')}>
+                {i + 1}
+              </div>
+              <div className="glassbox-step-content">
+                <div className="glassbox-step-label">
+                  {step.label || step.text}
+                  {step.durationMs !== null && step.durationMs !== undefined && (
+                    <span className="glassbox-step-duration">{Math.max(0, Math.round(step.durationMs))}ms</span>
+                  )}
+                </div>
+                {step.detail && <div className="glassbox-step-detail">{step.detail}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -791,6 +826,7 @@ function OrchestratorView({
   const [promptTitle, setPromptTitle] = useState('');
   const [justSaved, setJustSaved] = useState(false);
   const [runInBackground, setRunInBackground] = useState(false);
+  const spawnTimeoutsRef = useRef([]);
   const formatMenuRef = useRef(null);
   const formatButtonRef = useRef(null);
 
@@ -839,10 +875,21 @@ function OrchestratorView({
 
     return () => {
       window.removeEventListener('mousedown', handleClick);
-      window.removeEventListener('touchstart', handleClick);
-      window.removeEventListener('keydown', handleKey);
+    window.removeEventListener('touchstart', handleClick);
+    window.removeEventListener('keydown', handleKey);
     };
   }, [formatMenuOpen]);
+
+  const clearSpawnTimeouts = useCallback(() => {
+    spawnTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    spawnTimeoutsRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearSpawnTimeouts();
+    };
+  }, [clearSpawnTimeouts]);
 
   const handleSavePrompt = async () => {
     if (!goal) return;
@@ -912,19 +959,63 @@ function OrchestratorView({
     if (!goal) return;
 
     // Initialize timeline
-    setSpawnSteps([
-      { text: 'Analyzing goal keywords…', done: false }
-    ]);
+    clearSpawnTimeouts();
+    const startTime = Date.now();
+    setSpawnSteps(
+      SPAWN_STEP_DEFS.map((step, index) => ({
+        ...step,
+        done: false,
+        error: false,
+        startedAt: index === 0 ? startTime : null,
+        durationMs: null
+      }))
+    );
 
     // Simulate progress (actual progress comes from backend)
-    setTimeout(() => setSpawnSteps(s => [...s.slice(0, 1).map(x => ({ ...x, done: true })), { text: 'Selecting best agent…', done: false }]), 300);
-    setTimeout(() => setSpawnSteps(s => [...s.slice(0, 2).map(x => ({ ...x, done: true })), { text: 'Searching knowledge base…', done: false }]), 600);
-    setTimeout(() => setSpawnSteps(s => [...s.slice(0, 3).map(x => ({ ...x, done: true })), { text: 'Generating flight plan…', done: false }]), 900);
+    const advanceStep = (nextIndex) => {
+      setSpawnSteps((prev) =>
+        prev.map((step, idx) => {
+          if (idx === nextIndex - 1 && !step.done) {
+            const endTime = Date.now();
+            return {
+              ...step,
+              done: true,
+              durationMs: step.startedAt ? endTime - step.startedAt : step.durationMs
+            };
+          }
+          if (idx === nextIndex && !step.startedAt) {
+            return {
+              ...step,
+              startedAt: Date.now()
+            };
+          }
+          return step;
+        })
+      );
+    };
+
+    [300, 600, 900].forEach((delay, idx) => {
+      const timeoutId = setTimeout(() => advanceStep(idx + 1), delay);
+      spawnTimeoutsRef.current.push(timeoutId);
+    });
 
     await onSpawn(goal, format, runInBackground);
 
     // Mark all done
-    setSpawnSteps(s => s.map(x => ({ ...x, done: true })));
+    clearSpawnTimeouts();
+    setSpawnSteps((prev) =>
+      prev.map((step) => {
+        if (step.done) {
+          return step;
+        }
+        const endTime = Date.now();
+        return {
+          ...step,
+          done: true,
+          durationMs: step.startedAt ? endTime - step.startedAt : 0
+        };
+      })
+    );
   };
 
   const handleCopy = () => {
@@ -1070,10 +1161,10 @@ function OrchestratorView({
                   onClick={handleSpawn}
                   disabled={loading || !goal}
                   data-testid="generate-flight-plan"
-                  className="flex items-center gap-2 px-5 py-3 bg-white text-slate-900 rounded-full shadow-lg shadow-white/10 transition-ui text-sm font-semibold disabled:opacity-50 disabled:shadow-none"
+                  className="flex items-center gap-2 px-5 py-3 bg-cyan-500 hover:bg-cyan-400 text-white rounded-full shadow-lg shadow-cyan-500/20 transition-ui text-sm font-semibold disabled:opacity-50 disabled:shadow-none"
                   title="Generate Flight Plan"
                 >
-                  {loading ? <RefreshCw size={18} className="animate-spin text-slate-900" aria-hidden="true" /> : <ChevronRight size={18} className="text-slate-900" aria-hidden="true" />}
+                  {loading ? <RefreshCw size={18} className="animate-spin text-white" aria-hidden="true" /> : <ChevronRight size={18} className="text-white" aria-hidden="true" />}
                   Generate Flight Plan
                 </button>
               </div>
@@ -1091,7 +1182,7 @@ function OrchestratorView({
             </div>
 
             {/* Status Timeline */}
-            {loading && spawnSteps.length > 0 && (
+            {spawnSteps.length > 0 && (
               <div className="mt-6 p-4 bg-white/[0.04] rounded-2xl border border-white/[0.08]">
                 <SpawnTimeline steps={spawnSteps} />
               </div>

@@ -1,46 +1,49 @@
 @import "tailwindcss";
 
 :root {
-  --obsidian-950: #0c1117;
-  --obsidian-925: #0e141c;
-  --obsidian-900: #121822;
-  --obsidian-850: #151b26;
-  --obsidian-800: #1a2230;
-  --obsidian-700: #263143;
-  --obsidian-600: #344156;
-  --obsidian-500: #4a5a72;
-  --obsidian-400: #6b7c94;
-  --obsidian-300: #8c9bb0;
-  --obsidian-200: #b0bdcf;
-  --obsidian-100: #e8edf4;
-  --accent-cyan: #6b7c94;
-  --accent-violet: #8aa2c8;
-  --accent-emerald: #4f7d65;
-  --glass-panel: rgba(14, 20, 30, 0.92);
-  --glass-panel-top: rgba(19, 26, 38, 0.94);
-  --glass-panel-bottom: rgba(10, 15, 22, 0.96);
-  --glass-card: rgba(18, 24, 34, 0.8);
-  --glass-card-top: rgba(22, 30, 42, 0.82);
-  --glass-card-bottom: rgba(12, 18, 26, 0.84);
-  --glass-border: rgba(148, 163, 184, 0.14);
+  --obsidian-950: #0b1117;
+  --obsidian-925: #0f1620;
+  --obsidian-900: #121a24;
+  --obsidian-850: #16202b;
+  --obsidian-800: #1b2632;
+  --obsidian-700: #253446;
+  --obsidian-600: #33465c;
+  --obsidian-500: #4a607a;
+  --obsidian-400: #6a7f99;
+  --obsidian-300: #8fa3b9;
+  --obsidian-200: #c3cfde;
+  --obsidian-100: #f2f6fb;
+  --accent-primary: #2496ed;
+  --accent-primary-strong: #1c7fcf;
+  --accent-primary-soft: rgba(36, 150, 237, 0.18);
+  --accent-cyan: #2496ed;
+  --accent-violet: #7f93ff;
+  --accent-emerald: #2f9e74;
+  --glass-panel: rgba(18, 26, 36, 0.92);
+  --glass-panel-top: rgba(24, 33, 45, 0.94);
+  --glass-panel-bottom: rgba(13, 19, 27, 0.96);
+  --glass-card: rgba(21, 30, 41, 0.86);
+  --glass-card-top: rgba(28, 39, 53, 0.9);
+  --glass-card-bottom: rgba(16, 23, 33, 0.9);
+  --glass-border: rgba(148, 163, 184, 0.12);
   --glass-highlight: rgba(255, 255, 255, 0.05);
-  --ring: rgba(107, 124, 148, 0.6);
-  --sidebar-top: rgba(12, 16, 23, 0.98);
-  --sidebar-bottom: rgba(8, 12, 18, 0.99);
-  --sidebar-border: rgba(148, 163, 184, 0.12);
+  --ring: rgba(36, 150, 237, 0.6);
+  --sidebar-top: rgba(13, 18, 25, 0.98);
+  --sidebar-bottom: rgba(9, 13, 18, 0.99);
+  --sidebar-border: rgba(148, 163, 184, 0.1);
   --sidebar-shadow: 4px 0 16px rgba(0, 0, 0, 0.38);
-  --topbar-bg: rgba(12, 16, 24, 0.82);
+  --topbar-bg: rgba(15, 21, 29, 0.82);
   --topbar-border: rgba(148, 163, 184, 0.12);
-  --nav-pill-bg: linear-gradient(135deg, rgba(79, 110, 146, 0.28), rgba(46, 64, 88, 0.18));
-  --nav-pill-border: rgba(93, 126, 166, 0.35);
-  --nav-pill-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
-  --nav-pill-glow: 0 0 0 1px rgba(93, 126, 166, 0.2);
+  --nav-pill-bg: linear-gradient(135deg, rgba(36, 150, 237, 0.26), rgba(17, 36, 58, 0.2));
+  --nav-pill-border: rgba(36, 150, 237, 0.35);
+  --nav-pill-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+  --nav-pill-glow: 0 0 0 1px rgba(36, 150, 237, 0.25);
   --chip-bg: rgba(255, 255, 255, 0.03);
   --chip-border: rgba(255, 255, 255, 0.08);
   --chip-muted-bg: rgba(15, 23, 35, 0.5);
   --chip-muted-border: rgba(148, 163, 184, 0.18);
-  --wizard-top: rgba(14, 20, 30, 0.92);
-  --wizard-bottom: rgba(9, 13, 20, 0.92);
+  --wizard-top: rgba(18, 26, 36, 0.92);
+  --wizard-bottom: rgba(12, 18, 26, 0.92);
 }
 
 html {
@@ -49,51 +52,51 @@ html {
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --obsidian-950: #eef2f7;
-  --obsidian-925: #e7edf4;
-  --obsidian-900: #dde6f1;
-  --obsidian-850: #d2ddea;
-  --obsidian-800: #c4d1e3;
-  --obsidian-700: #b1bfd6;
-  --obsidian-600: #95a7bf;
-  --obsidian-500: #7c8fab;
-  --obsidian-400: #5e7087;
-  --obsidian-300: #45566c;
-  --obsidian-200: #2e3b50;
-  --obsidian-100: #0f1624;
-  --glass-panel: rgba(222, 231, 242, 0.98);
-  --glass-panel-top: rgba(242, 246, 252, 0.98);
-  --glass-panel-bottom: rgba(214, 225, 238, 0.98);
-  --glass-card: rgba(216, 227, 241, 0.98);
-  --glass-card-top: rgba(241, 245, 252, 0.98);
-  --glass-card-bottom: rgba(210, 222, 238, 0.98);
-  --glass-border: rgba(46, 59, 80, 0.22);
+  --obsidian-950: #f4f7fb;
+  --obsidian-925: #eef2f7;
+  --obsidian-900: #e6ecf4;
+  --obsidian-850: #dbe4ef;
+  --obsidian-800: #cdd9e7;
+  --obsidian-700: #b7c6d8;
+  --obsidian-600: #94a8c0;
+  --obsidian-500: #7c92ad;
+  --obsidian-400: #5f738b;
+  --obsidian-300: #475a6f;
+  --obsidian-200: #2d3c50;
+  --obsidian-100: #121d2b;
+  --glass-panel: rgba(244, 248, 252, 0.98);
+  --glass-panel-top: rgba(255, 255, 255, 0.98);
+  --glass-panel-bottom: rgba(230, 238, 248, 0.98);
+  --glass-card: rgba(235, 242, 250, 0.98);
+  --glass-card-top: rgba(251, 253, 255, 0.98);
+  --glass-card-bottom: rgba(223, 232, 245, 0.98);
+  --glass-border: rgba(47, 62, 82, 0.18);
   --glass-highlight: rgba(12, 20, 32, 0.1);
-  --ring: rgba(94, 112, 135, 0.85);
-  --sidebar-top: rgba(221, 231, 242, 0.98);
-  --sidebar-bottom: rgba(212, 223, 236, 0.98);
-  --sidebar-border: rgba(46, 59, 80, 0.2);
-  --sidebar-shadow: 4px 0 12px rgba(15, 23, 42, 0.18);
-  --topbar-bg: rgba(232, 239, 248, 0.98);
-  --topbar-border: rgba(46, 59, 80, 0.2);
-  --nav-pill-bg: linear-gradient(135deg, rgba(94, 112, 135, 0.28), rgba(69, 86, 108, 0.22));
-  --nav-pill-border: rgba(46, 59, 80, 0.28);
-  --nav-pill-shadow: 0 6px 14px rgba(17, 24, 39, 0.22);
-  --nav-pill-glow: 0 0 0 1px rgba(94, 112, 135, 0.35);
-  --chip-bg: rgba(18, 26, 39, 0.1);
-  --chip-border: rgba(46, 59, 80, 0.22);
-  --chip-muted-bg: rgba(18, 26, 39, 0.12);
-  --chip-muted-border: rgba(46, 59, 80, 0.26);
-  --wizard-top: rgba(236, 241, 249, 0.98);
-  --wizard-bottom: rgba(210, 222, 238, 0.98);
+  --ring: rgba(36, 150, 237, 0.65);
+  --sidebar-top: rgba(236, 242, 249, 0.98);
+  --sidebar-bottom: rgba(226, 234, 244, 0.98);
+  --sidebar-border: rgba(47, 62, 82, 0.18);
+  --sidebar-shadow: 4px 0 12px rgba(15, 23, 42, 0.16);
+  --topbar-bg: rgba(239, 244, 250, 0.98);
+  --topbar-border: rgba(47, 62, 82, 0.18);
+  --nav-pill-bg: linear-gradient(135deg, rgba(36, 150, 237, 0.2), rgba(104, 123, 150, 0.18));
+  --nav-pill-border: rgba(36, 150, 237, 0.28);
+  --nav-pill-shadow: 0 6px 14px rgba(17, 24, 39, 0.18);
+  --nav-pill-glow: 0 0 0 1px rgba(36, 150, 237, 0.25);
+  --chip-bg: rgba(18, 26, 39, 0.08);
+  --chip-border: rgba(47, 62, 82, 0.18);
+  --chip-muted-bg: rgba(18, 26, 39, 0.1);
+  --chip-muted-border: rgba(47, 62, 82, 0.22);
+  --wizard-top: rgba(243, 248, 253, 0.98);
+  --wizard-bottom: rgba(226, 235, 247, 0.98);
 }
 
 body {
   background-color: var(--obsidian-950);
   background-image:
-    radial-gradient(1100px 740px at 12% -10%, rgba(24, 34, 50, 0.5), transparent 60%),
-    radial-gradient(880px 520px at 88% 8%, rgba(18, 26, 38, 0.42), transparent 58%),
-    linear-gradient(180deg, rgba(9, 12, 18, 0.98), rgba(7, 10, 16, 0.98));
+    radial-gradient(1100px 740px at 12% -10%, rgba(36, 150, 237, 0.18), transparent 60%),
+    radial-gradient(880px 520px at 88% 8%, rgba(59, 130, 246, 0.14), transparent 58%),
+    linear-gradient(180deg, rgba(10, 14, 20, 0.98), rgba(8, 11, 16, 0.98));
   color: var(--obsidian-100);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.58;
@@ -118,9 +121,9 @@ body::before {
 :root[data-theme="light"] body {
   background-color: var(--obsidian-950);
   background-image:
-    radial-gradient(1200px 760px at 12% -12%, rgba(183, 197, 219, 0.35), transparent 60%),
-    radial-gradient(900px 540px at 88% 8%, rgba(201, 213, 232, 0.3), transparent 58%),
-    linear-gradient(180deg, rgba(244, 247, 251, 0.98), rgba(235, 241, 248, 0.98));
+    radial-gradient(1200px 760px at 12% -12%, rgba(36, 150, 237, 0.18), transparent 60%),
+    radial-gradient(900px 540px at 88% 8%, rgba(125, 150, 195, 0.22), transparent 58%),
+    linear-gradient(180deg, rgba(245, 248, 252, 0.98), rgba(235, 242, 248, 0.98));
 }
 
 :root[data-theme="light"] body::before {
@@ -174,16 +177,16 @@ a,
 }
 
 ::-webkit-scrollbar-track {
-  background: #0c111b;
+  background: var(--obsidian-900);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1f2b3f;
+  background: color-mix(in srgb, var(--obsidian-700) 70%, transparent);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a3a52;
+  background: color-mix(in srgb, var(--obsidian-600) 80%, transparent);
 }
 
 :root[data-theme="light"] ::-webkit-scrollbar-track {
@@ -276,6 +279,122 @@ a,
 .glass-panel > .layer-top,
 .glass-card > .layer-top {
   z-index: 30;
+}
+
+/* Glassbox (Generation Chain) */
+.glassbox-accordion {
+  margin-top: 0.5rem;
+}
+
+.glassbox-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 6px 10px;
+  background: var(--glass-card);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  color: var(--obsidian-300);
+  transition: all 0.15s ease;
+}
+
+.glassbox-toggle:hover {
+  background: var(--glass-panel);
+  color: var(--obsidian-100);
+}
+
+.glassbox-toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.glassbox-toggle.expanded svg {
+  transform: rotate(180deg);
+}
+
+.glassbox-toggle-meta {
+  color: var(--obsidian-300);
+  font-weight: 500;
+}
+
+.glassbox-content {
+  display: none;
+  padding: 12px 14px;
+  margin-top: 10px;
+  background: var(--glass-panel);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.glassbox-content.visible {
+  display: block;
+}
+
+.glassbox-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.glassbox-step:last-child {
+  border-bottom: none;
+}
+
+.glassbox-step-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(36, 150, 237, 0.2);
+  color: var(--accent-primary);
+}
+
+.glassbox-step-icon.route {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+
+.glassbox-step-icon.retrieve {
+  background: rgba(34, 197, 94, 0.18);
+  color: #22c55e;
+}
+
+.glassbox-step-icon.synthesize {
+  background: rgba(139, 92, 246, 0.18);
+  color: #8b5cf6;
+}
+
+.glassbox-step-label {
+  font-weight: 600;
+  color: var(--obsidian-100);
+  margin-bottom: 2px;
+}
+
+.glassbox-step-detail {
+  color: var(--obsidian-300);
+}
+
+.glassbox-step-duration,
+.glassbox-total-duration {
+  font-size: 11px;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
 }
 
 .transition-ui {
@@ -498,6 +617,80 @@ a,
 :root[data-theme="light"] .bg-white\/20 { background-color: rgba(17, 24, 39, 0.12); }
 :root[data-theme="light"] .border-white\/10 { border-color: rgba(46, 59, 80, 0.16); }
 :root[data-theme="light"] .border-white\/5 { border-color: rgba(46, 59, 80, 0.12); }
+
+/* Docker-blue accent overrides for existing cyan utilities */
+.text-cyan-500,
+.text-cyan-400,
+.text-cyan-300,
+.text-cyan-200 {
+  color: var(--accent-primary);
+}
+
+.bg-cyan-500 {
+  background-color: var(--accent-primary);
+}
+
+.bg-cyan-400 {
+  background-color: color-mix(in srgb, var(--accent-primary) 85%, white);
+}
+
+.bg-cyan-400\/80 {
+  background-color: color-mix(in srgb, var(--accent-primary) 80%, transparent);
+}
+
+.bg-cyan-300\/90 {
+  background-color: color-mix(in srgb, var(--accent-primary) 75%, transparent);
+}
+
+.bg-cyan-400\/10 {
+  background-color: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+
+.bg-cyan-500\/10 {
+  background-color: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+
+.bg-cyan-500\/20 {
+  background-color: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
+
+.bg-cyan-500\/30 {
+  background-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+}
+
+.bg-cyan-500\/70 {
+  background-color: color-mix(in srgb, var(--accent-primary) 70%, transparent);
+}
+
+.border-cyan-500,
+.border-cyan-500\/30,
+.border-cyan-500\/40 {
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+}
+
+.hover\:bg-cyan-400:hover {
+  background-color: color-mix(in srgb, var(--accent-primary) 85%, white);
+}
+
+.hover\:text-cyan-300:hover,
+.hover\:text-cyan-200:hover {
+  color: color-mix(in srgb, var(--accent-primary) 90%, white);
+}
+
+.focus\:ring-cyan-500\/30:focus,
+.focus-visible\:border-cyan-500\/50:focus-visible,
+.focus-visible\:border-cyan-400\/50:focus-visible {
+  border-color: color-mix(in srgb, var(--accent-primary) 50%, transparent);
+}
+
+.shadow-cyan-500\/20 {
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+  color: var(--obsidian-100);
+}
 
 /* Animations */
 @keyframes pulse-subtle {

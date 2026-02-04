@@ -1,5 +1,72 @@
 # Testing Checklist
 
+## Zero-Gap E2E Test Protocol (Living)
+
+### Application Context
+- CORTEX is a local-first AI platform with a React 19/Tailwind CSS 4 frontend and a Node.js/Express backend.
+- Core flows: spawn specialized agents, manage local reference repos (Knowledge/Skills/Tools/Agents), generate Flight Plans (Markdown).
+
+### Critical Path & Functional Logic
+1) Setup & Config
+- Verify First-Run Wizard or Settings panel updates `config.json` and connects to the repository root.
+
+2) Agent Factory Flow
+- Enter a complex goal (example: "Audit auth module for security").
+- Verify real-time status timeline updates.
+- Verify Flight Plan generation.
+- Verify Copy to Clipboard works.
+
+3) Decision Matrix Validation
+- Confirm the generated Flight Plan includes: Retrieval gate, Query expansion, RAG-Fusion, Hybrid retrieval, RRF fusion.
+
+4) Repository Management
+- Perform a Smart Clone and a System Scan.
+- Verify repositories are categorized (Agents, Skills, Knowledge, Tools).
+- Verify folder sizes are accurate (spot-check against OS properties).
+
+5) Evaluations & Runs
+- Create a dataset in Evaluation Lab.
+- Run evaluation against a recent spawn.
+- Verify scorecard grading (including LLM rubric grading if enabled).
+
+### Manual UI & Visual Integrity Audit
+- Knowledge Base: "Add Repository" label does not overlap border or focus ring.
+- Focus rings remain within fields and do not obscure text.
+- Sidebar active state highlights current view; page header updates correctly.
+- System Logs persist across view changes.
+- Telemetry/analytics increment after successful spawns.
+
+### UX & Edge Case Hunting
+- Ambiguous goal input: verify "Requires Review" or low-confidence routing is flagged.
+- Error states: invalid repo URLs and duplicate repo additions trigger notice system + log entries.
+
+### Structured Report Template (Fill for Each E2E Run)
+
+#### Step-by-Step Execution Log
+- [ ] Step 1: [clicks + inputs + view], Result:
+- [ ] Step 2: [clicks + inputs + view], Result:
+- [ ] Step 3: [clicks + inputs + view], Result:
+- [ ] Step 4: [clicks + inputs + view], Result:
+- [ ] Step 5: [clicks + inputs + view], Result:
+
+#### Functional Pass/Fail
+| Workflow | Status | Notes |
+| --- | --- | --- |
+| Spawn (Agent Factory) |  |  |
+| Clone (Smart Clone) |  |  |
+| Scan (System Scan) |  |  |
+| Evaluate (Evaluation Lab) |  |  |
+
+#### Visual/UX Bug Log
+| Issue | View | Severity | Notes |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+#### Telemetry Check
+- totalSpawns updated: [yes/no]
+- recent sessions updated: [yes/no]
+- log entries created for clone/scan/errors: [yes/no]
+
 ## Manual Smoke
 - First-run wizard appears on fresh install
 - Settings panel updates config correctly

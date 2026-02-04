@@ -13,25 +13,41 @@ const views = [
   { key: 'settings', label: 'settings' },
 ];
 
-test.describe('light mode visual sweep', () => {
+const themes = [
+  { key: 'light', storage: 'light' },
+  { key: 'dark', storage: 'dark' },
+  { key: 'system', storage: 'system' },
+];
+
+test.describe('theme visual sweep', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('cortex_theme', 'light');
-    });
-  });
-
-  for (const view of views) {
-    test(`light mode - ${view.key}`, async ({ page }) => {
-      await page.goto(`/?view=${view.key}`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('#main-content');
-      await page.waitForTimeout(600);
-      await page.screenshot({
-        path: `test-results/theme-check/light-${view.label}.png`,
-        fullPage: true,
+  for (const theme of themes) {
+    test.describe(`${theme.key} mode`, () => {
+      test.beforeEach(async ({ page }) => {
+        await page.addInitScript((value) => {
+          window.localStorage.setItem('cortex_theme', value);
+        }, theme.storage);
       });
-      expect(await page.getAttribute('html', 'data-theme')).toBe('light');
+
+      for (const view of views) {
+        test(`${theme.key} - ${view.key}`, async ({ page }) => {
+          await page.goto(`/?view=${view.key}`, { waitUntil: 'domcontentloaded' });
+          await page.waitForSelector('#main-content');
+          await page.waitForTimeout(600);
+          await page.screenshot({
+            path: `test-results/theme-check/${theme.key}-${view.label}.png`,
+            fullPage: true,
+          });
+
+          const themeAttr = await page.getAttribute('html', 'data-theme');
+          if (theme.key === 'system') {
+            expect(['light', 'dark']).toContain(themeAttr);
+          } else {
+            expect(themeAttr).toBe(theme.key);
+          }
+        });
+      }
     });
   }
 });

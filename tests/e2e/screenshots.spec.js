@@ -50,6 +50,19 @@ test('capture product screenshots', async ({ page }, testInfo) => {
   };
 
   await capture({ label: 'command-center', navTestId: 'nav-home', heading: 'Command Center' });
+
+  const openChecklist = page.getByRole('button', { name: 'Open checklist' });
+  if (await openChecklist.isVisible().catch(() => false)) {
+    await openChecklist.click();
+    await expect(page.getByRole('heading', { name: 'Quickstart Checklist' })).toBeVisible({ timeout: 15000 });
+    const loadingIndicator = page.getByText('Loading checklist…');
+    if (await loadingIndicator.isVisible().catch(() => false)) {
+      await expect(loadingIndicator).toBeHidden({ timeout: 15000 });
+    }
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: path.join(outputDir, 'quickstart-checklist.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Close' }).click();
+  }
   await capture({ label: 'agent-factory', navTestId: 'nav-agents', heading: 'Agent Factory' });
   await capture({ label: 'knowledge-base', navTestId: 'nav-knowledge', heading: 'Knowledge Base' });
   await capture({ label: 'evaluations', navTestId: 'nav-evaluations', heading: 'Evaluations' });

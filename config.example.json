@@ -1,5 +1,5 @@
 {
-  "reposRoot": "/path/to/your/reference-repos",
+  "reposRoot": "D:/Projects/reference-repos",
   "outputDir": null,
   "firstRunComplete": false,
   "theme": "dark",
@@ -76,6 +76,8 @@
     },
     "llmRerank": {
       "mode": "lowConfidence",
+      "agentMode": "advisory",
+      "resourceMode": "lowConfidence",
       "minUncertainty": 0.55,
       "minTopScore": 0.32,
       "minResourceCount": 3,
@@ -94,16 +96,18 @@
   "llm": {
     "enabled": true,
     "provider": "openai-compatible",
-    "model": "qwen2.5-14b-instruct-q4",
+    "model": "qwen2.5-7b-instruct-q4",
     "endpoint": "http://localhost:8080/v1/chat/completions",
     "fallbackEndpoint": null,
-    "allowRemote": true,
-    "modelDir": "D:/Models/qwen2.5-14b-instruct-q4",
-    "modelPath": "D:/Models/qwen2.5-14b-instruct-q4/qwen2.5-14b-instruct-q4.gguf",
+    "allowRemote": false,
+    "modelDir": "D:/Models/qwen2.5-7b-instruct-q4",
+    "modelPath": "D:/Models/qwen2.5-7b-instruct-q4/qwen2.5-7b-instruct-q4.gguf",
     "timeoutMs": 10000,
     "temperature": 0.1,
     "maxTokens": 400,
-    "topN": 6
+    "topN": 6,
+    "costPer1kTokens": 0,
+    "currency": "USD"
   },
   "evaluation": {
     "passThreshold": 0.75,
@@ -111,6 +115,126 @@
     "maxOutputChars": 120000,
     "llmGraderEnabled": true,
     "llmMaxItems": 12
+  },
+  "auth": {
+    "enabled": false,
+    "tokenTtlHours": 12,
+    "secret": null,
+    "bootstrapAllowed": true,
+    "rbac": {
+      "enabled": true,
+      "allowAdminBypass": true,
+      "roles": {
+        "viewer": {
+          "config": ["read"],
+          "system": ["read"],
+          "llm": ["read"],
+          "workspaces": ["read"],
+          "users": [],
+          "repos": ["read"],
+          "vector_index": ["read"],
+          "runs": ["read"],
+          "jobs": ["read"],
+          "datasets": ["read", "export"],
+          "evaluations": ["read", "compare"],
+          "evaluation_templates": ["read", "export"],
+          "prompts": ["read"],
+          "agents": ["read"],
+          "tools": ["read"],
+          "analytics": ["read"],
+          "observability": ["read"],
+          "audit": ["read"],
+          "sessions": ["read"],
+          "logs": ["read"]
+        },
+        "editor": {
+          "config": ["read"],
+          "system": ["read"],
+          "llm": ["read", "test"],
+          "workspaces": ["read"],
+          "users": [],
+          "repos": ["read", "scan", "create", "update"],
+          "vector_index": ["read", "rebuild"],
+          "runs": ["read", "create"],
+          "jobs": ["read", "create", "update"],
+          "datasets": ["read", "create", "update", "delete", "export", "import"],
+          "evaluations": ["read", "create", "compare"],
+          "evaluation_templates": ["read", "create", "update", "delete", "export", "import"],
+          "prompts": ["read", "create", "update", "delete"],
+          "agents": ["read"],
+          "tools": ["read"],
+          "analytics": ["read"],
+          "observability": ["read"],
+          "audit": ["read"],
+          "sessions": ["read", "create"],
+          "logs": ["read"]
+        },
+        "admin": {
+          "*": ["*"]
+        }
+      }
+    },
+    "sso": {
+      "enabled": false,
+      "mode": "header",
+      "headerUser": "x-cortex-user",
+      "headerRole": "x-cortex-role",
+      "headerWorkspace": "x-cortex-workspace",
+      "defaultRole": "viewer",
+      "autoProvision": true
+    },
+    "scim": {
+      "enabled": false,
+      "token": null
+    }
+  },
+  "queue": {
+    "enabled": true,
+    "concurrency": 2,
+    "maxJobs": 200,
+    "retainCompleted": 120,
+    "workers": {
+      "mode": "inline",
+      "min": 1,
+      "max": 3,
+      "scaleUpThreshold": 3,
+      "scaleDownIdleMs": 60000,
+      "pollIntervalMs": 1500,
+      "heartbeatMs": 4000,
+      "jobTimeoutMs": 1200000,
+      "concurrency": 1
+    }
+  },
+  "vectorIndex": {
+    "enabled": true,
+    "chunkSize": 900,
+    "chunkOverlap": 120,
+    "maxFiles": 2000,
+    "maxCharsPerFile": 20000,
+    "autoRebuild": false,
+    "minScore": 0.08,
+    "mode": "hash",
+    "embedding": {
+      "enabled": false,
+      "endpoint": "http://localhost:8080/v1/embeddings",
+      "model": "text-embedding-3-small",
+      "dimensions": 768,
+      "batchSize": 16,
+      "timeoutMs": 12000,
+      "allowRemote": false
+    }
+  },
+  "observability": {
+    "alertCost": 5,
+    "alertDurationMs": 30000,
+    "alertTokens": 50000
+  },
+  "workspaces": {
+    "defaultId": "default",
+    "items": []
+  },
+  "ui": {
+    "density": "comfortable"
   },
   "analytics": {
     "enabled": true,

@@ -14,11 +14,16 @@
 5. [Agent Factory](#agent-factory)
 6. [Knowledge Base](#knowledge-base)
 7. [Run Explorer](#run-explorer)
-8. [Evaluations](#evaluations)
-9. [Library](#library)
-10. [Advanced Workflows](#advanced-workflows)
-11. [Troubleshooting](#troubleshooting)
-12. [Best Practices](#best-practices)
+8. [Job Queue](#job-queue)
+9. [Evaluations](#evaluations)
+10. [Library](#library)
+11. [Workspaces](#workspaces)
+12. [Audit Trail](#audit-trail)
+13. [Security & Access](#security--access)
+14. [Observability](#observability)
+15. [Advanced Workflows](#advanced-workflows)
+16. [Troubleshooting](#troubleshooting)
+17. [Best Practices](#best-practices)
 
 ---
 
@@ -79,13 +84,12 @@ cd ..
 
 #### 4. Configure Repository Path
 
-Edit `server/index.js` and set your reference repository location:
+Launch the UI and complete the Setup Wizard. It will:
+- Prompt for your `reference-repos` directory
+- Validate permissions
+- Create the standard folder structure if needed
 
-```javascript
-let REPOS_ROOT = "D:\\Projects\\reference-repos"; // Windows
-// or
-let REPOS_ROOT = "/Users/yourname/Projects/reference-repos"; // Mac/Linux
-```
+You can revisit this later in **Settings**.
 
 #### 5. Start CORTEX
 
@@ -146,11 +150,13 @@ The sidebar contains the primary workspace areas:
 1. **🏠 Command Center**: Overview of runs, evaluations, and knowledge coverage
 2. **🏭 Agent Factory**: Spawn specialized AI agents
 3. **🧭 Runs**: Trace explorer with decision matrices and performance signals
-4. **🧪 Evaluations**: Dataset management and run scoring
-5. **📦 Library**: Saved prompts, agent templates, and tools
-6. **📚 Knowledge Base**: Manage reference repositories
-7. **📜 Logs**: Real-time operation logs
-8. **⚙️ Settings**: Configuration options
+4. **🧵 Jobs**: Background queue monitoring
+5. **🧪 Evaluations**: Dataset management and run scoring
+6. **📦 Library**: Saved prompts, agent templates, and tools
+7. **📚 Knowledge Base**: Manage reference repositories
+8. **🧾 Audit Trail**: Compliance events and security logs
+9. **📜 Logs**: Real-time operation logs
+10. **⚙️ Settings**: Configuration options
 
 ### Command Center Cards
 
@@ -307,6 +313,19 @@ Each run captures git metadata (branch, commit, dirty status) to make run review
 
 ---
 
+## Job Queue
+
+The Job Queue keeps long-running tasks responsive:
+- Background spawns (when enabled in Agent Factory)
+- Vector index rebuilds
+
+### Monitoring Jobs
+1. Open **Jobs** in the sidebar.
+2. Select a job to view status, duration, and output.
+3. Cancel queued or running jobs if needed.
+
+---
+
 ## Evaluations
 
 Evaluations let you score runs against curated datasets.
@@ -324,6 +343,12 @@ Evaluations let you score runs against curated datasets.
 1. Select a dataset and a recent run.
 2. Click **Create Evaluation** to store the scorecard.
 3. Results include per‑item grading and pass/fail thresholds.
+4. The **Evaluation Trends** panel summarizes response vs retrieval quality over time.
+
+### Retrieval Benchmarks
+- Set the dataset type to **Retrieval**.
+- Provide expected resource paths (comma‑separated) for each item.
+- Retrieval evaluations do not require a run and return precision/recall/MRR.
 
 ### LLM Rubric Grading
 - Set the item type to **LLM Rubric** and include a rubric for qualitative grading.
@@ -345,6 +370,81 @@ The Library keeps reusable assets in one place.
 ### Agent Templates & Tools
 - Browse available agent templates from your reference repos.
 - Review tools and utilities registered in the tools folder.
+
+---
+
+## Workspaces
+
+Workspaces let you isolate repositories, runs, evaluations, and audit trails per team or customer.
+
+### Create a Workspace
+1. Open **Settings → Workspaces**.
+2. Enter a name, repos root, and output directory.
+3. Optionally enable **Create structure** to bootstrap the folder layout.
+
+### Switch Workspaces
+- Admins can switch the active workspace from the top bar.
+- Data in Runs, Evaluations, Library, and Logs is scoped to the active workspace.
+
+---
+
+## Audit Trail
+
+The Audit Trail records security‑relevant actions (spawns, evaluations, config changes).
+
+### What’s Logged
+- Event name (e.g., `runs.spawn`, `repos.clone`, `evaluations.create`)
+- User and role (if authenticated)
+- Workspace ID
+- Metadata (paths, IDs, error messages)
+
+### How to Use
+- Open **Audit Trail** from the sidebar.
+- Filter by event type or search by user/IP.
+- Use **Export CSV/JSON** to download filtered audit events for compliance reviews.
+
+---
+
+## Security & Access
+
+### Enable Authentication
+1. Open **Settings**.
+2. Toggle **Enable authentication**.
+3. (Optional) Enable **Resource-level RBAC** and refine the policy JSON.
+4. Save settings.
+5. Bootstrap the first admin when prompted.
+
+### Roles
+- **Viewer**: Read-only access to runs, evaluations, and repositories.
+- **Editor**: Can spawn agents, manage datasets, and add repositories.
+- **Admin**: Full access to configuration and user management.
+
+### RBAC Policy
+- The RBAC editor lets you define per-resource actions (read, create, update, delete, export).
+- Use `"*": ["*"]` to grant full access for a role (default for Admins).
+
+### SSO (Header‑Based)
+- Enable **SSO** in Settings to trust identity headers from your reverse proxy or IdP.
+- Configure header names for user, role, and workspace.
+- Optionally enable auto‑provisioning to create users on first login.
+
+### SCIM Provisioning
+- Enable **SCIM** in Settings and set a provisioning token.
+- Use the SCIM endpoints to create, update, or disable users programmatically.
+
+---
+
+## Observability
+
+The Observability panels summarize token usage, cost estimates, and latency.
+
+### Alerts
+Configure thresholds in **Settings → Observability Alerts**:
+- Cost alert (USD)
+- Token alert
+- Duration alert (ms)
+
+These warnings surface in the Run Explorer issue list.
 
 ---
 
@@ -585,6 +685,33 @@ Returns all repositories.
   "categories": ["Agents", "Skills", "Knowledge", "Tools"]
 }
 ```
+
+### `GET /api/auth/status`
+Returns whether auth is enabled and whether bootstrap is required.
+
+### `GET /api/audit/export?format=csv|json`
+Downloads audit entries (CSV/JSON) for compliance reporting.
+
+### `POST /api/auth/login`
+Authenticate and return a bearer token.
+
+### `POST /api/auth/bootstrap`
+Create the first admin user when auth is enabled.
+
+### `GET /api/observability/summary`
+Returns aggregate token + cost usage across runs and evaluations.
+
+### `GET /api/jobs`
+Returns queued background jobs.
+
+### `POST /api/jobs/:id/cancel`
+Cancels a queued or running job.
+
+### `GET /api/vector-index/status`
+Returns semantic index status.
+
+### `POST /api/vector-index/rebuild`
+Rebuilds the semantic index (queued when the job queue is enabled).
 
 ### `GET /api/runs`
 Returns recent run history (decision matrix + metrics).

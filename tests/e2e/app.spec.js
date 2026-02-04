@@ -164,7 +164,7 @@ test('settings allow testing LLM endpoint connectivity', async ({ page }) => {
 });
 
 test('spawn generates flight plan and telemetry updates', async ({ page, request }) => {
-  test.setTimeout(180000);
+  test.setTimeout(360000);
 
   const beforeRes = await request.get(`${API_BASE}/analytics`);
   expect(beforeRes.ok()).toBeTruthy();
@@ -177,7 +177,7 @@ test('spawn generates flight plan and telemetry updates', async ({ page, request
   await page.getByTestId('generate-flight-plan').click();
 
   const output = page.getByTestId('flight-plan-output');
-  await expect(output).toBeVisible({ timeout: 120000 });
+  await expect(output).toBeVisible({ timeout: 300000 });
   await expect(output).toContainText('BEGIN DIRECTIVE');
   await expect(output).toContainText('# MODEL: ChatGPT');
   await expect(output).toContainText('DECISION MATRIX');

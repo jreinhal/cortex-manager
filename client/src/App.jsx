@@ -14,6 +14,30 @@ import { twMerge } from 'tailwind-merge'
 import brainIcon from './assets/brain.png'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const AUTH_TOKEN_KEY = 'cortex_token';
+const WORKSPACE_KEY = 'cortex_workspace_id';
+
+function apiFetch(path, options = {}) {
+  const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
+  const workspaceId = window.localStorage.getItem(WORKSPACE_KEY);
+  const headers = {
+    ...(options.headers || {})
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  if (workspaceId) {
+    headers['x-workspace-id'] = workspaceId;
+  }
+  const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+  return fetch(url, { ...options, headers }).then((res) => {
+    if (res.status === 401) {
+      window.localStorage.removeItem(AUTH_TOKEN_KEY);
+      window.dispatchEvent(new CustomEvent('auth-expired'));
+    }
+    return res;
+  });
+}
 
 // --- Utils ---
 function cn(...inputs) {
@@ -51,7 +75,58 @@ const CATEGORY_CONFIG = {
 };
 
 const DEFAULT_CATEGORY = { icon: Folder, color: 'text-slate-400', desc: "General repository collection." };
-const VIEW_KEYS = ['home', 'agents', 'runs', 'evaluations', 'library', 'knowledge', 'logs', 'settings'];
+const DEFAULT_RBAC_ROLES = {
+  viewer: {
+    config: ['read'],
+    system: ['read'],
+    llm: ['read'],
+    workspaces: ['read'],
+    users: [],
+    repos: ['read'],
+    vector_index: ['read'],
+    runs: ['read'],
+    jobs: ['read'],
+    datasets: ['read', 'export'],
+    evaluations: ['read', 'compare'],
+    evaluation_templates: ['read', 'export'],
+    prompts: ['read'],
+    agents: ['read'],
+    tools: ['read'],
+    analytics: ['read'],
+    observability: ['read'],
+    audit: ['read'],
+    sessions: ['read'],
+    logs: ['read']
+  },
+  editor: {
+    config: ['read'],
+    system: ['read'],
+    llm: ['read', 'test'],
+    workspaces: ['read'],
+    users: [],
+    repos: ['read', 'scan', 'create', 'update'],
+    vector_index: ['read', 'rebuild'],
+    runs: ['read', 'create'],
+    jobs: ['read', 'create', 'update'],
+    datasets: ['read', 'create', 'update', 'delete', 'export', 'import'],
+    evaluations: ['read', 'create', 'compare'],
+    evaluation_templates: ['read', 'create', 'update', 'delete', 'export', 'import'],
+    prompts: ['read', 'create', 'update', 'delete'],
+    agents: ['read'],
+    tools: ['read'],
+    analytics: ['read'],
+    observability: ['read'],
+    audit: ['read'],
+    sessions: ['read', 'create'],
+    logs: ['read']
+  },
+  admin: {
+    '*': ['*']
+  }
+};
+const VIEW_KEYS = ['home', 'agents', 'runs', 'jobs', 'evaluations', 'library', 'knowledge', 'audit', 'logs', 'settings'];
+const SPRING_SMOOTH = { type: 'spring', stiffness: 210, damping: 26, mass: 0.85 };
+const SPRING_FAST = { type: 'spring', stiffness: 260, damping: 22, mass: 0.7 };
 
 // ==========================================
 // Setup Wizard Component
@@ -71,7 +146,7 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
       const url = pathToFetch
         ? `${API_BASE}/browse?path=${encodeURIComponent(pathToFetch)}`
         : `${API_BASE}/browse`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       const data = await res.json();
       if (data.error) {
         // If path doesn't exist and we haven't tried root yet, fall back to root
@@ -107,10 +182,10 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="directory-browser-title"
-        className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-lg max-h-[70vh] flex flex-col shadow-2xl overscroll-contain"
+        className="glass-panel rounded-2xl w-full max-w-lg max-h-[70vh] flex flex-col shadow-2xl overscroll-contain"
       >
         {/* Header */}
-        <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+        <div className="p-4 border-b border-white/5 flex items-center justify-between">
           <h3 id="directory-browser-title" className="font-bold text-white flex items-center gap-2">
             <FolderInput size={20} className="text-cyan-400" aria-hidden="true" />
             Select Directory
@@ -121,7 +196,7 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
         </div>
 
         {/* Current Path */}
-        <div className="px-4 py-2 bg-slate-800/50 border-b border-slate-700">
+        <div className="px-4 py-2 bg-slate-900/30 border-b border-white/5">
           <p className="text-xs text-slate-400 font-mono truncate">
             {currentPath || 'Select a drive'}
           </p>
@@ -132,7 +207,7 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
           <button
             type="button"
             onClick={() => fetchDirectory(parentPath)}
-            className="flex items-center gap-2 px-4 py-3 hover:bg-slate-800 text-slate-300 border-b border-slate-800"
+            className="flex items-center gap-2 px-4 py-3 hover:bg-white/5 text-slate-300 border-b border-white/5"
             aria-label="Go to parent directory"
           >
             <ChevronUp size={16} aria-hidden="true" />
@@ -156,7 +231,7 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
                 <button
                   key={item.path}
                   onClick={() => fetchDirectory(item.path)}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-slate-800 text-slate-300 w-full text-left border-b border-slate-800/50 min-w-0"
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-slate-300 w-full text-left border-b border-white/5 min-w-0"
                 >
                   {item.name.includes(':') ? (
                     <HardDrive size={18} className="text-cyan-400" aria-hidden="true" />
@@ -170,7 +245,7 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-700 flex gap-3">
+        <div className="p-4 border-t border-white/5 flex gap-3">
           <button
             onClick={onClose}
             className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-ui"
@@ -208,7 +283,7 @@ function SetupWizard({ onComplete, defaultPath }) {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/validate-path`, {
+      const res = await apiFetch(`/validate-path`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path })
@@ -229,7 +304,7 @@ function SetupWizard({ onComplete, defaultPath }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/setup`, {
+      const res = await apiFetch(`/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reposRoot, createStructure })
@@ -249,14 +324,20 @@ function SetupWizard({ onComplete, defaultPath }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0B0C15] p-8">
+    <div className="min-h-screen flex items-center justify-center app-shell p-8">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
+        transition={SPRING_SMOOTH}
         className="max-w-xl w-full"
       >
-        <div className="glass-panel p-1 rounded-[2.5rem] bg-slate-800/40 border border-slate-700/30 shadow-2xl backdrop-blur-3xl">
-          <div className="bg-slate-950/80 rounded-[2.2rem] p-10">
+        <div className="glass-panel wizard-shell p-[2px] rounded-[2.5rem]">
+          <div className="wizard-inner rounded-[2.2rem] p-10">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="tag-chip tag-chip-muted">Step 1 of 1</span>
+              <span className="h-px flex-1 bg-slate-800/70"></span>
+            </div>
+
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
               <div className="bg-black rounded-2xl p-4 relative overflow-visible">
@@ -278,7 +359,7 @@ function SetupWizard({ onComplete, defaultPath }) {
             </div>
 
             {/* Description */}
-            <div className="mb-8 p-4 bg-slate-900/50 rounded-2xl border border-slate-800">
+            <div className="mb-8 p-4 bg-slate-900/40 rounded-2xl border border-white/5">
               <p className="text-slate-300 text-sm leading-relaxed">
                 CORTEX needs a directory to store your reference repositories. This is where your Agents, Skills, Knowledge, and Tools will live.
               </p>
@@ -289,7 +370,7 @@ function SetupWizard({ onComplete, defaultPath }) {
               <label htmlFor="repos-root" className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 block">
                 Repository Root Directory
               </label>
-              <div className="flex gap-2 rounded-2xl focus-within:ring-2 focus-within:ring-cyan-500/20">
+              <div className="flex gap-2 rounded-2xl">
                 <div className="relative flex-1">
                   <FolderOpen size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
                   <input
@@ -304,7 +385,7 @@ function SetupWizard({ onComplete, defaultPath }) {
                     autoCorrect="off"
                     spellCheck="false"
                     ref={reposRootInputRef}
-                    className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 focus-visible:ring-4 focus-visible:ring-cyan-500/10 transition-ui font-mono text-sm"
+                    className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl pl-12 pr-4 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 transition-ui font-mono text-sm"
                   />
                 </div>
                 <button
@@ -413,19 +494,219 @@ function SetupWizard({ onComplete, defaultPath }) {
 }
 
 // ==========================================
+// Authentication Screens
+// ==========================================
+function AuthShell({ title, subtitle, children }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center app-shell p-8">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={SPRING_SMOOTH}
+        className="max-w-md w-full"
+      >
+        <div className="glass-panel rounded-[2.5rem] p-[2px]">
+          <div className="rounded-[2.2rem] p-10 bg-slate-950/70">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-black rounded-2xl p-3 relative overflow-visible">
+                <div className="brain-glow absolute -inset-2 rounded-[20px] bg-[radial-gradient(circle_at_28%_35%,rgba(34,211,238,0.65),transparent_63%),radial-gradient(circle_at_72%_55%,rgba(168,85,247,0.6),transparent_66%)] blur-xl opacity-80 pointer-events-none"></div>
+                <img
+                  src={brainIcon}
+                  alt="Cortex"
+                  width="40"
+                  height="40"
+                  className="relative z-10 w-10 h-10 object-contain"
+                  style={{ filter: 'drop-shadow(0 0 11px rgba(34,211,238,0.7)) drop-shadow(0 0 16px rgba(168,85,247,0.65))' }}
+                />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">{title}</h1>
+                <p className="text-sm text-slate-400">{subtitle}</p>
+              </div>
+            </div>
+            {children}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin, loading, error }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = () => {
+    if (!username || !password) return;
+    onLogin(username, password);
+  };
+
+  return (
+    <AuthShell title="Secure Access" subtitle="Sign in to your CORTEX workspace">
+      <div className="space-y-4">
+        <input
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50"
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50"
+        />
+        {error && (
+          <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+            {error}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold transition-ui"
+        >
+          {loading ? 'Signing in…' : 'Sign in'}
+        </button>
+      </div>
+    </AuthShell>
+  );
+}
+
+function BootstrapAdminScreen({ onBootstrap, loading, error }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = () => {
+    if (!username || !password) return;
+    onBootstrap(username, password);
+  };
+
+  return (
+    <AuthShell title="Create Admin" subtitle="Bootstrap the first CORTEX administrator">
+      <div className="space-y-4">
+        <input
+          type="text"
+          placeholder="Admin username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50"
+        />
+        <input
+          type="password"
+          placeholder="Admin password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50"
+        />
+        {error && (
+          <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+            {error}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold transition-ui"
+        >
+          {loading ? 'Creating…' : 'Create admin & sign in'}
+        </button>
+      </div>
+    </AuthShell>
+  );
+}
+
+// ==========================================
 // Settings Panel Component
 // ==========================================
-function SettingsPanel({ config, onSave, onClose }) {
+function SettingsPanel({
+  config,
+  onSave,
+  authStatus,
+  authUser,
+  users = [],
+  onCreateUser,
+  onUpdateUser,
+  onDeleteUser,
+  vectorStatus,
+  onRebuildVector,
+  workspaces = [],
+  activeWorkspace,
+  onCreateWorkspace,
+  onUpdateWorkspace,
+  onDeleteWorkspace,
+  onSetDefaultWorkspace
+}) {
   // config is the full API response: { config: { reposRoot, ... }, system, isFirstRun }
   const [reposRoot, setReposRoot] = useState(config?.config?.reposRoot || '');
   const [llmEndpoint, setLlmEndpoint] = useState(config?.config?.llm?.endpoint || '');
   const [llmFallbackEndpoint, setLlmFallbackEndpoint] = useState(config?.config?.llm?.fallbackEndpoint || '');
-  const [llmAllowRemote, setLlmAllowRemote] = useState(config?.config?.llm?.allowRemote ?? true);
+  const [llmAllowRemote, setLlmAllowRemote] = useState(config?.config?.llm?.allowRemote ?? false);
+  const [uiDensity, setUiDensity] = useState(config?.config?.ui?.density || 'comfortable');
+  const [authEnabled, setAuthEnabled] = useState(config?.config?.auth?.enabled ?? false);
+  const [authTtl, setAuthTtl] = useState(config?.config?.auth?.tokenTtlHours ?? 12);
+  const [authBootstrapAllowed, setAuthBootstrapAllowed] = useState(config?.config?.auth?.bootstrapAllowed ?? true);
+  const [rbacEnabled, setRbacEnabled] = useState(config?.config?.auth?.rbac?.enabled ?? true);
+  const [rbacRolesJson, setRbacRolesJson] = useState(() => (
+    JSON.stringify(config?.config?.auth?.rbac?.roles || DEFAULT_RBAC_ROLES, null, 2)
+  ));
+  const [rbacError, setRbacError] = useState('');
+  const [ssoEnabled, setSsoEnabled] = useState(config?.config?.auth?.sso?.enabled ?? false);
+  const [ssoHeaderUser, setSsoHeaderUser] = useState(config?.config?.auth?.sso?.headerUser || 'x-cortex-user');
+  const [ssoHeaderRole, setSsoHeaderRole] = useState(config?.config?.auth?.sso?.headerRole || 'x-cortex-role');
+  const [ssoHeaderWorkspace, setSsoHeaderWorkspace] = useState(config?.config?.auth?.sso?.headerWorkspace || 'x-cortex-workspace');
+  const [ssoAutoProvision, setSsoAutoProvision] = useState(config?.config?.auth?.sso?.autoProvision ?? true);
+  const [scimEnabled, setScimEnabled] = useState(config?.config?.auth?.scim?.enabled ?? false);
+  const [scimToken, setScimToken] = useState('');
+  const [queueEnabled, setQueueEnabled] = useState(config?.config?.queue?.enabled ?? true);
+  const [queueConcurrency, setQueueConcurrency] = useState(config?.config?.queue?.concurrency ?? 2);
+  const [queueMaxJobs, setQueueMaxJobs] = useState(config?.config?.queue?.maxJobs ?? 200);
+  const [queueRetainCompleted, setQueueRetainCompleted] = useState(config?.config?.queue?.retainCompleted ?? 120);
+  const [workerMode, setWorkerMode] = useState(config?.config?.queue?.workers?.mode || 'inline');
+  const [workerMin, setWorkerMin] = useState(config?.config?.queue?.workers?.min ?? 1);
+  const [workerMax, setWorkerMax] = useState(config?.config?.queue?.workers?.max ?? 3);
+  const [workerScaleThreshold, setWorkerScaleThreshold] = useState(config?.config?.queue?.workers?.scaleUpThreshold ?? 3);
+  const [workerScaleDownIdle, setWorkerScaleDownIdle] = useState(config?.config?.queue?.workers?.scaleDownIdleMs ?? 60000);
+  const [workerPollInterval, setWorkerPollInterval] = useState(config?.config?.queue?.workers?.pollIntervalMs ?? 1500);
+  const [workerHeartbeatMs, setWorkerHeartbeatMs] = useState(config?.config?.queue?.workers?.heartbeatMs ?? 4000);
+  const [workerJobTimeoutMs, setWorkerJobTimeoutMs] = useState(config?.config?.queue?.workers?.jobTimeoutMs ?? 1200000);
+  const [vectorEnabled, setVectorEnabled] = useState(config?.config?.vectorIndex?.enabled ?? true);
+  const [vectorChunkSize, setVectorChunkSize] = useState(config?.config?.vectorIndex?.chunkSize ?? 900);
+  const [vectorChunkOverlap, setVectorChunkOverlap] = useState(config?.config?.vectorIndex?.chunkOverlap ?? 120);
+  const [vectorMaxFiles, setVectorMaxFiles] = useState(config?.config?.vectorIndex?.maxFiles ?? 2000);
+  const [vectorMaxChars, setVectorMaxChars] = useState(config?.config?.vectorIndex?.maxCharsPerFile ?? 20000);
+  const [vectorAutoRebuild, setVectorAutoRebuild] = useState(config?.config?.vectorIndex?.autoRebuild ?? false);
+  const [vectorMinScore, setVectorMinScore] = useState(config?.config?.vectorIndex?.minScore ?? 0.08);
+  const [vectorMode, setVectorMode] = useState(config?.config?.vectorIndex?.mode || 'hash');
+  const [embeddingEnabled, setEmbeddingEnabled] = useState(config?.config?.vectorIndex?.embedding?.enabled ?? false);
+  const [embeddingEndpoint, setEmbeddingEndpoint] = useState(config?.config?.vectorIndex?.embedding?.endpoint || '');
+  const [embeddingModel, setEmbeddingModel] = useState(config?.config?.vectorIndex?.embedding?.model || '');
+  const [embeddingDimensions, setEmbeddingDimensions] = useState(config?.config?.vectorIndex?.embedding?.dimensions ?? 768);
+  const [embeddingBatchSize, setEmbeddingBatchSize] = useState(config?.config?.vectorIndex?.embedding?.batchSize ?? 16);
+  const [embeddingTimeoutMs, setEmbeddingTimeoutMs] = useState(config?.config?.vectorIndex?.embedding?.timeoutMs ?? 12000);
+  const [embeddingAllowRemote, setEmbeddingAllowRemote] = useState(config?.config?.vectorIndex?.embedding?.allowRemote ?? false);
+  const [alertCost, setAlertCost] = useState(config?.config?.observability?.alertCost ?? 5);
+  const [alertTokens, setAlertTokens] = useState(config?.config?.observability?.alertTokens ?? 50000);
+  const [alertDuration, setAlertDuration] = useState(config?.config?.observability?.alertDurationMs ?? 30000);
   const [llmTest, setLlmTest] = useState({ status: 'idle', results: [] });
   const [loading, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const reposRootInputRef = useRef(null);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('viewer');
+  const [newUserWorkspace, setNewUserWorkspace] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [workspaceReposRoot, setWorkspaceReposRoot] = useState('');
+  const [workspaceOutputDir, setWorkspaceOutputDir] = useState('');
+  const [workspaceCreateStructure, setWorkspaceCreateStructure] = useState(true);
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState(null);
+  const defaultWorkspaceId = config?.config?.workspaces?.defaultId;
 
   const handleSave = async () => {
     // Guard against empty submissions
@@ -437,6 +718,18 @@ function SettingsPanel({ config, onSave, onClose }) {
     setError('');
     setSaving(true);
     try {
+      let parsedRbacRoles = config?.config?.auth?.rbac?.roles || DEFAULT_RBAC_ROLES;
+      if (rbacRolesJson && rbacRolesJson.trim().length > 0) {
+        try {
+          parsedRbacRoles = JSON.parse(rbacRolesJson);
+          setRbacError('');
+        } catch (e) {
+          setRbacError('RBAC policy must be valid JSON.');
+          setSaving(false);
+          return;
+        }
+      }
+
       const baseConfig = config?.config?.llm || {};
       const llm = {
         ...baseConfig,
@@ -444,10 +737,85 @@ function SettingsPanel({ config, onSave, onClose }) {
         fallbackEndpoint: llmFallbackEndpoint.trim() || null,
         allowRemote: llmAllowRemote
       };
-      const res = await fetch(`${API_BASE}/config`, {
+      const ui = {
+        ...(config?.config?.ui || {}),
+        density: uiDensity
+      };
+      const authConfig = {
+        ...(config?.config?.auth || {}),
+        enabled: authEnabled,
+        tokenTtlHours: Number(authTtl) || 12,
+        bootstrapAllowed: authBootstrapAllowed,
+        rbac: {
+          ...(config?.config?.auth?.rbac || {}),
+          enabled: rbacEnabled,
+          roles: parsedRbacRoles
+        },
+        sso: {
+          ...(config?.config?.auth?.sso || {}),
+          enabled: ssoEnabled,
+          headerUser: ssoHeaderUser.trim() || 'x-cortex-user',
+          headerRole: ssoHeaderRole.trim() || 'x-cortex-role',
+          headerWorkspace: ssoHeaderWorkspace.trim() || 'x-cortex-workspace',
+          autoProvision: ssoAutoProvision
+        },
+        scim: {
+          ...(config?.config?.auth?.scim || {}),
+          enabled: scimEnabled
+        }
+      };
+      if (scimToken.trim()) {
+        authConfig.scim.token = scimToken.trim();
+      }
+      const queue = {
+        ...(config?.config?.queue || {}),
+        enabled: queueEnabled,
+        concurrency: Number(queueConcurrency) || 1,
+        maxJobs: Number(queueMaxJobs) || 200,
+        retainCompleted: Number(queueRetainCompleted) || 120,
+        workers: {
+          ...(config?.config?.queue?.workers || {}),
+          mode: workerMode,
+          min: Number(workerMin) || 1,
+          max: Number(workerMax) || 1,
+          scaleUpThreshold: Number(workerScaleThreshold) || 1,
+          scaleDownIdleMs: Number(workerScaleDownIdle) || 60000,
+          pollIntervalMs: Number(workerPollInterval) || 1500,
+          heartbeatMs: Number(workerHeartbeatMs) || 4000,
+          jobTimeoutMs: Number(workerJobTimeoutMs) || 1200000
+        }
+      };
+      const vectorIndex = {
+        ...(config?.config?.vectorIndex || {}),
+        enabled: vectorEnabled,
+        chunkSize: Number(vectorChunkSize) || 900,
+        chunkOverlap: Number(vectorChunkOverlap) || 120,
+        maxFiles: Number(vectorMaxFiles) || 2000,
+        maxCharsPerFile: Number(vectorMaxChars) || 20000,
+        autoRebuild: vectorAutoRebuild,
+        minScore: Number(vectorMinScore) || 0.08,
+        mode: vectorMode,
+        embedding: {
+          ...(config?.config?.vectorIndex?.embedding || {}),
+          enabled: vectorMode === 'embedding' ? true : embeddingEnabled,
+          endpoint: embeddingEndpoint.trim(),
+          model: embeddingModel.trim(),
+          dimensions: Number(embeddingDimensions) || 768,
+          batchSize: Number(embeddingBatchSize) || 16,
+          timeoutMs: Number(embeddingTimeoutMs) || 12000,
+          allowRemote: embeddingAllowRemote
+        }
+      };
+      const observability = {
+        ...(config?.config?.observability || {}),
+        alertCost: Number(alertCost) || 0,
+        alertTokens: Number(alertTokens) || 0,
+        alertDurationMs: Number(alertDuration) || 0
+      };
+      const res = await apiFetch(`/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reposRoot: reposRoot.trim(), llm })
+        body: JSON.stringify({ reposRoot: reposRoot.trim(), llm, ui, auth: authConfig, queue, vectorIndex, observability })
       });
       const data = await res.json();
       if (data.success) {
@@ -468,10 +836,32 @@ function SettingsPanel({ config, onSave, onClose }) {
     setSaving(false);
   };
 
+  const isRemoteEndpoint = (value) => {
+    if (!value) return false;
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase();
+      return !['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(host);
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const remotePrimaryBlocked = llmEndpoint && !llmAllowRemote && isRemoteEndpoint(llmEndpoint);
+  const remoteFallbackBlocked = llmFallbackEndpoint && !llmAllowRemote && isRemoteEndpoint(llmFallbackEndpoint);
+  const remoteBlocked = remotePrimaryBlocked || remoteFallbackBlocked;
+
   const handleTestLlm = async () => {
     const endpoints = [llmEndpoint.trim(), llmFallbackEndpoint.trim()].filter(Boolean);
     if (endpoints.length === 0) {
       setLlmTest({ status: 'error', results: [{ endpoint: '', reachable: false, error: 'Add an endpoint to test.' }] });
+      return;
+    }
+    if (remoteBlocked) {
+      setLlmTest({
+        status: 'error',
+        results: [{ endpoint: llmEndpoint.trim(), reachable: false, error: 'Remote endpoints are disabled.' }]
+      });
       return;
     }
 
@@ -479,7 +869,7 @@ function SettingsPanel({ config, onSave, onClose }) {
     const results = [];
     for (const endpoint of endpoints) {
       try {
-        const res = await fetch(`${API_BASE}/llm/ping`, {
+        const res = await apiFetch(`/llm/ping`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ endpoint })
@@ -504,23 +894,16 @@ function SettingsPanel({ config, onSave, onClose }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.2 }}
-      className="max-w-3xl mx-auto"
+      transition={SPRING_SMOOTH}
+      className="w-full max-w-5xl"
     >
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Settings</h2>
-          <p className="text-slate-400">Configure CORTEX preferences</p>
-        </div>
-      </div>
-
       <div className="glass-panel rounded-3xl p-8 space-y-8">
         {/* Repos Root */}
         <div>
           <label htmlFor="settings-repos-root" className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
             Repository Root Directory
           </label>
-          <div className="flex gap-3 rounded-2xl focus-within:ring-2 focus-within:ring-cyan-500/20">
+          <div className="flex gap-3 rounded-2xl">
             <input
               id="settings-repos-root"
               name="settingsReposRoot"
@@ -575,7 +958,10 @@ function SettingsPanel({ config, onSave, onClose }) {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck="false"
-              className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
+              className={cn(
+                "w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm",
+                remotePrimaryBlocked ? "border-amber-500/50" : ""
+              )}
             />
 
             <input
@@ -589,7 +975,10 @@ function SettingsPanel({ config, onSave, onClose }) {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck="false"
-              className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
+              className={cn(
+                "w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm",
+                remoteFallbackBlocked ? "border-amber-500/50" : ""
+              )}
             />
 
             <label className="flex items-center gap-3 text-sm text-slate-300">
@@ -602,6 +991,11 @@ function SettingsPanel({ config, onSave, onClose }) {
               Allow remote LLM endpoints
             </label>
           </div>
+          {remoteBlocked && (
+            <div className="mt-3 text-xs text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded-xl px-3 py-2">
+              Remote endpoints are disabled. Enable “Allow remote LLM endpoints” to use non-local URLs.
+            </div>
+          )}
           <div className="flex items-center gap-3 mt-4">
             <button
               type="button"
@@ -641,6 +1035,735 @@ function SettingsPanel({ config, onSave, onClose }) {
             Set a primary endpoint and optional fallback for automatic failover.
           </p>
         </div>
+
+        {/* Interface */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Interface Density
+          </label>
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-white/5 bg-white/5 p-1">
+            {['comfortable', 'dense'].map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setUiDensity(mode)}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-semibold transition-ui",
+                  uiDensity === mode
+                    ? "bg-white/10 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                )}
+              >
+                {mode === 'comfortable' ? 'Comfortable' : 'Dense'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Dense mode increases data density for power users.
+          </p>
+        </div>
+
+        {/* Security & Access */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Security & Access
+          </label>
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={authEnabled}
+                onChange={(e) => setAuthEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Enable authentication
+            </label>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Token TTL (hours)</div>
+                <input
+                  type="number"
+                  min="1"
+                  value={authTtl}
+                  onChange={(e) => setAuthTtl(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                />
+              </div>
+              <div className="flex items-center gap-3 mt-5">
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={authBootstrapAllowed}
+                    onChange={(e) => setAuthBootstrapAllowed(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                  />
+                  Allow bootstrap
+                </label>
+              </div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-3">
+              <div className="text-xs text-slate-500 uppercase tracking-widest">SSO (Trusted Headers)</div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={ssoEnabled}
+                  onChange={(e) => setSsoEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Enable SSO header trust
+              </label>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  value={ssoHeaderUser}
+                  onChange={(e) => setSsoHeaderUser(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-xs text-slate-200 font-mono"
+                  placeholder="x-cortex-user"
+                />
+                <input
+                  type="text"
+                  value={ssoHeaderRole}
+                  onChange={(e) => setSsoHeaderRole(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-xs text-slate-200 font-mono"
+                  placeholder="x-cortex-role"
+                />
+                <input
+                  type="text"
+                  value={ssoHeaderWorkspace}
+                  onChange={(e) => setSsoHeaderWorkspace(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-xs text-slate-200 font-mono"
+                  placeholder="x-cortex-workspace"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={ssoAutoProvision}
+                  onChange={(e) => setSsoAutoProvision(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Auto-provision SSO users
+              </label>
+            </div>
+            <div className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-3">
+              <div className="text-xs text-slate-500 uppercase tracking-widest">RBAC Policy</div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={rbacEnabled}
+                  onChange={(e) => setRbacEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Enable resource-level RBAC
+              </label>
+              <textarea
+                value={rbacRolesJson}
+                onChange={(e) => {
+                  setRbacRolesJson(e.target.value);
+                  setRbacError('');
+                }}
+                rows={8}
+                spellCheck={false}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-xs text-slate-200 font-mono"
+              />
+              {rbacError && (
+                <div className="text-[11px] text-red-300 border border-red-500/30 bg-red-500/10 rounded-xl px-3 py-2">
+                  {rbacError}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-500">
+                Define allowed actions per role. Use "*" to grant all actions on a resource.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-3">
+              <div className="text-xs text-slate-500 uppercase tracking-widest">SCIM-lite Provisioning</div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={scimEnabled}
+                  onChange={(e) => setScimEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Enable SCIM provisioning endpoints
+              </label>
+              <input
+                type="text"
+                value={scimToken}
+                onChange={(e) => setScimToken(e.target.value)}
+                className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-xs text-slate-200 font-mono"
+                placeholder="Provisioning token (leave blank to keep current)"
+              />
+              <p className="text-[11px] text-slate-500">
+                SCIM endpoints require this token in <span className="font-mono">Authorization: Bearer</span>.
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Enable authentication before onboarding additional users. Bootstrap creates the first admin.
+          </p>
+        </div>
+
+        {/* Workspaces */}
+        {authUser?.role === 'admin' && (
+          <div>
+            <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+              Workspaces
+            </label>
+            <div className="space-y-3">
+              {workspaces.length === 0 && (
+                <div className="text-xs text-slate-500">No workspaces configured yet.</div>
+              )}
+              {workspaces.map((workspace) => (
+                <div
+                  key={workspace.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/70 bg-slate-950/40 px-4 py-3"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                      {workspace.name || workspace.id}
+                      {workspace.id === defaultWorkspaceId && (
+                        <span className="tag-chip tag-chip-muted text-[10px]">Default</span>
+                      )}
+                      {activeWorkspace?.id === workspace.id && (
+                        <span className="tag-chip text-[10px]">Active</span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono">{workspace.reposRoot}</div>
+                    {workspace.outputDir && (
+                      <div className="text-[11px] text-slate-600 font-mono">Output: {workspace.outputDir}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {workspace.id !== defaultWorkspaceId && (
+                      <button
+                        type="button"
+                        onClick={() => onSetDefaultWorkspace?.(workspace.id)}
+                        className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs"
+                      >
+                        Make default
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => startEditWorkspace(workspace)}
+                      className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs"
+                    >
+                      Edit
+                    </button>
+                    {workspace.id !== defaultWorkspaceId && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteWorkspace?.(workspace.id)}
+                        className="px-3 py-1 rounded-xl bg-red-500/10 text-red-300 hover:text-red-200 border border-red-500/30 text-xs"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-3">
+              <div className="text-xs text-slate-500 uppercase tracking-widest">
+                {editingWorkspaceId ? 'Edit Workspace' : 'Create Workspace'}
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                  placeholder="Workspace name"
+                />
+                <input
+                  type="text"
+                  value={workspaceReposRoot}
+                  onChange={(e) => setWorkspaceReposRoot(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200 font-mono"
+                  placeholder="Repos root"
+                />
+                <input
+                  type="text"
+                  value={workspaceOutputDir}
+                  onChange={(e) => setWorkspaceOutputDir(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200 font-mono"
+                  placeholder="Output directory (optional)"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={workspaceCreateStructure}
+                  onChange={(e) => setWorkspaceCreateStructure(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Create standard directory structure
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveWorkspace}
+                  className="px-4 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold"
+                >
+                  {editingWorkspaceId ? 'Save changes' : 'Create workspace'}
+                </button>
+                {editingWorkspaceId && (
+                  <button
+                    type="button"
+                    onClick={resetWorkspaceForm}
+                    className="px-4 py-2 rounded-2xl bg-slate-900/40 border border-slate-800 text-slate-300 text-sm"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Queue & Workers */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Queue & Workers
+          </label>
+          <div className="grid sm:grid-cols-4 gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-300 col-span-2">
+              <input
+                type="checkbox"
+                checked={queueEnabled}
+                onChange={(e) => setQueueEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Enable background queue
+            </label>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Worker mode</div>
+              <select
+                value={workerMode}
+                onChange={(e) => setWorkerMode(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              >
+                <option value="inline">Inline</option>
+                <option value="local">Local workers</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Concurrency</div>
+              <input
+                type="number"
+                min="1"
+                value={queueConcurrency}
+                onChange={(e) => setQueueConcurrency(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Retain completed</div>
+              <input
+                type="number"
+                min="10"
+                value={queueRetainCompleted}
+                onChange={(e) => setQueueRetainCompleted(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Max jobs</div>
+              <input
+                type="number"
+                min="50"
+                value={queueMaxJobs}
+                onChange={(e) => setQueueMaxJobs(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Min workers</div>
+              <input
+                type="number"
+                min="1"
+                value={workerMin}
+                onChange={(e) => setWorkerMin(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Max workers</div>
+              <input
+                type="number"
+                min="1"
+                value={workerMax}
+                onChange={(e) => setWorkerMax(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Scale threshold</div>
+              <input
+                type="number"
+                min="1"
+                value={workerScaleThreshold}
+                onChange={(e) => setWorkerScaleThreshold(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Idle scale-down (ms)</div>
+              <input
+                type="number"
+                min="1000"
+                value={workerScaleDownIdle}
+                onChange={(e) => setWorkerScaleDownIdle(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Poll interval (ms)</div>
+              <input
+                type="number"
+                min="500"
+                value={workerPollInterval}
+                onChange={(e) => setWorkerPollInterval(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Heartbeat (ms)</div>
+              <input
+                type="number"
+                min="1000"
+                value={workerHeartbeatMs}
+                onChange={(e) => setWorkerHeartbeatMs(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Job timeout (ms)</div>
+              <input
+                type="number"
+                min="10000"
+                value={workerJobTimeoutMs}
+                onChange={(e) => setWorkerJobTimeoutMs(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Vector Index */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Semantic Vector Index
+          </label>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <label className="flex items-center gap-2 text-sm text-slate-300 sm:col-span-3">
+              <input
+                type="checkbox"
+                checked={vectorEnabled}
+                onChange={(e) => setVectorEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Enable semantic index
+            </label>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Mode</div>
+              <select
+                value={vectorMode}
+                onChange={(e) => setVectorMode(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              >
+                <option value="hash">Local Hash</option>
+                <option value="embedding">Embeddings</option>
+              </select>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Chunk size</div>
+              <input
+                type="number"
+                min="200"
+                value={vectorChunkSize}
+                onChange={(e) => setVectorChunkSize(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Overlap</div>
+              <input
+                type="number"
+                min="50"
+                value={vectorChunkOverlap}
+                onChange={(e) => setVectorChunkOverlap(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Max files</div>
+              <input
+                type="number"
+                min="100"
+                value={vectorMaxFiles}
+                onChange={(e) => setVectorMaxFiles(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Max chars/file</div>
+              <input
+                type="number"
+                min="5000"
+                value={vectorMaxChars}
+                onChange={(e) => setVectorMaxChars(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Min score</div>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={vectorMinScore}
+                onChange={(e) => setVectorMinScore(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-300 sm:col-span-3">
+              <input
+                type="checkbox"
+                checked={vectorAutoRebuild}
+                onChange={(e) => setVectorAutoRebuild(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Auto-rebuild when missing
+            </label>
+            {vectorMode === 'embedding' && (
+              <div className="sm:col-span-3 grid sm:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  value={embeddingEndpoint}
+                  onChange={(e) => setEmbeddingEndpoint(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200 font-mono"
+                  placeholder="Embedding endpoint (OpenAI-compatible)"
+                />
+                <input
+                  type="text"
+                  value={embeddingModel}
+                  onChange={(e) => setEmbeddingModel(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200 font-mono"
+                  placeholder="Embedding model"
+                />
+                <input
+                  type="number"
+                  min="64"
+                  value={embeddingDimensions}
+                  onChange={(e) => setEmbeddingDimensions(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                  placeholder="Dimensions"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  value={embeddingBatchSize}
+                  onChange={(e) => setEmbeddingBatchSize(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                  placeholder="Batch size"
+                />
+                <input
+                  type="number"
+                  min="1000"
+                  value={embeddingTimeoutMs}
+                  onChange={(e) => setEmbeddingTimeoutMs(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                  placeholder="Timeout (ms)"
+                />
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={embeddingAllowRemote}
+                    onChange={(e) => setEmbeddingAllowRemote(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                  />
+                  Allow remote embedding endpoint
+                </label>
+              </div>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            <span>Status: {vectorStatus?.docCount ? `${vectorStatus.docCount} docs` : 'No index built'}</span>
+            {vectorStatus?.builtAt && <span>Last build {new Date(vectorStatus.builtAt).toLocaleString()}</span>}
+            <button
+              type="button"
+              onClick={onRebuildVector}
+              className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs"
+            >
+              Rebuild index
+            </button>
+          </div>
+        </div>
+
+        {/* Observability Alerts */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Observability Alerts
+          </label>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Cost alert (USD)</div>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={alertCost}
+                onChange={(e) => setAlertCost(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Token alert</div>
+              <input
+                type="number"
+                step="100"
+                min="0"
+                value={alertTokens}
+                onChange={(e) => setAlertTokens(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Duration alert (ms)</div>
+              <input
+                type="number"
+                step="1000"
+                min="0"
+                value={alertDuration}
+                onChange={(e) => setAlertDuration(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* User Management */}
+        {authStatus?.enabled && authUser?.role === 'admin' && (
+          <div>
+            <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+              User Management
+            </label>
+            <div className="space-y-3">
+              <div className="grid sm:grid-cols-5 gap-3">
+                <input
+                  type="text"
+                  placeholder="Username"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                />
+                <select
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <select
+                  value={newUserWorkspace}
+                  onChange={(e) => setNewUserWorkspace(e.target.value)}
+                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="">Workspace (default)</option>
+                  {workspaces.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>
+                      {workspace.name || workspace.id}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newUsername || !newPassword) return;
+                    onCreateUser?.({
+                      username: newUsername,
+                      password: newPassword,
+                      role: newRole,
+                      workspaceId: newUserWorkspace || null
+                    });
+                    setNewUsername('');
+                    setNewPassword('');
+                    setNewRole('viewer');
+                    setNewUserWorkspace('');
+                  }}
+                  className="px-4 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold"
+                >
+                  Add user
+                </button>
+              </div>
+              {users.length === 0 ? (
+                <div className="text-xs text-slate-500">No users found.</div>
+              ) : (
+                <div className="space-y-2">
+                  {users.map((user) => (
+                    <div key={user.id} className="flex flex-wrap items-center gap-3 bg-slate-900/50 border border-slate-800/60 rounded-2xl px-4 py-2">
+                      <div className="flex-1 min-w-[180px]">
+                        <div className="text-sm text-slate-200">{user.username}</div>
+                        <div className="text-[11px] text-slate-500">
+                          Workspace: {workspaces.find((ws) => ws.id === user.workspaceId)?.name || (user.workspaceId ? user.workspaceId : 'Default')}
+                        </div>
+                      </div>
+                      <select
+                        value={user.role}
+                        onChange={(e) => onUpdateUser?.(user.id, { role: e.target.value })}
+                        className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-1 text-xs text-slate-200"
+                      >
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <select
+                        value={user.workspaceId || ''}
+                        onChange={(e) => onUpdateUser?.(user.id, { workspaceId: e.target.value || null })}
+                        className="bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-1 text-xs text-slate-200"
+                      >
+                        <option value="">Default</option>
+                        {workspaces.map((workspace) => (
+                          <option key={workspace.id} value={workspace.id}>
+                            {workspace.name || workspace.id}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="flex items-center gap-2 text-xs text-slate-400">
+                        <input
+                          type="checkbox"
+                          checked={user.disabled}
+                          onChange={(e) => onUpdateUser?.(user.id, { disabled: e.target.checked })}
+                          className="h-3 w-3 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                        />
+                        Disabled
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteUser?.(user.id)}
+                        className="text-xs text-red-300 hover:text-red-200"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -700,7 +1823,7 @@ function SpawnTimeline({ steps }) {
           key={i}
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.1 }}
+          transition={{ ...SPRING_FAST, delay: i * 0.1 }}
           className="flex items-center gap-3"
         >
           <div className={cn(
@@ -729,32 +1852,6 @@ function SpawnTimeline({ steps }) {
 // Main Components
 // ==========================================
 
-function StatCard({ title, count, sizeLabel, icon: Icon, color, delay, testId, sizeTestId }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      data-testid={testId}
-      className="glass-card p-6 rounded-3xl relative overflow-hidden h-full border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl shadow-xl"
-    >
-      <div className={cn("absolute -right-4 -top-4 w-32 h-32 rounded-full opacity-10 blur-3xl transition-opacity", color.replace('text-', 'bg-'))} />
-
-      <div className="relative z-10 flex flex-col h-full justify-between">
-        <div className={cn("p-3 rounded-2xl w-fit mb-3", color.replace('text-', 'bg-').replace('400', '500/10'))}>
-          <Icon size={24} className={color} aria-hidden="true" />
-        </div>
-
-        <div>
-          <div className="text-4xl font-bold text-slate-100 tracking-tight tabular-nums">{count}</div>
-          <div className="text-slate-400 text-xs font-semibold uppercase tracking-widest mt-2">{title}</div>
-          <div className="text-slate-500 text-[11px] font-medium mt-2" data-testid={sizeTestId}>Size {sizeLabel}</div>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
 function OrchestratorView({
   onSpawn,
   loading,
@@ -766,7 +1863,8 @@ function OrchestratorView({
   onUsePrompt,
   onDirtyChange,
   prefillGoal,
-  onPrefillConsumed
+  onPrefillConsumed,
+  queueEnabled
 }) {
   const [goal, setGoal] = useState('');
   const [format, setFormat] = useState('universal');
@@ -776,6 +1874,7 @@ function OrchestratorView({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [promptTitle, setPromptTitle] = useState('');
   const [justSaved, setJustSaved] = useState(false);
+  const [runInBackground, setRunInBackground] = useState(false);
   const formatMenuRef = useRef(null);
   const formatButtonRef = useRef(null);
 
@@ -840,6 +1939,42 @@ function OrchestratorView({
     }
   };
 
+  const startEditWorkspace = (workspace) => {
+    setEditingWorkspaceId(workspace.id);
+    setWorkspaceName(workspace.name || '');
+    setWorkspaceReposRoot(workspace.reposRoot || '');
+    setWorkspaceOutputDir(workspace.outputDir || '');
+    setWorkspaceCreateStructure(false);
+  };
+
+  const resetWorkspaceForm = () => {
+    setEditingWorkspaceId(null);
+    setWorkspaceName('');
+    setWorkspaceReposRoot('');
+    setWorkspaceOutputDir('');
+    setWorkspaceCreateStructure(true);
+  };
+
+  const handleSaveWorkspace = async () => {
+    if (!workspaceReposRoot.trim()) {
+      setError('Workspace repos root is required.');
+      return;
+    }
+    setError('');
+    const payload = {
+      name: workspaceName.trim() || undefined,
+      reposRoot: workspaceReposRoot.trim(),
+      outputDir: workspaceOutputDir.trim() || undefined,
+      createStructure: workspaceCreateStructure
+    };
+    if (editingWorkspaceId) {
+      await onUpdateWorkspace?.(editingWorkspaceId, payload);
+    } else {
+      await onCreateWorkspace?.(payload);
+    }
+    resetWorkspaceForm();
+  };
+
   const handleDeletePrompt = async (id) => {
     const target = savedPrompts.find((prompt) => prompt.id === id);
     const label = target?.title ? `“${target.title}”` : 'this prompt';
@@ -870,7 +2005,7 @@ function OrchestratorView({
     setTimeout(() => setSpawnSteps(s => [...s.slice(0, 2).map(x => ({ ...x, done: true })), { text: 'Searching knowledge base…', done: false }]), 600);
     setTimeout(() => setSpawnSteps(s => [...s.slice(0, 3).map(x => ({ ...x, done: true })), { text: 'Generating flight plan…', done: false }]), 900);
 
-    await onSpawn(goal, format);
+    await onSpawn(goal, format, runInBackground);
 
     // Mark all done
     setSpawnSteps(s => s.map(x => ({ ...x, done: true })));
@@ -892,150 +2027,159 @@ function OrchestratorView({
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
-      className="max-w-6xl mx-auto space-y-8"
+      transition={SPRING_SMOOTH}
+      className="w-full space-y-8 density-stack"
     >
       <div>
-        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Agent Factory</h1>
-        <p className="text-slate-400 text-lg">Spawn specialized autonomous agents using natural language.</p>
+        <h1 className="text-2xl font-semibold text-white tracking-tight mb-2">Agent Factory</h1>
+        <p className="text-slate-400 text-sm">Spawn specialized autonomous agents using natural language.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Input Area */}
         <div className="lg:col-span-8 flex flex-col gap-6">
-          <div className="glass-panel p-1 rounded-[2.5rem] bg-slate-800/40 border border-slate-700/30 shadow-2xl backdrop-blur-3xl">
-            <div className="bg-slate-950/60 rounded-[2.2rem] p-8 h-full relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-slate-800/20 rounded-full blur-3xl -z-10 transition-opacity group-hover:opacity-100 opacity-50 pointer-events-none" />
+          <div className="glass-panel rounded-[28px] p-8 h-full relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -z-10 transition-opacity group-hover:opacity-80 opacity-40 pointer-events-none" />
 
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <label htmlFor="goal-input" className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Describe the outcome</label>
-                <div className="flex items-center gap-2" ref={formatMenuRef}>
-                  <label htmlFor="format-select" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Format</label>
-                  <div className="relative">
-                    <button
-                      id="format-select"
-                      name="format"
-                      data-testid="format-select"
-                      type="button"
-                      ref={formatButtonRef}
-                      aria-haspopup="listbox"
-                      aria-expanded={formatMenuOpen}
-                      onClick={() => setFormatMenuOpen((open) => !open)}
-                      className={cn(
-                        "group inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-ui",
-                        "bg-slate-900/70 text-slate-200 border-slate-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-                        "hover:border-cyan-500/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/30",
-                        formatMenuOpen ? "border-cyan-500/50 ring-2 ring-cyan-500/15" : ""
-                      )}
-                    >
-                      <span className="relative flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-400/80 shadow-[0_0_8px_rgba(34,211,238,0.7)]"></span>
-                        {currentFormat.label}
-                      </span>
-                      <ChevronDown
-                        size={14}
-                        className={cn(
-                          "transition-transform duration-200 text-slate-400 group-hover:text-cyan-200",
-                          formatMenuOpen ? "rotate-180 text-cyan-200" : ""
-                        )}
-                        aria-hidden="true"
-                      />
-                    </button>
-
-                    <AnimatePresence>
-                      {formatMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                          transition={{ duration: 0.18, ease: "easeOut" }}
-                          className="absolute right-0 mt-2 w-44 rounded-2xl border border-slate-700/70 bg-slate-950/95 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.9)] backdrop-blur-xl p-1.5 z-30"
-                          role="listbox"
-                          aria-label="Format"
-                        >
-                          <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent"></div>
-                          {formatOptions.map((option, index) => (
-                            <motion.button
-                              key={option.value}
-                              type="button"
-                              role="option"
-                              data-testid={`format-option-${option.value}`}
-                              aria-selected={format === option.value}
-                              initial={{ opacity: 0, x: -4 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: index * 0.03, duration: 0.15 }}
-                              onClick={() => {
-                                setFormat(option.value);
-                                setFormatMenuOpen(false);
-                                formatButtonRef.current?.focus();
-                              }}
-                              className={cn(
-                                "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-ui flex items-center gap-2",
-                                format === option.value
-                                  ? "bg-cyan-500/15 text-cyan-200"
-                                  : "text-slate-200 hover:bg-slate-800/70 hover:text-white"
-                              )}
-                            >
-                              <span className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.35)]", option.accent)}></span>
-                              <span>{option.label}</span>
-                            </motion.button>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              </div>
-              <div className="relative">
-                <textarea
-                  id="goal-input"
-                  name="goal"
-                  data-testid="goal-input"
-                  value={goal}
-                  onChange={(e) => setGoal(e.target.value)}
-                  placeholder="Example: Audit the dashboard UI for clarity, accessibility, and visual hierarchy…"
-                  autoComplete="off"
-                  className="w-full bg-slate-950/70 border border-slate-700/60 rounded-3xl p-6 text-xl text-slate-100 focus-visible:outline-none focus-visible:border-cyan-500/40 focus-visible:ring-4 focus-visible:ring-cyan-500/10 transition-ui min-h-[140px] resize-none leading-relaxed placeholder:text-slate-500 font-medium"
-                />
-
-                <div className="mt-5 flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 layer-top">
+              <label htmlFor="goal-input" className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.22em]">Describe the outcome</label>
+              <div className="flex items-center gap-2" ref={formatMenuRef}>
+                <label htmlFor="format-select" className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.22em]">Format</label>
+                <div className="relative z-40">
                   <button
+                    id="format-select"
+                    name="format"
+                    data-testid="format-select"
                     type="button"
-                    onClick={() => setShowSaveModal(true)}
-                    disabled={!goal}
-                    data-testid="save-prompt-btn"
+                    ref={formatButtonRef}
+                    aria-haspopup="listbox"
+                    aria-expanded={formatMenuOpen}
+                    onClick={() => setFormatMenuOpen((open) => !open)}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-ui border",
-                      justSaved
-                        ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
-                        : "bg-slate-900/60 text-slate-300 border-slate-700/60 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40"
+                      "group inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-ui",
+                      "bg-white/5 text-slate-200 border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+                      "hover:border-cyan-400/50 hover:text-white focus-visible:outline-none",
+                      formatMenuOpen ? "border-cyan-400/60" : ""
                     )}
-                    title="Save Prompt"
                   >
-                    <Star size={16} fill={justSaved ? "currentColor" : "none"} aria-hidden="true" />
-                    Save Prompt
+                    <span className="relative flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/90 shadow-[0_0_8px_rgba(34,211,238,0.55)]"></span>
+                      {currentFormat.label}
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      className={cn(
+                        "transition-transform duration-200 text-slate-400 group-hover:text-cyan-200",
+                        formatMenuOpen ? "rotate-180 text-cyan-200" : ""
+                      )}
+                      aria-hidden="true"
+                    />
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSpawn}
-                    disabled={loading || !goal}
-                    data-testid="generate-flight-plan"
-                    className="flex items-center gap-2 px-5 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-2xl shadow-lg shadow-cyan-500/20 transition-ui text-sm font-bold disabled:opacity-50 disabled:shadow-none"
-                    title="Generate Flight Plan"
-                  >
-                    {loading ? <RefreshCw size={18} className="animate-spin text-white" aria-hidden="true" /> : <ChevronRight size={18} className="text-slate-950" aria-hidden="true" />}
-                    Generate Flight Plan
-                  </button>
+
+                  <AnimatePresence>
+                    {formatMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={SPRING_FAST}
+                        className="absolute right-0 mt-2 w-44 rounded-2xl border border-white/10 bg-slate-950/90 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-xl p-1.5 z-50"
+                        role="listbox"
+                        aria-label="Format"
+                      >
+                        <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"></div>
+                        {formatOptions.map((option, index) => (
+                          <motion.button
+                            key={option.value}
+                            type="button"
+                            role="option"
+                            data-testid={`format-option-${option.value}`}
+                            aria-selected={format === option.value}
+                            initial={{ opacity: 0, x: -4 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ ...SPRING_FAST, delay: index * 0.03 }}
+                            onClick={() => {
+                              setFormat(option.value);
+                              setFormatMenuOpen(false);
+                              formatButtonRef.current?.focus();
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-ui flex items-center gap-2",
+                              format === option.value
+                                ? "bg-cyan-400/10 text-cyan-200"
+                                : "text-slate-200 hover:bg-white/5 hover:text-white"
+                            )}
+                          >
+                            <span className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.35)]", option.accent)}></span>
+                            <span>{option.label}</span>
+                          </motion.button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
+            </div>
+            <div className="relative">
+              <textarea
+                id="goal-input"
+                name="goal"
+                data-testid="goal-input"
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                placeholder="Example: Audit the dashboard UI for clarity, accessibility, and visual hierarchy…"
+                autoComplete="off"
+                className="w-full bg-white/[0.03] border border-white/10 rounded-3xl p-6 text-lg text-slate-100 focus-visible:outline-none focus-visible:border-cyan-400/50 transition-ui min-h-[140px] resize-none leading-relaxed placeholder:text-slate-500 font-medium"
+              />
 
-              {/* Status Timeline */}
-              {loading && spawnSteps.length > 0 && (
-                <div className="mt-6 p-4 bg-slate-900/50 rounded-2xl">
-                  <SpawnTimeline steps={spawnSteps} />
-                </div>
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveModal(true)}
+                  disabled={!goal}
+                  data-testid="save-prompt-btn"
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-ui border",
+                    justSaved
+                      ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                      : "bg-white/5 text-slate-300 border-white/10 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40"
+                  )}
+                  title="Save Prompt"
+                >
+                  <Star size={16} fill={justSaved ? "currentColor" : "none"} aria-hidden="true" />
+                  Save Prompt
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSpawn}
+                  disabled={loading || !goal}
+                  data-testid="generate-flight-plan"
+                  className="flex items-center gap-2 px-5 py-3 bg-white text-slate-900 rounded-full shadow-lg shadow-white/10 transition-ui text-sm font-semibold disabled:opacity-50 disabled:shadow-none"
+                  title="Generate Flight Plan"
+                >
+                  {loading ? <RefreshCw size={18} className="animate-spin text-slate-900" aria-hidden="true" /> : <ChevronRight size={18} className="text-slate-900" aria-hidden="true" />}
+                  Generate Flight Plan
+                </button>
+              </div>
+              {queueEnabled && (
+                <label className="mt-4 flex items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={runInBackground}
+                    onChange={(e) => setRunInBackground(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                  />
+                  Run in background queue
+                </label>
               )}
             </div>
+
+            {/* Status Timeline */}
+            {loading && spawnSteps.length > 0 && (
+              <div className="mt-6 p-4 bg-white/[0.04] rounded-2xl border border-white/[0.08]">
+                <SpawnTimeline steps={spawnSteps} />
+              </div>
+            )}
           </div>
 
           {/* Result Panel */}
@@ -1190,7 +2334,7 @@ function OrchestratorView({
                 onChange={(e) => setPromptTitle(e.target.value)}
                 placeholder="e.g., UI Test, Security Audit…"
                 autoComplete="off"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-amber-500/50 focus-visible:ring-2 focus-visible:ring-amber-500/30 mb-3"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 focus-visible:outline-none focus-visible:border-amber-500/50 mb-3"
               />
 
               <div className="p-3 bg-slate-800/50 rounded-xl mb-6">
@@ -1227,26 +2371,70 @@ function OrchestratorView({
   );
 }
 
-function MetricCard({ title, value, subtitle, icon: Icon, accent }) {
-  return (
-    <div className="glass-card p-5 rounded-3xl border border-slate-800/60 bg-slate-900/40 shadow-xl">
-      <div className="flex items-center justify-between">
-        <div className={cn("p-3 rounded-2xl", accent.replace('text-', 'bg-').replace('400', '500/10'))}>
-          <Icon size={22} className={accent} aria-hidden="true" />
-        </div>
-        {subtitle && <span className="text-[11px] text-slate-500 uppercase tracking-widest">{subtitle}</span>}
-      </div>
-      <div className="mt-4 text-3xl font-bold text-white tabular-nums">{value}</div>
-      <div className="text-xs uppercase tracking-widest text-slate-500 mt-2">{title}</div>
-    </div>
-  );
-}
-
 function EmptyState({ title, subtitle }) {
   return (
     <div className="text-center text-slate-500 py-10 border border-dashed border-slate-800 rounded-3xl">
       <div className="text-sm font-semibold text-slate-400">{title}</div>
       {subtitle && <div className="text-xs text-slate-500 mt-1">{subtitle}</div>}
+    </div>
+  );
+}
+
+function buildSparklinePath(values, width, height) {
+  if (!Array.isArray(values) || values.length === 0) return '';
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const step = values.length > 1 ? width / (values.length - 1) : width;
+  return values
+    .map((value, index) => {
+      const x = step * index;
+      const y = height - ((value - min) / range) * height;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+function Sparkline({ values, stroke = '#38bdf8' }) {
+  const width = 120;
+  const height = 36;
+  const path = buildSparklinePath(values, width, height);
+  if (!path) {
+    return <div className="text-[10px] text-slate-500">No data</div>;
+  }
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <path d={path} fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrendCard({ label, trend, accent }) {
+  const hasData = trend.count > 0;
+  const delta = trend.delta ?? 0;
+  return (
+    <div className="p-4 rounded-2xl border border-slate-800/70 bg-slate-900/40">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold">{label}</div>
+        <span className="tag-inline tag-inline-muted text-[10px]">{trend.count} runs</span>
+      </div>
+      {hasData ? (
+        <div className="mt-3 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-2xl font-semibold text-slate-100 tabular-nums">{trend.latest}</div>
+            <div className={cn(
+              "text-[11px] font-semibold",
+              delta >= 0 ? "text-emerald-300" : "text-red-300"
+            )}>
+              {delta >= 0 ? '+' : ''}{delta.toFixed(1)} since last
+            </div>
+            <div className="text-[11px] text-slate-500">Avg {trend.avg.toFixed(1)}</div>
+          </div>
+          <Sparkline values={trend.values} stroke={accent} />
+        </div>
+      ) : (
+        <div className="mt-3 text-xs text-slate-500">No evaluations captured yet.</div>
+      )}
     </div>
   );
 }
@@ -1259,7 +2447,9 @@ function HomeView({
   savedPrompts,
   sessions,
   onNavigate,
-  appConfig
+  appConfig,
+  observabilitySummary,
+  jobs
 }) {
   const totalRepos = repos.length;
   const runCount = runs.length;
@@ -1267,7 +2457,9 @@ function HomeView({
   const evalCount = evaluations.length;
   const promptCount = savedPrompts.length;
   const recentRuns = runs.slice(0, 4);
-  const recentSessions = (sessions || []).slice(0, 4);
+  const obsRuns = observabilitySummary?.runs || {};
+  const obsEvals = observabilitySummary?.evaluations || {};
+  const queuedJobs = (jobs || []).filter(job => ['queued', 'running'].includes(job.status));
 
   const steps = [
     { label: 'Confirm repository root', done: Boolean(appConfig?.config?.reposRoot) },
@@ -1283,22 +2475,23 @@ function HomeView({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-8"
+      transition={SPRING_SMOOTH}
+      className="space-y-8 density-stack"
     >
-      <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
-        <div className="glass-panel rounded-3xl p-8 border border-slate-800/60 bg-slate-950/50">
-          <div className="flex items-center gap-3 text-cyan-400 mb-4">
-            <LayoutDashboard size={22} aria-hidden="true" />
-            <span className="text-xs uppercase tracking-[0.3em] text-cyan-300">Command Center</span>
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-white mb-3">
+      <div className="glass-panel rounded-3xl p-8">
+          <h1 className="text-2xl font-semibold tracking-tight text-white mb-3">
             Command Center
           </h1>
           <p className="text-slate-400 text-sm leading-relaxed max-w-xl">
             Operational snapshot of runs, evaluations, and knowledge coverage. Use the quickstart
             checklist to keep the system production-ready.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="tag-inline tag-inline-muted">Runs {runCount}</span>
+            <span className="tag-inline tag-inline-muted">Evaluations {evalCount}</span>
+            <span className="tag-inline tag-inline-muted">Prompts {promptCount}</span>
+            <span className="tag-inline tag-inline-muted">Repos {totalRepos}</span>
+          </div>
           <div className="mt-6 flex flex-wrap gap-3">
             <button
               type="button"
@@ -1315,42 +2508,10 @@ function HomeView({
               Manage knowledge base
             </button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <MetricCard
-            title="Runs"
-            value={runCount}
-            subtitle="Total"
-            icon={Activity}
-            accent="text-emerald-400"
-          />
-          <MetricCard
-            title="Evaluations"
-            value={evalCount}
-            subtitle="Completed"
-            icon={FlaskConical}
-            accent="text-amber-400"
-          />
-          <MetricCard
-            title="Prompts"
-            value={promptCount}
-            subtitle="Library"
-            icon={Library}
-            accent="text-cyan-400"
-          />
-          <MetricCard
-            title="Repos"
-            value={totalRepos}
-            subtitle="Tracked"
-            icon={BookOpen}
-            accent="text-indigo-400"
-          />
-        </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Quickstart</div>
             <span className="text-[10px] text-slate-500">Keep momentum</span>
@@ -1370,7 +2531,7 @@ function HomeView({
           </div>
         </div>
 
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Recent Runs</div>
             <button
@@ -1397,29 +2558,53 @@ function HomeView({
             </div>
           )}
         </div>
+      </div>
 
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Recent Sessions</div>
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Observability</div>
+            <span className="text-[10px] text-slate-500">Last 30 days</span>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4 text-sm text-slate-300">
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest">Run tokens</div>
+              <div className="text-lg text-white tabular-nums">{obsRuns.totalTokens ?? 0}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest">Run cost</div>
+              <div className="text-lg text-white tabular-nums">${(obsRuns.totalCost ?? 0).toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest">Avg duration</div>
+              <div className="text-lg text-white tabular-nums">{formatDuration(obsRuns.avgDurationMs ?? 0)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 uppercase tracking-widest">Eval tokens</div>
+              <div className="text-lg text-white tabular-nums">{obsEvals.totalTokens ?? 0}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-3xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Queue Snapshot</div>
             <button
               type="button"
-              onClick={() => onNavigate('agents')}
+              onClick={() => onNavigate('jobs')}
               className="text-[10px] text-cyan-400 uppercase tracking-[0.3em]"
             >
-              Agent Factory
+              View queue
             </button>
           </div>
-          {recentSessions.length === 0 ? (
-            <EmptyState title="No sessions yet" subtitle="Sessions appear after each spawn." />
+          {queuedJobs.length === 0 ? (
+            <EmptyState title="No active jobs" subtitle="Queue is idle." />
           ) : (
             <div className="space-y-3">
-              {recentSessions.map((session) => (
-                <div key={session.id} className="p-3 bg-slate-900/50 rounded-2xl border border-slate-800/60">
-                  <div className="text-sm text-slate-200 truncate">{session.goal}</div>
-                  <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
-                    <Clock size={12} aria-hidden="true" />
-                    {new Date(session.timestamp).toLocaleDateString()}
-                  </div>
+              {queuedJobs.slice(0, 4).map((job) => (
+                <div key={job.id} className="p-3 bg-slate-900/50 rounded-2xl border border-slate-800/60">
+                  <div className="text-sm text-slate-200">{job.type}</div>
+                  <div className="text-xs text-slate-500 mt-2">{job.status} • {new Date(job.createdAt).toLocaleTimeString()}</div>
                 </div>
               ))}
             </div>
@@ -1455,7 +2640,9 @@ function RunsView({ runs }) {
         quality: (selected.metrics?.qualityScore ?? 0) - (compareRun.metrics?.qualityScore ?? 0),
         duration: (selected.durationMs ?? 0) - (compareRun.durationMs ?? 0),
         uncertainty: (selected.metrics?.uncertainty ?? 0) - (compareRun.metrics?.uncertainty ?? 0),
-        resources: (selected.resources?.total ?? 0) - (compareRun.resources?.total ?? 0)
+        resources: (selected.resources?.total ?? 0) - (compareRun.resources?.total ?? 0),
+        cost: (selected.metrics?.costEstimated ?? selected.usage?.costEstimated ?? 0) -
+          (compareRun.metrics?.costEstimated ?? compareRun.usage?.costEstimated ?? 0)
       }
     : null;
 
@@ -1464,8 +2651,16 @@ function RunsView({ runs }) {
   const ragFusion = matrix.resourceSelection?.ragFusionUsed ? `used (${matrix.resourceSelection?.ragFusionVariants || 0} variants)` : 'not used';
   const hyde = matrix.resourceSelection?.hydeUsed ? 'used' : 'not used';
   const hybrid = matrix.resourceSelection?.hybridUsed ? 'enabled' : 'disabled';
+  const vectorIndexLabel = matrix.resourceSelection?.vectorIndexUsed ? 'used' : 'not used';
   const lateInteraction = matrix.resourceSelection?.lateInteractionUsed ? 'used' : 'not used';
-  const llmPolicy = matrix.agentSelection?.rerankPolicy || 'n/a';
+  const llmAgentMode = matrix.agentSelection?.rerankPolicy || 'n/a';
+  const llmResourceMode = matrix.resourceSelection?.rerankPolicy || 'n/a';
+  const agentRerankLabel = matrix.agentSelection?.rerankUsed
+    ? (matrix.agentSelection?.rerankAccepted ? 'used (accepted)' : 'used (ignored)')
+    : `not used${matrix.agentSelection?.rerankReason ? ` (${matrix.agentSelection.rerankReason})` : ''}`;
+  const resourceRerankLabel = matrix.resourceSelection?.rerankUsed ? 'used' : 'not used';
+  const perfTotal = selected?.performance?.totalMs ?? selected?.durationMs ?? 0;
+  const perfSpans = Array.isArray(selected?.performance?.spans) ? selected.performance.spans : [];
 
   return (
     <motion.div
@@ -1473,10 +2668,10 @@ function RunsView({ runs }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.2 }}
+      transition={SPRING_SMOOTH}
       className="grid lg:grid-cols-3 gap-6"
     >
-      <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50 h-[calc(100vh-220px)] flex flex-col">
+      <div className="glass-panel rounded-3xl p-6 h-[calc(100vh-220px)] flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run History</div>
           <span className="text-[10px] text-slate-500">{runs.length} total</span>
@@ -1518,7 +2713,7 @@ function RunsView({ runs }) {
 
         {selected && (
           <>
-            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+            <div className="glass-panel rounded-3xl p-6">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run Detail</div>
                 <span className="text-[10px] text-slate-500 font-mono">{selected.id}</span>
@@ -1541,6 +2736,10 @@ function RunsView({ runs }) {
                   <div className="text-xs text-slate-500 uppercase tracking-widest">Tokens (est)</div>
                   <div>{selected.metrics?.tokensEstimated ?? '—'}</div>
                 </div>
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-widest">Cost (est)</div>
+                  <div>{selected.metrics?.costEstimated ?? selected.usage?.costEstimated ?? '—'} {selected.metrics?.currency || selected.usage?.currency || ''}</div>
+                </div>
               </div>
               {selected.metrics?.issues?.length > 0 && (
                 <div className="mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
@@ -1549,7 +2748,33 @@ function RunsView({ runs }) {
               )}
             </div>
 
-            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+            <div className="glass-panel rounded-3xl p-6">
+              <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Performance Timeline</div>
+              {!perfSpans.length && (
+                <EmptyState title="No performance trace" subtitle="Run spans will appear after new spawns." />
+              )}
+              {perfSpans.length > 0 && (
+                <div className="space-y-3">
+                  {perfSpans.map((span, index) => {
+                    const duration = span.durationMs || 0;
+                    const percent = perfTotal > 0 ? Math.min(100, Math.max(4, (duration / perfTotal) * 100)) : 0;
+                    return (
+                      <div key={`${span.name}-${index}`} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/60">
+                        <div className="flex items-center justify-between text-sm text-slate-200">
+                          <span className="capitalize">{span.name.replace(/_/g, ' ')}</span>
+                          <span className="text-xs text-slate-500">{formatDuration(duration)}</span>
+                        </div>
+                        <div className="mt-2 h-2 w-full rounded-full bg-slate-950/70">
+                          <div className="h-2 rounded-full bg-cyan-500/70" style={{ width: `${percent}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel rounded-3xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run Comparison</div>
                 <select
@@ -1580,12 +2805,15 @@ function RunsView({ runs }) {
                   <div className={cn("p-3 rounded-2xl border", delta.resources >= 0 ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200" : "border-slate-700 bg-slate-800/60 text-slate-300")}>
                     Resources Δ {delta.resources >= 0 ? '+' : ''}{delta.resources}
                   </div>
+                  <div className={cn("p-3 rounded-2xl border", delta.cost <= 0 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200")}>
+                    Cost Δ {delta.cost >= 0 ? '+' : ''}{delta.cost.toFixed(2)}
+                  </div>
                 </div>
               )}
             </div>
 
             {selected.git && (
-              <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+              <div className="glass-panel rounded-3xl p-6">
                 <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Code Context</div>
                 <div className="grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
                   <div>Branch: <span className="text-slate-100">{selected.git.branch || '—'}</span></div>
@@ -1606,21 +2834,25 @@ function RunsView({ runs }) {
               </div>
             )}
 
-            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+            <div className="glass-panel rounded-3xl p-6">
               <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Decision Matrix</div>
               <div className="grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
                 <div>Retrieval gate: <span className="text-slate-100">{retrievalGate}</span></div>
                 <div>RAG-Fusion: <span className="text-slate-100">{ragFusion}</span></div>
                 <div>HyDE fallback: <span className="text-slate-100">{hyde}</span></div>
                 <div>Hybrid retrieval: <span className="text-slate-100">{hybrid}</span></div>
+                <div>Semantic index: <span className="text-slate-100">{vectorIndexLabel}</span></div>
                 <div>Late-interaction rerank: <span className="text-slate-100">{lateInteraction}</span></div>
-                <div>LLM rerank policy: <span className="text-slate-100">{llmPolicy}</span></div>
+                <div>LLM agent mode: <span className="text-slate-100">{llmAgentMode}</span></div>
+                <div>LLM agent router: <span className="text-slate-100">{agentRerankLabel}</span></div>
+                <div>LLM resource mode: <span className="text-slate-100">{llmResourceMode}</span></div>
+                <div>Resource rerank: <span className="text-slate-100">{resourceRerankLabel}</span></div>
                 <div>Uncertainty: <span className="text-slate-100">{Math.round((matrix.uncertainty?.score || 0) * 100)}%</span></div>
                 <div>Requires review: <span className="text-slate-100">{selected.metrics?.requiresReview ? 'yes' : 'no'}</span></div>
               </div>
             </div>
 
-            <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+            <div className="glass-panel rounded-3xl p-6">
               <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Trace</div>
               {selected.trace?.steps?.length ? (
                 <div className="space-y-3">
@@ -1648,6 +2880,269 @@ function RunsView({ runs }) {
   );
 }
 
+function JobsView({ jobs, onCancelJob }) {
+  const [selectedId, setSelectedId] = useState(jobs[0]?.id || null);
+
+  useEffect(() => {
+    if (!selectedId && jobs.length > 0) {
+      setSelectedId(jobs[0].id);
+    }
+  }, [jobs, selectedId]);
+
+  const selected = jobs.find((job) => job.id === selectedId) || jobs[0];
+
+  const statusTone = (status) => {
+    if (status === 'completed') return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
+    if (status === 'running') return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30';
+    if (status === 'failed') return 'text-red-300 bg-red-500/10 border-red-500/30';
+    if (status === 'cancelled') return 'text-amber-300 bg-amber-500/10 border-amber-500/30';
+    return 'text-slate-300 bg-slate-800/60 border-slate-700';
+  };
+
+  return (
+    <motion.div
+      key="jobs"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={SPRING_SMOOTH}
+      className="grid lg:grid-cols-3 gap-6"
+    >
+      <div className="glass-panel rounded-3xl p-6 h-[calc(100vh-220px)] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Queue</div>
+          <span className="text-[10px] text-slate-500">{jobs.length} jobs</span>
+        </div>
+        <div className="space-y-3 overflow-y-auto pr-1">
+          {jobs.length === 0 && <EmptyState title="No jobs queued" subtitle="Background tasks will appear here." />}
+          {jobs.map((job) => (
+            <button
+              key={job.id}
+              onClick={() => setSelectedId(job.id)}
+              className={cn(
+                "w-full text-left p-3 rounded-2xl border transition-ui",
+                job.id === selected?.id
+                  ? "bg-slate-800/60 border-cyan-500/40"
+                  : "bg-slate-900/40 border-slate-800/60 hover:border-slate-700"
+              )}
+            >
+              <div className="text-sm text-slate-200">{job.type}</div>
+              <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
+                <span className={cn("px-2 py-0.5 rounded-full border text-[10px] uppercase", statusTone(job.status))}>
+                  {job.status}
+                </span>
+                <span>{new Date(job.createdAt).toLocaleTimeString()}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="lg:col-span-2 space-y-6">
+        {!selected && <EmptyState title="Select a job" subtitle="Choose a job to inspect details." />}
+        {selected && (
+          <div className="glass-panel rounded-3xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Job Detail</div>
+                <div className="text-lg text-white font-semibold">{selected.type}</div>
+              </div>
+              <span className={cn("px-3 py-1 rounded-full border text-xs uppercase", statusTone(selected.status))}>
+                {selected.status}
+              </span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 text-sm text-slate-300">
+              <div>Created: <span className="text-slate-100">{new Date(selected.createdAt).toLocaleString()}</span></div>
+              <div>Updated: <span className="text-slate-100">{new Date(selected.updatedAt).toLocaleString()}</span></div>
+              {selected.durationMs && <div>Duration: <span className="text-slate-100">{formatDuration(selected.durationMs)}</span></div>}
+              {selected.runId && <div>Run: <span className="text-slate-100">{selected.runId}</span></div>}
+            </div>
+            {selected.error && (
+              <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                {selected.error}
+              </div>
+            )}
+            {['queued', 'running'].includes(selected.status) && (
+              <button
+                type="button"
+                onClick={() => onCancelJob?.(selected.id)}
+                className="px-4 py-2 rounded-2xl bg-red-500/20 text-red-300 border border-red-500/30 text-sm"
+              >
+                Cancel job
+              </button>
+            )}
+            {selected.result?.stdout && (
+              <pre className="text-xs text-slate-400 bg-slate-900/60 border border-slate-800/60 rounded-2xl p-3 whitespace-pre-wrap max-h-64 overflow-y-auto">
+                {selected.result.stdout.slice(0, 2000)}
+              </pre>
+            )}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function AuditView({ auditLogs }) {
+  const [query, setQuery] = useState('');
+  const [eventFilter, setEventFilter] = useState('all');
+  const [exporting, setExporting] = useState('');
+  const [exportError, setExportError] = useState('');
+
+  const events = Array.from(new Set((auditLogs || []).map((entry) => entry.event))).sort();
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const filtered = (auditLogs || []).filter((entry) => {
+    if (eventFilter !== 'all' && entry.event !== eventFilter) return false;
+    if (!normalizedQuery) return true;
+    const haystack = [
+      entry.event,
+      entry.user?.username,
+      entry.user?.role,
+      entry.workspaceId,
+      entry.ip,
+      JSON.stringify(entry.metadata || {})
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+
+  const handleExport = async (format) => {
+    setExporting(format);
+    setExportError('');
+    try {
+      const params = new URLSearchParams({ format });
+      if (eventFilter !== 'all') {
+        params.set('event', eventFilter);
+      }
+      const res = await apiFetch(`/audit/export?${params.toString()}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `cortex-audit-${stamp}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e.message || 'Export failed');
+    }
+    setExporting('');
+  };
+
+  return (
+    <motion.div
+      key="audit"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={SPRING_SMOOTH}
+      className="space-y-6"
+    >
+      <div className="glass-panel rounded-3xl p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Audit Trail</div>
+          <div className="flex items-center gap-2">
+            <span className="tag-inline tag-inline-muted font-mono tabular-nums">{filtered.length} entries</span>
+            <button
+              type="button"
+              onClick={() => handleExport('csv')}
+              disabled={exporting === 'csv'}
+              className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-xs border border-slate-700/60 disabled:opacity-50"
+            >
+              {exporting === 'csv' ? 'Exporting…' : 'Export CSV'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('json')}
+              disabled={exporting === 'json'}
+              className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-xs border border-slate-700/60 disabled:opacity-50"
+            >
+              {exporting === 'json' ? 'Exporting…' : 'Export JSON'}
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search events, users, IPs…"
+            className="flex-1 min-w-[220px] bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50"
+          />
+          <select
+            value={eventFilter}
+            onChange={(e) => setEventFilter(e.target.value)}
+            className="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+          >
+            <option value="all">All events</option>
+            {events.map((event) => (
+              <option key={event} value={event}>
+                {event}
+              </option>
+            ))}
+          </select>
+        </div>
+        {exportError && (
+          <div className="mt-3 text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-xl px-3 py-2">
+            {exportError}
+          </div>
+        )}
+        <div className="mt-5 space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto pr-1" data-testid="audit-logs">
+          {filtered.length === 0 && (
+            <EmptyState title="No audit events found" subtitle="Try clearing filters or generate new activity." />
+          )}
+          {filtered.map((entry, index) => {
+            const timestamp = entry.ts ? new Date(entry.ts).toLocaleString() : '—';
+            const userLabel = entry.user?.username || 'system';
+            const roleLabel = entry.user?.role || '—';
+            const workspaceLabel = entry.workspaceId || 'default';
+            const agentLabel = entry.userAgent || '';
+            return (
+              <div key={`${entry.ts}-${entry.event}-${index}`} className="glass-card rounded-2xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">{entry.event}</div>
+                    <div className="text-xs text-slate-500 mt-1">{timestamp}</div>
+                  </div>
+                  <span className="tag-chip tag-chip-muted font-mono">{workspaceLabel}</span>
+                </div>
+                <div className="mt-3 grid sm:grid-cols-2 gap-3 text-xs text-slate-400">
+                  <div>User: <span className="text-slate-200">{userLabel}</span></div>
+                  <div>Role: <span className="text-slate-200">{roleLabel}</span></div>
+                  <div>IP: <span className="text-slate-200">{entry.ip || '—'}</span></div>
+                  <div>Agent: <span className="text-slate-200">{agentLabel ? agentLabel.slice(0, 48) : '—'}</span></div>
+                </div>
+                {entry.metadata && Object.keys(entry.metadata).length > 0 && (
+                  <details className="mt-3 text-xs text-slate-400">
+                    <summary className="cursor-pointer text-slate-300">Metadata</summary>
+                    <div className="mt-2 grid gap-2">
+                      {Object.entries(entry.metadata).map(([key, value]) => (
+                        <div key={key} className="flex items-start justify-between gap-4">
+                          <span className="text-slate-500">{key}</span>
+                          <span className="text-slate-200 text-right break-all">{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function EvaluationsView({
   datasets,
   runs,
@@ -1657,13 +3152,20 @@ function EvaluationsView({
   onDeleteDataset,
   onAddDatasetItem,
   onCreateEvaluation,
-  onImportDataset
+  onImportDataset,
+  onCreateTemplate,
+  onUpdateTemplate,
+  onDeleteTemplate,
+  onImportTemplates,
+  onExportTemplates
 }) {
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasets[0]?.id || '');
   const [datasetName, setDatasetName] = useState('');
   const [datasetDescription, setDatasetDescription] = useState('');
+  const [datasetType, setDatasetType] = useState('response');
   const [itemInput, setItemInput] = useState('');
   const [itemExpected, setItemExpected] = useState('');
+  const [itemExpectedPaths, setItemExpectedPaths] = useState('');
   const [itemWeight, setItemWeight] = useState('1');
   const [itemRubric, setItemRubric] = useState('');
   const [itemExpectedType, setItemExpectedType] = useState('contains');
@@ -1671,11 +3173,17 @@ function EvaluationsView({
   const [evalRunId, setEvalRunId] = useState('');
   const [selectedEvaluationId, setSelectedEvaluationId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState('');
+  const [templateName, setTemplateName] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [templateExpectedType, setTemplateExpectedType] = useState('llm');
+  const [templateRubric, setTemplateRubric] = useState('');
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
   const [compareResult, setCompareResult] = useState(null);
   const [compareLoading, setCompareLoading] = useState(false);
   const importInputRef = useRef(null);
+  const templateImportRef = useRef(null);
 
   useEffect(() => {
     if (!selectedDatasetId && datasets.length > 0) {
@@ -1706,25 +3214,32 @@ function EvaluationsView({
 
   const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId);
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const isRetrievalDataset = selectedDataset?.benchmarkType === 'retrieval';
 
   const handleCreateDataset = async () => {
     if (!datasetName.trim()) return;
-    const created = await onCreateDataset?.(datasetName.trim(), datasetDescription.trim());
+    const created = await onCreateDataset?.(datasetName.trim(), datasetDescription.trim(), datasetType);
     if (created) {
       setSelectedDatasetId(created.id);
       setDatasetName('');
       setDatasetDescription('');
+      setDatasetType('response');
     }
   };
 
   const handleAddItem = async () => {
     if (!selectedDataset || !itemInput.trim()) return;
+    const parsedPaths = itemExpectedPaths
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
     const added = await onAddDatasetItem?.(selectedDataset.id, {
       input: itemInput.trim(),
       expected: itemExpected.trim(),
       weight: Number(itemWeight) || 1,
-      expectedType: itemExpectedType,
-      rubric: itemRubric.trim()
+      expectedType: isRetrievalDataset ? 'retrieval' : itemExpectedType,
+      rubric: isRetrievalDataset ? '' : itemRubric.trim(),
+      expectedPaths: isRetrievalDataset ? parsedPaths : []
     });
     if (added) {
       setItemInput('');
@@ -1732,10 +3247,12 @@ function EvaluationsView({
       setItemWeight('1');
       setItemRubric('');
       setItemExpectedType('contains');
+      setItemExpectedPaths('');
     }
   };
 
   const handleTemplateApply = () => {
+    if (isRetrievalDataset) return;
     if (!selectedTemplate) return;
     if (selectedTemplate.rubric) {
       setItemRubric(selectedTemplate.rubric);
@@ -1745,10 +3262,72 @@ function EvaluationsView({
     }
   };
 
+  const resetTemplateForm = () => {
+    setEditingTemplateId('');
+    setTemplateName('');
+    setTemplateDescription('');
+    setTemplateExpectedType('llm');
+    setTemplateRubric('');
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) return;
+    const payload = {
+      name: templateName.trim(),
+      description: templateDescription.trim(),
+      rubric: templateRubric.trim(),
+      expectedType: templateExpectedType
+    };
+    const saved = editingTemplateId
+      ? await onUpdateTemplate?.(editingTemplateId, payload)
+      : await onCreateTemplate?.(payload);
+    if (saved) {
+      setSelectedTemplateId(saved.id);
+      resetTemplateForm();
+    }
+  };
+
+  const handleEditTemplate = (template) => {
+    setEditingTemplateId(template.id);
+    setTemplateName(template.name || '');
+    setTemplateDescription(template.description || '');
+    setTemplateExpectedType(template.expectedType || 'llm');
+    setTemplateRubric(template.rubric || '');
+  };
+
+  const handleDeleteTemplate = async (template) => {
+    if (!template) return;
+    const label = template.name ? `“${template.name}”` : 'this template';
+    if (!window.confirm(`Delete ${label}?`)) return;
+    await onDeleteTemplate?.(template.id);
+    if (editingTemplateId === template.id) {
+      resetTemplateForm();
+    }
+  };
+
+  const handleExportTemplates = async () => {
+    await onExportTemplates?.();
+  };
+
+  const handleImportTemplates = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = parsed.templates || parsed.template || parsed;
+      await onImportTemplates?.(payload);
+    } catch (e) {
+      console.error('Failed to import templates:', e);
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   const handleExportDataset = async () => {
     if (!selectedDataset) return;
     try {
-      const res = await fetch(`${API_BASE}/datasets/${selectedDataset.id}/export`);
+      const res = await apiFetch(`/datasets/${selectedDataset.id}/export`);
       const data = await res.json();
       const payload = data.dataset || data;
       if (!payload) return;
@@ -1786,8 +3365,11 @@ function EvaluationsView({
   };
 
   const handleCreateEvaluation = async () => {
-    if (!evalDatasetId || !evalRunId) return;
-    const created = await onCreateEvaluation?.(evalDatasetId, evalRunId);
+    if (!evalDatasetId) return;
+    const dataset = datasets.find((entry) => entry.id === evalDatasetId);
+    const needsRun = dataset?.benchmarkType !== 'retrieval';
+    if (needsRun && !evalRunId) return;
+    const created = await onCreateEvaluation?.(evalDatasetId, needsRun ? evalRunId : null);
     if (created) {
       setSelectedEvaluationId(created.id);
     }
@@ -1797,7 +3379,7 @@ function EvaluationsView({
     if (!compareLeftId || !compareRightId) return;
     setCompareLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/evaluations/compare?left=${encodeURIComponent(compareLeftId)}&right=${encodeURIComponent(compareRightId)}`);
+      const res = await apiFetch(`/evaluations/compare?left=${encodeURIComponent(compareLeftId)}&right=${encodeURIComponent(compareRightId)}`);
       const data = await res.json();
       if (res.ok) {
         setCompareResult(data);
@@ -1811,9 +3393,37 @@ function EvaluationsView({
   };
 
   const selectedEvaluation = evaluations.find((evaluation) => evaluation.id === selectedEvaluationId);
+  const evalDataset = datasets.find((dataset) => dataset.id === evalDatasetId);
+  const evalNeedsRun = evalDataset?.benchmarkType !== 'retrieval';
   const deltaScore = compareResult?.delta?.score ?? 0;
   const deltaPassRate = compareResult?.delta?.passRate ?? 0;
   const deltaItemCount = compareResult?.delta?.itemCount ?? 0;
+  const compareMeta = compareResult?.meta || {};
+
+  const orderedEvaluations = [...evaluations]
+    .filter((evaluation) => evaluation.createdAt)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+  const buildTrend = (type) => {
+    const values = orderedEvaluations
+      .filter((evaluation) => evaluation.type === type)
+      .map((evaluation) => Number(evaluation.metrics?.score ?? 0));
+    const latest = values.length > 0 ? values[values.length - 1] : 0;
+    const previous = values.length > 1 ? values[values.length - 2] : latest;
+    const avg = values.length > 0
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
+    return {
+      values,
+      latest: Number(latest.toFixed(1)),
+      delta: Number((latest - previous).toFixed(1)),
+      avg: Number(avg.toFixed(1)),
+      count: values.length
+    };
+  };
+
+  const responseTrend = buildTrend('response');
+  const retrievalTrend = buildTrend('retrieval');
 
   const handleDeleteSelected = async () => {
     if (!selectedDataset) return;
@@ -1828,10 +3438,10 @@ function EvaluationsView({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.2 }}
+      transition={SPRING_SMOOTH}
       className="grid lg:grid-cols-3 gap-6"
     >
-      <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50 space-y-5">
+      <div className="glass-panel rounded-3xl p-6 space-y-5">
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Datasets</div>
           <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
@@ -1848,7 +3458,9 @@ function EvaluationsView({
                 )}
               >
                 <div className="text-sm text-slate-200 truncate">{dataset.name}</div>
-                <div className="text-xs text-slate-500 mt-1">{dataset.items?.length || 0} items</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  {dataset.items?.length || 0} items · {dataset.benchmarkType || 'response'} · v{dataset.version || 1}
+                </div>
               </button>
             ))}
           </div>
@@ -1870,6 +3482,14 @@ function EvaluationsView({
             rows={3}
             className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
           />
+          <select
+            value={datasetType}
+            onChange={(e) => setDatasetType(e.target.value)}
+            className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+          >
+            <option value="response">Response evaluation</option>
+            <option value="retrieval">Retrieval benchmark</option>
+          </select>
           <button
             type="button"
             onClick={handleCreateDataset}
@@ -1881,7 +3501,7 @@ function EvaluationsView({
       </div>
 
       <div className="lg:col-span-2 space-y-6">
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Dataset Detail</div>
             <div className="flex items-center gap-2">
@@ -1925,6 +3545,17 @@ function EvaluationsView({
               <div className="mb-4">
                 <div className="text-lg font-semibold text-white">{selectedDataset.name}</div>
                 <div className="text-sm text-slate-400 mt-1">{selectedDataset.description || 'No description provided.'}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                  <span className="tag-inline tag-inline-muted">Version v{selectedDataset.version || 1}</span>
+                  <span className="tag-inline tag-inline-muted">
+                    Type {selectedDataset.benchmarkType || 'response'}
+                  </span>
+                  {selectedDataset.updatedAt && (
+                    <span className="tag-inline tag-inline-muted">
+                      Updated {new Date(selectedDataset.updatedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="grid md:grid-cols-4 gap-4 mb-4">
                 <input
@@ -1934,62 +3565,90 @@ function EvaluationsView({
                   placeholder="Prompt / input"
                   className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
                 />
-                <input
-                  type="text"
-                  value={itemExpected}
-                  onChange={(e) => setItemExpected(e.target.value)}
-                  placeholder="Expected text or regex:..."
-                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
-                />
-                <select
-                  value={itemExpectedType}
-                  onChange={(e) => setItemExpectedType(e.target.value)}
-                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
-                >
-                  <option value="contains">Contains</option>
-                  <option value="regex">Regex</option>
-                  <option value="llm">LLM Rubric</option>
-                </select>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={itemWeight}
-                  onChange={(e) => setItemWeight(e.target.value)}
-                  placeholder="Weight"
-                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-3 mb-3">
-                <select
-                  value={selectedTemplateId}
-                  onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  className="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 min-w-[220px]"
-                >
-                  <option value="">Rubric template (optional)</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>{template.name}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleTemplateApply}
-                  disabled={!selectedTemplate}
-                  className="px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm border border-slate-700/60 disabled:opacity-50"
-                >
-                  Use template
-                </button>
-                {selectedTemplate && (
-                  <span className="text-xs text-slate-500">{selectedTemplate.description}</span>
+                {isRetrievalDataset ? (
+                  <input
+                    type="text"
+                    value={itemExpectedPaths}
+                    onChange={(e) => setItemExpectedPaths(e.target.value)}
+                    placeholder="Expected resource paths (comma-separated)"
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={itemExpected}
+                    onChange={(e) => setItemExpected(e.target.value)}
+                    placeholder="Expected text or regex:..."
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  />
+                )}
+                {isRetrievalDataset ? (
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={itemWeight}
+                    onChange={(e) => setItemWeight(e.target.value)}
+                    placeholder="Weight"
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  />
+                ) : (
+                  <select
+                    value={itemExpectedType}
+                    onChange={(e) => setItemExpectedType(e.target.value)}
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  >
+                    <option value="contains">Contains</option>
+                    <option value="regex">Regex</option>
+                    <option value="llm">LLM Rubric</option>
+                  </select>
+                )}
+                {!isRetrievalDataset && (
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={itemWeight}
+                    onChange={(e) => setItemWeight(e.target.value)}
+                    placeholder="Weight"
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  />
                 )}
               </div>
-              <textarea
-                value={itemRubric}
-                onChange={(e) => setItemRubric(e.target.value)}
-                placeholder="Optional rubric (used by LLM grader)"
-                rows={3}
-                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 mb-4"
-              />
+              {!isRetrievalDataset && (
+                <>
+                  <div className="flex flex-wrap items-center gap-3 mb-3">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => setSelectedTemplateId(e.target.value)}
+                      className="bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 min-w-[220px]"
+                    >
+                      <option value="">Rubric template (optional)</option>
+                      {templates.map((template) => (
+                        <option key={template.id} value={template.id}>{template.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleTemplateApply}
+                      disabled={!selectedTemplate}
+                      className="px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm border border-slate-700/60 disabled:opacity-50"
+                    >
+                      Use template
+                    </button>
+                    {selectedTemplate && (
+                      <span className="text-xs text-slate-500">{selectedTemplate.description}</span>
+                    )}
+                  </div>
+                  <textarea
+                    value={itemRubric}
+                    onChange={(e) => setItemRubric(e.target.value)}
+                    placeholder="Optional rubric (used by LLM grader)"
+                    rows={3}
+                    className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200 mb-4"
+                  />
+                </>
+              )}
               <button
                 type="button"
                 onClick={handleAddItem}
@@ -2005,6 +3664,11 @@ function EvaluationsView({
                   <div key={item.id} className="p-3 rounded-2xl bg-slate-900/50 border border-slate-800/60">
                     <div className="text-sm text-slate-200 truncate">{item.input}</div>
                     {item.expected && <div className="text-xs text-slate-500 mt-1 truncate">Expected: {item.expected}</div>}
+                    {item.expectedPaths?.length > 0 && (
+                      <div className="text-xs text-slate-500 mt-1 truncate">
+                        Expected paths: {item.expectedPaths.join(', ')}
+                      </div>
+                    )}
                     {item.expectedType && (
                       <div className="text-[10px] text-slate-600 mt-1">Type: {item.expectedType}</div>
                     )}
@@ -2019,72 +3683,88 @@ function EvaluationsView({
           )}
         </div>
 
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
-          <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Run Evaluation</div>
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <select
-              value={evalDatasetId}
-              onChange={(e) => setEvalDatasetId(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
-            >
-              <option value="">Select dataset</option>
-              {datasets.map((dataset) => (
-                <option key={dataset.id} value={dataset.id}>{dataset.name}</option>
-              ))}
-            </select>
-            <select
-              value={evalRunId}
-              onChange={(e) => setEvalRunId(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
-            >
-              <option value="">Select run</option>
-              {runs.map((run) => (
-                <option key={run.id} value={run.id}>{(run.goal || 'Untitled run').substring(0, 60)}</option>
-              ))}
-            </select>
+        <div className="space-y-6">
+          <div className="glass-panel rounded-3xl p-6">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Evaluation Trends</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <TrendCard label="Response" trend={responseTrend} accent="#38bdf8" />
+              <TrendCard label="Retrieval" trend={retrievalTrend} accent="#22c55e" />
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleCreateEvaluation}
-            disabled={!evalDatasetId || !evalRunId}
-            className="px-4 py-2 rounded-2xl bg-emerald-500/90 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 text-sm font-semibold transition-ui"
-          >
-            Create evaluation
-          </button>
+
+          <div className="glass-panel rounded-3xl p-6">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Run Evaluation</div>
+            <div className="grid md:grid-cols-2 gap-4 mb-4">
+              <select
+                value={evalDatasetId}
+                onChange={(e) => setEvalDatasetId(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              >
+                <option value="">Select dataset</option>
+                {datasets.map((dataset) => (
+                  <option key={dataset.id} value={dataset.id}>{dataset.name}</option>
+                ))}
+              </select>
+              <select
+                value={evalRunId}
+                onChange={(e) => setEvalRunId(e.target.value)}
+                disabled={!evalNeedsRun}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              >
+                <option value="">{evalNeedsRun ? 'Select run' : 'Not required for retrieval'}</option>
+                {runs.map((run) => (
+                  <option key={run.id} value={run.id}>{(run.goal || 'Untitled run').substring(0, 60)}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateEvaluation}
+              disabled={!evalDatasetId || (evalNeedsRun && !evalRunId)}
+              className="px-4 py-2 rounded-2xl bg-emerald-500/90 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 text-sm font-semibold transition-ui"
+            >
+              Create evaluation
+            </button>
           <div className="mt-6 space-y-3">
             {evaluations.length === 0 && <EmptyState title="No evaluations yet" subtitle="Create one to capture scores." />}
-            {evaluations.map((evaluation) => (
-              <button
-                key={evaluation.id}
-                type="button"
-                onClick={() => setSelectedEvaluationId(evaluation.id)}
-                className={cn(
-                  "w-full text-left p-3 rounded-2xl border transition-ui",
-                  evaluation.id === selectedEvaluationId
-                    ? "border-cyan-500/40 bg-slate-800/60"
-                    : "border-slate-800/60 bg-slate-900/50 hover:border-slate-700"
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm text-slate-200">{evaluation.name}</div>
-                  <span className={cn(
-                    "text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border",
-                    evaluation.status === 'pass'
-                      ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
-                      : evaluation.status === 'warn'
-                        ? "border-amber-500/40 text-amber-300 bg-amber-500/10"
-                        : evaluation.status === 'fail'
-                          ? "border-red-500/40 text-red-300 bg-red-500/10"
-                          : "border-slate-700 text-slate-400 bg-slate-800/60"
-                  )}>
-                    {evaluation.status || 'needs-review'}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 mt-1">
-                  Score {evaluation.metrics?.score ?? '—'} · Pass {Math.round((evaluation.metrics?.passRate || 0) * 100)}% · Items {evaluation.metrics?.itemCount ?? 0}
-                </div>
-              </button>
-            ))}
+            {evaluations.map((evaluation) => {
+              const isRetrieval = evaluation.type === 'retrieval';
+              const detail = isRetrieval
+                ? `Recall@${evaluation.metrics?.topK ?? 0} ${Math.round((evaluation.metrics?.recallAtK || 0) * 100)}% · MRR ${(evaluation.metrics?.mrr || 0).toFixed(2)} · Items ${evaluation.metrics?.itemCount ?? 0}`
+                : `Score ${evaluation.metrics?.score ?? '—'} · Pass ${Math.round((evaluation.metrics?.passRate || 0) * 100)}% · Items ${evaluation.metrics?.itemCount ?? 0}`;
+              return (
+                <button
+                  key={evaluation.id}
+                  type="button"
+                  onClick={() => setSelectedEvaluationId(evaluation.id)}
+                  className={cn(
+                    "w-full text-left p-3 rounded-2xl border transition-ui",
+                    evaluation.id === selectedEvaluationId
+                      ? "border-cyan-500/40 bg-slate-800/60"
+                      : "border-slate-800/60 bg-slate-900/50 hover:border-slate-700"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-slate-200">{evaluation.name}</div>
+                    <span className={cn(
+                      "text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border",
+                      evaluation.status === 'pass'
+                        ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                        : evaluation.status === 'warn'
+                          ? "border-amber-500/40 text-amber-300 bg-amber-500/10"
+                          : evaluation.status === 'fail'
+                            ? "border-red-500/40 text-red-300 bg-red-500/10"
+                            : "border-slate-700 text-slate-400 bg-slate-800/60"
+                    )}>
+                      {evaluation.status || 'needs-review'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    {detail} · v{evaluation.datasetVersion || 1}
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <div className="mt-6">
             <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-3">Compare Evaluations</div>
@@ -2145,9 +3825,41 @@ function EvaluationsView({
                 </div>
               </div>
             )}
+            {(compareMeta.datasetMismatch || compareMeta.datasetVersionMismatch) && (
+              <div className="mt-3 text-xs text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded-xl px-3 py-2">
+                {compareMeta.datasetMismatch ? 'Comparing different datasets.' : 'Dataset versions differ between evaluations.'}
+              </div>
+            )}
           </div>
           {selectedEvaluation && (
             <div className="mt-6">
+              {selectedEvaluation.type === 'retrieval' ? (
+                <div className="grid sm:grid-cols-3 gap-3 mb-4 text-xs text-slate-300">
+                  <div className="p-3 rounded-xl border border-slate-800/60 bg-slate-900/60">
+                    Recall@{selectedEvaluation.metrics?.topK ?? 0}{' '}
+                    <span className="text-slate-100">{Math.round((selectedEvaluation.metrics?.recallAtK || 0) * 100)}%</span>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-800/60 bg-slate-900/60">
+                    Precision@{selectedEvaluation.metrics?.topK ?? 0}{' '}
+                    <span className="text-slate-100">{Math.round((selectedEvaluation.metrics?.precisionAtK || 0) * 100)}%</span>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-800/60 bg-slate-900/60">
+                    MRR <span className="text-slate-100">{(selectedEvaluation.metrics?.mrr || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-3 gap-3 mb-4 text-xs text-slate-300">
+                  <div className="p-3 rounded-xl border border-slate-800/60 bg-slate-900/60">
+                    LLM calls <span className="text-slate-100">{selectedEvaluation.usage?.llmCalls ?? selectedEvaluation.metrics?.llmCalls ?? 0}</span>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-800/60 bg-slate-900/60">
+                    LLM tokens <span className="text-slate-100">{selectedEvaluation.usage?.tokensEstimated ?? 0}</span>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-800/60 bg-slate-900/60">
+                    LLM cost <span className="text-slate-100">${(selectedEvaluation.usage?.costEstimated ?? 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
               <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-3">Per-item grading</div>
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                 {(selectedEvaluation.items || []).length === 0 && (
@@ -2171,9 +3883,20 @@ function EvaluationsView({
                     {item.expected && (
                       <div className="text-xs text-slate-500 mt-1 truncate">Expected: {item.expected}</div>
                     )}
+                    {item.expectedPaths?.length > 0 && (
+                      <div className="text-xs text-slate-500 mt-1 truncate">
+                        Expected paths: {item.expectedPaths.join(', ')}
+                      </div>
+                    )}
+                    {selectedEvaluation.type === 'retrieval' ? (
+                      <div className="text-[10px] text-slate-500 mt-2">
+                        Precision {Math.round((item.precision || 0) * 100)}% · Recall {Math.round((item.recall || 0) * 100)}% · MRR {(item.mrr || 0).toFixed(2)}
+                      </div>
+                    ) : (
                     <div className="text-[10px] text-slate-500 mt-2">
                       Score {Math.round((item.score || 0) * 100)} · Weight {item.weight || 1} · {item.method}
                     </div>
+                    )}
                     {item.notes && (
                       <div className="text-[10px] text-slate-500 mt-2">Notes: {item.notes}</div>
                     )}
@@ -2183,6 +3906,123 @@ function EvaluationsView({
             </div>
           )}
         </div>
+
+        <div className="glass-panel rounded-3xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Rubric Templates</div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportTemplates}
+                className="text-xs px-3 py-1 rounded-full border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+              >
+                Export
+              </button>
+              <button
+                type="button"
+                onClick={() => templateImportRef.current?.click()}
+                className="text-xs px-3 py-1 rounded-full border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+              >
+                Import
+              </button>
+            </div>
+          </div>
+          <input
+            ref={templateImportRef}
+            type="file"
+            accept="application/json"
+            onChange={handleImportTemplates}
+            className="hidden"
+          />
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+              {templates.length === 0 && (
+                <EmptyState title="No templates yet" subtitle="Create a rubric template to standardize grading." />
+              )}
+              {templates.map((template) => (
+                <div key={template.id} className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/60">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm text-slate-200">{template.name}</div>
+                      <div className="text-xs text-slate-500 mt-1">{template.description || 'No description'}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEditTemplate(template)}
+                        className="text-xs px-2 py-1 rounded-full border border-slate-700 text-slate-300 hover:text-white"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTemplate(template)}
+                        className="text-xs px-2 py-1 rounded-full border border-red-500/40 text-red-300 hover:text-red-200"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-2">Type: {template.expectedType || 'llm'}</div>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3">
+              <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">
+                {editingTemplateId ? 'Edit Template' : 'Create Template'}
+              </div>
+              <input
+                type="text"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="Template name"
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              />
+              <textarea
+                value={templateDescription}
+                onChange={(e) => setTemplateDescription(e.target.value)}
+                placeholder="Description"
+                rows={2}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              />
+              <select
+                value={templateExpectedType}
+                onChange={(e) => setTemplateExpectedType(e.target.value)}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              >
+                <option value="llm">LLM rubric</option>
+                <option value="contains">Contains</option>
+                <option value="regex">Regex</option>
+              </select>
+              <textarea
+                value={templateRubric}
+                onChange={(e) => setTemplateRubric(e.target.value)}
+                placeholder="Rubric instructions"
+                rows={4}
+                className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveTemplate}
+                  className="px-4 py-2 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-sm font-semibold"
+                >
+                  {editingTemplateId ? 'Save changes' : 'Create template'}
+                </button>
+                {editingTemplateId && (
+                  <button
+                    type="button"
+                    onClick={resetTemplateForm}
+                    className="px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm border border-slate-700/60"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
     </motion.div>
   );
@@ -2207,11 +4047,11 @@ function LibraryView({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.2 }}
+      transition={SPRING_SMOOTH}
       className="space-y-6"
     >
       <div className="grid lg:grid-cols-3 gap-6">
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="text-xs uppercase tracking-[0.3em] text-amber-300 font-bold mb-4">Saved Prompts</div>
           {savedPrompts.length === 0 && (
             <EmptyState title="No prompts saved" subtitle="Save prompts from Agent Factory." />
@@ -2242,7 +4082,7 @@ function LibraryView({
           </div>
         </div>
 
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="text-xs uppercase tracking-[0.3em] text-cyan-300 font-bold mb-4">Agent Templates</div>
           {agents.length === 0 && (
             <EmptyState title="No agent templates" subtitle="Add templates in your reference repos." />
@@ -2262,7 +4102,7 @@ function LibraryView({
           </div>
         </div>
 
-        <div className="glass-panel rounded-3xl p-6 border border-slate-800/60 bg-slate-950/50">
+        <div className="glass-panel rounded-3xl p-6">
           <div className="text-xs uppercase tracking-[0.3em] text-emerald-300 font-bold mb-4">Tools & Utilities</div>
           {tools.length === 0 && (
             <EmptyState title="No tools detected" subtitle="Add tools in the reference repos tools folder." />
@@ -2294,12 +4134,12 @@ function RepoRow({ repo, delay }) {
 
   const getPurposeColor = (purpose) => {
     const p = purpose?.toLowerCase() || '';
-    if (p.includes("agent")) return { text: "text-purple-400", bg: "bg-purple-400/10", badge: "bg-purple-400/10 text-purple-300 border-purple-400/20" };
-    if (p.includes("skill")) return { text: "text-yellow-400", bg: "bg-yellow-400/10", badge: "bg-yellow-400/10 text-yellow-300 border-yellow-400/20" };
-    if (p.includes("knowledge")) return { text: "text-blue-400", bg: "bg-blue-400/10", badge: "bg-blue-400/10 text-blue-300 border-blue-400/20" };
-    if (p.includes("tool")) return { text: "text-emerald-400", bg: "bg-emerald-400/10", badge: "bg-emerald-400/10 text-emerald-300 border-emerald-400/20" };
-    if (p.includes("benchmark")) return { text: "text-red-400", bg: "bg-red-400/10", badge: "bg-red-400/10 text-red-300 border-red-400/20" };
-    return { text: "text-slate-400", bg: "bg-slate-400/10", badge: "bg-slate-400/10 text-slate-300 border-slate-400/20" };
+    if (p.includes("agent")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
+    if (p.includes("skill")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
+    if (p.includes("knowledge")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
+    if (p.includes("tool")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
+    if (p.includes("benchmark")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
+    return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
   }
 
   const Icon = getIcon(repo.Purpose);
@@ -2309,28 +4149,28 @@ function RepoRow({ repo, delay }) {
     <motion.tr
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay }}
-      className="border-b border-slate-800/50 hover:bg-slate-800/30 group"
+      transition={{ ...SPRING_FAST, delay }}
+      className="border-b border-white/5 hover:bg-white/[0.03] group"
     >
-      <td className="p-4 pl-6">
-        <div className="flex items-center gap-4">
-          <div className={cn("p-2.5 rounded-xl transition-ui group-hover:scale-110 shadow-lg", color.bg)}>
-            <Icon size={18} className={color.text} aria-hidden="true" />
+      <td className="py-2.5 pl-5 pr-4">
+        <div className="flex items-center gap-3.5">
+          <div className={cn("p-1.5 rounded-xl transition-ui group-hover:scale-105", color.bg)}>
+            <Icon size={16} className={color.text} aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-slate-200 group-hover:text-cyan-400 text-sm">{repo.Name}</div>
-            <div className="text-xs text-slate-500 font-mono truncate max-w-[200px] mt-0.5 opacity-60">{repo.Path}</div>
+            <div className="font-medium text-slate-200 group-hover:text-slate-100 text-sm">{repo.Name}</div>
+            <div className="text-[10px] text-slate-500 font-mono truncate max-w-[220px] mt-0.5 opacity-70">{repo.Path}</div>
           </div>
         </div>
       </td>
-      <td className="p-4">
-        <div className="flex items-center gap-2 text-slate-400 text-xs font-mono bg-slate-900/50 w-fit px-2 py-1 rounded-md border border-slate-800">
+      <td className="py-2.5 px-4">
+        <div className="tag-inline tag-inline-muted font-mono text-[10px]">
           <GitBranch size={12} aria-hidden="true" />
           {repo.Branch}
         </div>
       </td>
-      <td className="p-4">
-        <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border shadow-sm", color.badge)}>
+      <td className="py-2.5 px-4">
+        <span className={cn("tag-inline", color.badge)}>
           {repo.Purpose}
         </span>
       </td>
@@ -2340,27 +4180,27 @@ function RepoRow({ repo, delay }) {
 
 function RepoTable({ repos }) {
   return (
-    <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl shadow-black/20 border border-slate-800/50" data-testid="repos-table">
-      <div className="px-8 py-5 border-b border-slate-800/50 flex justify-between items-center bg-slate-900/30 backdrop-blur-md">
-        <h3 className="font-bold text-slate-200 flex items-center gap-2">
+    <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl shadow-black/30" data-testid="repos-table">
+      <div className="px-6 py-3 border-b border-white/5 flex justify-between items-center bg-slate-900/20">
+        <h3 className="font-semibold text-slate-200 flex items-center gap-2 text-sm">
           <Database size={16} className="text-slate-500" aria-hidden="true" />
           Tracked Resources
         </h3>
-        <span className="text-xs font-mono bg-slate-800 text-slate-400 px-2 py-1 rounded-md border border-slate-700 tabular-nums">{repos.length} Items</span>
+        <span className="tag-inline tag-inline-muted font-mono tabular-nums">{repos.length} Items</span>
       </div>
       <div
         className="overflow-x-auto"
         style={{ contentVisibility: 'auto', containIntrinsicSize: '600px' }}
       >
-        <table className="w-full text-left border-collapse tabular-nums">
-          <thead className="bg-slate-950/40 text-slate-500 uppercase text-[10px] font-extrabold tracking-widest border-b border-slate-800/50">
+        <table className="w-full text-left border-collapse text-sm tabular-nums density-table">
+          <thead className="table-head text-slate-400 text-[10px] font-medium tracking-[0.14em] border-b border-white/5">
             <tr>
-              <th className="p-5 pl-6">Name / Path</th>
-              <th className="p-5">Branch</th>
-              <th className="p-5">Type</th>
+              <th className="py-2.5 pl-5 pr-4">Name / Path</th>
+              <th className="py-2.5 px-4">Branch</th>
+              <th className="py-2.5 px-4">Type</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/30">
+          <tbody className="divide-y divide-white/5">
             <AnimatePresence>
               {repos.map((repo, i) => (
                 <RepoRow key={repo.Name + i} repo={repo} delay={i * 0.05} />
@@ -2390,17 +4230,17 @@ function NavItem({ icon: Icon, label, active, badge, href, onClick, testId }) {
       aria-current={active ? 'page' : undefined}
       data-testid={testId}
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-ui text-sm font-semibold group relative overflow-hidden no-underline",
+        "nav-pill w-full flex items-center gap-3 px-4 py-3 rounded-full transition-ui text-sm font-semibold group no-underline",
         active
-          ? "bg-white text-slate-950 shadow-lg shadow-white/5"
-          : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+          ? "nav-pill-active text-slate-100"
+          : "text-slate-400 hover:text-slate-200"
       )}
     >
-      <Icon size={20} className={cn("", active ? "text-cyan-600" : "text-slate-500 group-hover:text-slate-300")} aria-hidden="true" />
+      <Icon size={20} className={cn("", active ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300")} aria-hidden="true" />
       <span>{label}</span>
 
       {badge && (
-        <span className={cn("ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full border tabular-nums", active ? "bg-slate-200 text-slate-800 border-slate-300" : "bg-slate-800 text-slate-400 border-slate-700")}>
+        <span className={cn("ml-auto tag-chip tag-chip-muted tabular-nums", active ? "text-slate-100" : "text-slate-300")}>
           {badge}
         </span>
       )}
@@ -2425,6 +4265,7 @@ function App() {
   const [repoNotice, setRepoNotice] = useState(null);
   const repoNoticeTimeoutRef = useRef(null);
   const [logs, setLogs] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [view, setView] = useState('home');
   const [spawnResult, setSpawnResult] = useState('');
   const [dirtyGoal, setDirtyGoal] = useState(false);
@@ -2436,6 +4277,17 @@ function App() {
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [prefillGoal, setPrefillGoal] = useState('');
   const [evaluationTemplates, setEvaluationTemplates] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [observabilitySummary, setObservabilitySummary] = useState(null);
+  const [vectorStatus, setVectorStatus] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [activeWorkspace, setActiveWorkspace] = useState(null);
+  const [authStatus, setAuthStatus] = useState({ enabled: false, bootstrapNeeded: false });
+  const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   // New state for config/setup
   const [appConfig, setAppConfig] = useState(null);
@@ -2476,18 +4328,121 @@ function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [dirtyGoal]);
 
-  // Check configuration on mount
+  // Initialize auth on mount
   useEffect(() => {
-    checkConfig();
+    initializeAuth();
   }, []);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setAuthUser(null);
+      setAuthError('Session expired. Please sign in again.');
+    };
+    window.addEventListener('auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-expired', handleAuthExpired);
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (authStatus.enabled && !authUser) return;
+    checkConfig();
+  }, [authReady, authStatus.enabled, authUser]);
+
+  const initializeAuth = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/status`);
+      const data = await res.json();
+      setAuthStatus(data);
+      if (!data.enabled) {
+        setAuthReady(true);
+        return;
+      }
+
+      const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
+      if (token) {
+        const meRes = await apiFetch(`/auth/me`);
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          setAuthUser(meData.user || null);
+        } else {
+          window.localStorage.removeItem(AUTH_TOKEN_KEY);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to initialize auth:', e);
+    } finally {
+      setAuthReady(true);
+    }
+  };
+
+  const handleLogin = async (username, password) => {
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        window.localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+        setAuthUser(data.user || null);
+      } else {
+        setAuthError(data?.error || 'Login failed.');
+      }
+    } catch (e) {
+      setAuthError('Login failed. Check server connectivity.');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleBootstrap = async (username, password) => {
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/bootstrap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        window.localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+        setAuthUser(data.user || null);
+        setAuthStatus((prev) => ({ ...prev, bootstrapNeeded: false }));
+      } else {
+        setAuthError(data?.error || 'Bootstrap failed.');
+      }
+    } catch (e) {
+      setAuthError('Bootstrap failed. Check server connectivity.');
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = () => {
+    window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    setAuthUser(null);
+  };
+
+  const handleWorkspaceSwitch = (workspaceId) => {
+    if (!workspaceId) return;
+    window.localStorage.setItem(WORKSPACE_KEY, workspaceId);
+    const selected = workspaces.find((ws) => ws.id === workspaceId) || null;
+    setActiveWorkspace(selected);
+    fetchData();
+    fetchSessions();
+  };
 
   const checkConfig = async () => {
     try {
       const [configRes, pathsRes] = await Promise.all([
-        fetch(`${API_BASE}/config`),
-        fetch(`${API_BASE}/default-paths`)
+        apiFetch(`/config`),
+        apiFetch(`/default-paths`)
       ]);
-
+      if (!configRes.ok) {
+        return;
+      }
       const configData = await configRes.json();
       const pathsData = await pathsRes.json();
 
@@ -2550,20 +4505,56 @@ function App() {
   }, []);
 
   const fetchData = () => {
+    fetchWorkspaces();
     fetchRepos();
     fetchCategories();
     fetchRuns();
+    fetchAuditLogs();
     fetchDatasets();
     fetchEvaluations();
     fetchAgents();
     fetchTools();
     fetchSavedPrompts();
     fetchEvaluationTemplates();
+    fetchJobs();
+    fetchObservabilitySummary();
+    fetchVectorStatus();
+    if (authStatus.enabled && authUser?.role === 'admin') {
+      fetchUsers();
+    }
+  };
+
+  const fetchAuditLogs = async () => {
+    try {
+      const res = await apiFetch(`/audit?limit=200`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAuditLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch audit logs:', e);
+    }
+  };
+
+  const fetchWorkspaces = async () => {
+    try {
+      const res = await apiFetch(`/workspaces/active`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const active = data.active || null;
+      const list = Array.isArray(data.workspaces) ? data.workspaces : [];
+      setActiveWorkspace(active);
+      setWorkspaces(list);
+      if (active?.id && !window.localStorage.getItem(WORKSPACE_KEY)) {
+        window.localStorage.setItem(WORKSPACE_KEY, active.id);
+      }
+    } catch (e) {
+      console.error('Failed to fetch workspaces:', e);
+    }
   };
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_BASE}/sessions`);
+      const res = await apiFetch(`/sessions`);
       const data = await res.json();
       setSessions(data);
     } catch (e) {
@@ -2573,7 +4564,7 @@ function App() {
 
   const fetchRuns = async () => {
     try {
-      const res = await fetch(`${API_BASE}/runs`);
+      const res = await apiFetch(`/runs`);
       const data = await res.json();
       setRuns(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2583,7 +4574,7 @@ function App() {
 
   const fetchDatasets = async () => {
     try {
-      const res = await fetch(`${API_BASE}/datasets`);
+      const res = await apiFetch(`/datasets`);
       const data = await res.json();
       setDatasets(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2593,7 +4584,7 @@ function App() {
 
   const fetchEvaluations = async () => {
     try {
-      const res = await fetch(`${API_BASE}/evaluations`);
+      const res = await apiFetch(`/evaluations`);
       const data = await res.json();
       setEvaluations(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2603,7 +4594,7 @@ function App() {
 
   const fetchAgents = async () => {
     try {
-      const res = await fetch(`${API_BASE}/agents`);
+      const res = await apiFetch(`/agents`);
       const data = await res.json();
       setAgents(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2613,7 +4604,7 @@ function App() {
 
   const fetchTools = async () => {
     try {
-      const res = await fetch(`${API_BASE}/tools`);
+      const res = await apiFetch(`/tools`);
       const data = await res.json();
       setTools(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2623,7 +4614,7 @@ function App() {
 
   const fetchSavedPrompts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/prompts`);
+      const res = await apiFetch(`/prompts`);
       const data = await res.json();
       setSavedPrompts(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2633,7 +4624,7 @@ function App() {
 
   const fetchEvaluationTemplates = async () => {
     try {
-      const res = await fetch(`${API_BASE}/evaluation-templates`);
+      const res = await apiFetch(`/evaluation-templates`);
       const data = await res.json();
       setEvaluationTemplates(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -2641,9 +4632,50 @@ function App() {
     }
   };
 
+  const fetchJobs = async () => {
+    try {
+      const res = await apiFetch(`/jobs`);
+      const data = await res.json();
+      setJobs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch jobs:', e);
+    }
+  };
+
+  const fetchObservabilitySummary = async () => {
+    try {
+      const res = await apiFetch(`/observability/summary`);
+      const data = await res.json();
+      setObservabilitySummary(data);
+    } catch (e) {
+      console.error('Failed to fetch observability summary:', e);
+    }
+  };
+
+  const fetchVectorStatus = async () => {
+    try {
+      const res = await apiFetch(`/vector-index/status`);
+      const data = await res.json();
+      setVectorStatus(data);
+    } catch (e) {
+      console.error('Failed to fetch vector status:', e);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await apiFetch(`/users`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
+    }
+  };
+
   const fetchCategories = async () => {
     try {
-      const res = await fetch(`${API_BASE}/categories`);
+      const res = await apiFetch(`/categories`);
       if (res.ok) {
         const data = await res.json();
         setCategories(data);
@@ -2655,7 +4687,7 @@ function App() {
 
   const fetchCategorySizes = async () => {
     try {
-      const res = await fetch(`${API_BASE}/category-sizes`);
+      const res = await apiFetch(`/category-sizes`);
       if (res.ok) {
         const data = await res.json();
         const normalized = {};
@@ -2680,7 +4712,7 @@ function App() {
 
   const fetchRepos = async () => {
     try {
-      const res = await fetch(`${API_BASE}/repos`);
+      const res = await apiFetch(`/repos`);
       const data = await res.json();
       const enriched = data.map(repo => ({
         ...repo,
@@ -2697,7 +4729,7 @@ function App() {
   const savePrompt = async (title, query) => {
     if (!query) return null;
     try {
-      const res = await fetch(`${API_BASE}/prompts`, {
+      const res = await apiFetch(`/prompts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, query })
@@ -2715,7 +4747,7 @@ function App() {
 
   const deletePrompt = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/prompts/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/prompts/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setSavedPrompts(prev => prev.filter(prompt => prompt.id !== id));
@@ -2727,12 +4759,12 @@ function App() {
     return false;
   };
 
-  const createDataset = async (name, description) => {
+  const createDataset = async (name, description, benchmarkType = 'response') => {
     try {
-      const res = await fetch(`${API_BASE}/datasets`, {
+      const res = await apiFetch(`/datasets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description })
+        body: JSON.stringify({ name, description, benchmarkType })
       });
       const data = await res.json();
       if (data.success) {
@@ -2747,7 +4779,7 @@ function App() {
 
   const deleteDataset = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/datasets/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/datasets/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setDatasets(prev => prev.filter(dataset => dataset.id !== id));
@@ -2761,7 +4793,7 @@ function App() {
 
   const addDatasetItem = async (datasetId, item) => {
     try {
-      const res = await fetch(`${API_BASE}/datasets/${datasetId}/items`, {
+      const res = await apiFetch(`/datasets/${datasetId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item)
@@ -2779,7 +4811,7 @@ function App() {
 
   const createEvaluation = async (datasetId, runId) => {
     try {
-      const res = await fetch(`${API_BASE}/evaluations`, {
+      const res = await apiFetch(`/evaluations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ datasetId, runId })
@@ -2797,7 +4829,7 @@ function App() {
 
   const importDataset = async (datasetPayload) => {
     try {
-      const res = await fetch(`${API_BASE}/datasets/import`, {
+      const res = await apiFetch(`/datasets/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataset: datasetPayload })
@@ -2813,13 +4845,231 @@ function App() {
     return null;
   };
 
+  const createEvaluationTemplate = async (payload) => {
+    try {
+      const res = await apiFetch(`/evaluation-templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEvaluationTemplates(prev => [data.template, ...prev]);
+        return data.template;
+      }
+    } catch (e) {
+      console.error('Failed to create template:', e);
+    }
+    return null;
+  };
+
+  const updateEvaluationTemplate = async (id, payload) => {
+    try {
+      const res = await apiFetch(`/evaluation-templates/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEvaluationTemplates(prev => prev.map((template) => template.id === id ? data.template : template));
+        return data.template;
+      }
+    } catch (e) {
+      console.error('Failed to update template:', e);
+    }
+    return null;
+  };
+
+  const deleteEvaluationTemplate = async (id) => {
+    try {
+      const res = await apiFetch(`/evaluation-templates/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setEvaluationTemplates(prev => prev.filter((template) => template.id !== id));
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to delete template:', e);
+    }
+    return false;
+  };
+
+  const importEvaluationTemplates = async (payload) => {
+    try {
+      const res = await apiFetch(`/evaluation-templates/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templates: payload })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchEvaluationTemplates();
+        return data.templates || [];
+      }
+    } catch (e) {
+      console.error('Failed to import templates:', e);
+    }
+    return [];
+  };
+
+  const exportEvaluationTemplates = async () => {
+    try {
+      const res = await apiFetch(`/evaluation-templates/export`);
+      const data = await res.json();
+      if (!res.ok) return;
+      const templates = data.templates || [];
+      const blob = new Blob([JSON.stringify({ templates }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `evaluation-templates-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Failed to export templates:', e);
+    }
+  };
+
+  const rebuildVectorIndex = async () => {
+    try {
+      const res = await apiFetch(`/vector-index/rebuild`, { method: 'POST' });
+      const data = await res.json();
+      if (data?.queued) {
+        addLog('Vector index rebuild queued.');
+        fetchJobs();
+      } else {
+        addLog('Vector index rebuild complete.');
+        fetchVectorStatus();
+      }
+    } catch (e) {
+      console.error('Vector index rebuild failed:', e);
+    }
+  };
+
+  const createUser = async ({ username, password, role, workspaceId }) => {
+    try {
+      const res = await apiFetch(`/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, role, workspaceId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchUsers();
+      }
+    } catch (e) {
+      console.error('Failed to create user:', e);
+    }
+  };
+
+  const updateUser = async (id, updates) => {
+    try {
+      const res = await apiFetch(`/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchUsers();
+      }
+    } catch (e) {
+      console.error('Failed to update user:', e);
+    }
+  };
+
+  const deleteUser = async (id) => {
+    if (!window.confirm('Delete this user?')) return;
+    try {
+      const res = await apiFetch(`/users/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchUsers();
+      }
+    } catch (e) {
+      console.error('Failed to delete user:', e);
+    }
+  };
+
+  const createWorkspace = async (payload) => {
+    try {
+      const res = await apiFetch(`/workspaces`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchWorkspaces();
+      }
+    } catch (e) {
+      console.error('Failed to create workspace:', e);
+    }
+  };
+
+  const updateWorkspace = async (id, payload) => {
+    try {
+      const res = await apiFetch(`/workspaces/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchWorkspaces();
+      }
+    } catch (e) {
+      console.error('Failed to update workspace:', e);
+    }
+  };
+
+  const deleteWorkspace = async (id) => {
+    if (!window.confirm('Delete this workspace?')) return;
+    try {
+      const res = await apiFetch(`/workspaces/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchWorkspaces();
+      }
+    } catch (e) {
+      console.error('Failed to delete workspace:', e);
+    }
+  };
+
+  const setDefaultWorkspace = async (id) => {
+    try {
+      const res = await apiFetch(`/workspaces/${id}/default`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchWorkspaces();
+      }
+    } catch (e) {
+      console.error('Failed to set default workspace:', e);
+    }
+  };
+
+  const cancelJob = async (id) => {
+    try {
+      const res = await apiFetch(`/jobs/${id}/cancel`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchJobs();
+      }
+    } catch (e) {
+      console.error('Failed to cancel job:', e);
+    }
+  };
+
   const handleScan = async () => {
     setRepoLoading(true);
     setRepoAction('scan');
     pushRepoNotice('Scanning repositories…', 'info', 0);
     try {
       addLog("Starting System Scan…");
-      const res = await fetch(`${API_BASE}/scan`, { method: 'POST' });
+      const res = await apiFetch(`/scan`, { method: 'POST' });
       const data = await res.json();
       addLog(data.output || "Scan Complete");
       pushRepoNotice(data.output || 'Scan complete.', 'success');
@@ -2850,7 +5100,7 @@ function App() {
     let shouldClear = false;
     let shouldRefresh = false;
     try {
-      const res = await fetch(`${API_BASE}/add`, {
+      const res = await apiFetch(`/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
@@ -2888,29 +5138,35 @@ function App() {
     if (shouldRefresh) fetchData();
   };
 
-  const handleSpawn = async (goal, format = 'universal') => {
+  const handleSpawn = async (goal, format = 'universal', runInBackground = false) => {
     setLoading(true);
     setSpawnResult('');
     addLog(`Orchestrating agent for: “${goal}”…`);
     try {
-      const res = await fetch(`${API_BASE}/spawn`, {
+      const res = await apiFetch(`/spawn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal, format })
+        body: JSON.stringify({ goal, format, async: runInBackground })
       });
       const data = await res.json();
       if (data.success) {
-        setSpawnResult(data.output);
-        addLog("Agent Spawned Successfully");
+        if (data.queued) {
+          setSpawnResult(`Spawn queued as ${data.job?.id}. Monitor Jobs for progress.`);
+          addLog(`Spawn queued (${data.job?.id || 'job'}).`);
+          fetchJobs();
+        } else {
+          setSpawnResult(data.output);
+          addLog("Agent Spawned Successfully");
 
-        // Save session
-        await fetch(`${API_BASE}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ goal, agent: 'std-agent', output: data.output, format })
-        });
-        fetchSessions();
-        fetchRuns();
+          // Save session
+          await apiFetch(`/sessions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal, agent: 'std-agent', output: data.output, format })
+          });
+          fetchSessions();
+          fetchRuns();
+        }
       } else {
         addLog(`Spawn Error: ${data.error}`);
       }
@@ -2924,11 +5180,40 @@ function App() {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
   };
 
+  if (authStatus.enabled && !authReady) {
+    return (
+      <MotionConfig reducedMotion="user" transition={SPRING_SMOOTH}>
+        <div className="min-h-screen flex items-center justify-center app-shell">
+          <div className="flex items-center gap-4 text-cyan-400" role="status" aria-live="polite">
+            <RefreshCw size={24} className="animate-spin" aria-hidden="true" />
+            <span className="text-xl">Authenticating…</span>
+          </div>
+        </div>
+      </MotionConfig>
+    );
+  }
+
+  if (authStatus.enabled && authStatus.bootstrapNeeded && !authUser) {
+    return (
+      <MotionConfig reducedMotion="user" transition={SPRING_SMOOTH}>
+        <BootstrapAdminScreen onBootstrap={handleBootstrap} loading={authLoading} error={authError} />
+      </MotionConfig>
+    );
+  }
+
+  if (authStatus.enabled && !authUser) {
+    return (
+      <MotionConfig reducedMotion="user" transition={SPRING_SMOOTH}>
+        <LoginScreen onLogin={handleLogin} loading={authLoading} error={authError} />
+      </MotionConfig>
+    );
+  }
+
   // Show loading state while checking config
   if (isFirstRun === null) {
     return (
-      <MotionConfig reducedMotion="user">
-        <div className="min-h-screen flex items-center justify-center bg-[#0B0C15]">
+      <MotionConfig reducedMotion="user" transition={SPRING_SMOOTH}>
+        <div className="min-h-screen flex items-center justify-center app-shell">
           <div className="flex items-center gap-4 text-cyan-400" role="status" aria-live="polite">
             <RefreshCw size={24} className="animate-spin" aria-hidden="true" />
             <span className="text-xl">Loading CORTEX…</span>
@@ -2941,7 +5226,7 @@ function App() {
   // Show setup wizard if first run
   if (isFirstRun) {
     return (
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion="user" transition={SPRING_SMOOTH}>
         <SetupWizard onComplete={handleSetupComplete} defaultPath={defaultPaths.reposRoot} />
       </MotionConfig>
     );
@@ -2966,6 +5251,10 @@ function App() {
       title: 'Run Explorer',
       subtitle: 'Inspect decision matrices, traces, and performance signals.'
     },
+    jobs: {
+      title: 'Job Queue',
+      subtitle: 'Monitor background tasks and queued spawns.'
+    },
     evaluations: {
       title: 'Evaluations',
       subtitle: 'Create datasets and score runs against them.'
@@ -2977,6 +5266,10 @@ function App() {
     knowledge: {
       title: 'Knowledge Base',
       subtitle: 'Scan, add, and manage reference repos.'
+    },
+    audit: {
+      title: 'Audit Trail',
+      subtitle: 'Security and compliance events across workspaces.'
     },
     logs: {
       title: 'System Logs',
@@ -3009,17 +5302,32 @@ function App() {
     setPrefillGoal('');
   };
 
+  const handleConfigSave = (newConfig) => {
+    setAppConfig(prev => ({ ...prev, config: newConfig }));
+    const enabled = newConfig?.auth?.enabled === true;
+    setAuthStatus((prev) => ({ ...prev, enabled }));
+    if (!enabled) {
+      window.localStorage.removeItem(AUTH_TOKEN_KEY);
+      setAuthUser(null);
+    } else {
+      initializeAuth();
+    }
+  };
+
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion="user" transition={SPRING_SMOOTH}>
       <a href="#main-content" className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-4 focus-visible:left-4 focus-visible:z-50 focus-visible:bg-slate-900 focus-visible:text-white focus-visible:px-4 focus-visible:py-2 focus-visible:rounded-lg">
         Skip to main content
       </a>
-      <div className="min-h-screen flex text-slate-100 selection:bg-cyan-500/30 bg-[#0B0C15]">
+      <div
+        className="min-h-screen flex text-slate-100 selection:bg-cyan-500/30 app-shell"
+        data-density={appConfig?.config?.ui?.density || 'comfortable'}
+      >
 
       {/* Sidebar */}
-      <nav className="w-72 glass-panel border-r border-slate-800/50 flex flex-col fixed h-full z-50 backdrop-blur-xl bg-slate-950/80">
-        <div className="p-8">
-          <div className="flex items-center gap-4 text-cyan-400 mb-10 pl-2">
+      <nav className="w-64 glass-panel sidebar-shell flex flex-col h-screen sticky top-0 shrink-0">
+        <div className="p-6">
+          <div className="flex items-center gap-3 text-cyan-400 mb-8 pl-1">
             <div className="bg-black rounded-2xl p-3 relative overflow-visible">
               <div className="brain-glow absolute -inset-2 rounded-[20px] bg-[radial-gradient(circle_at_28%_35%,rgba(34,211,238,0.65),transparent_63%),radial-gradient(circle_at_72%_55%,rgba(168,85,247,0.6),transparent_66%)] blur-xl opacity-80 pointer-events-none"></div>
               <img
@@ -3032,7 +5340,7 @@ function App() {
                 style={{ filter: 'drop-shadow(0 0 11px rgba(34,211,238,0.7)) drop-shadow(0 0 16px rgba(168,85,247,0.65))' }}
               />
             </div>
-            <span className="font-bold text-3xl tracking-tighter text-white">CORTEX</span>
+            <span className="font-display font-bold text-3xl tracking-tighter text-white">CORTEX</span>
           </div>
 
           <div className="space-y-3">
@@ -3060,6 +5368,15 @@ function App() {
               href="?view=runs"
               onClick={() => handleViewChange('runs')}
               testId="nav-runs"
+            />
+            <NavItem
+              icon={BarChart3}
+              label="Jobs"
+              badge={jobs.length}
+              active={view === 'jobs'}
+              href="?view=jobs"
+              onClick={() => handleViewChange('jobs')}
+              testId="nav-jobs"
             />
             <NavItem
               icon={FlaskConical}
@@ -3097,6 +5414,14 @@ function App() {
               testId="nav-logs"
             />
             <NavItem
+              icon={History}
+              label="Audit Trail"
+              active={view === 'audit'}
+              href="?view=audit"
+              onClick={() => handleViewChange('audit')}
+              testId="nav-audit"
+            />
+            <NavItem
               icon={Settings}
               label="Settings"
               active={view === 'settings'}
@@ -3116,19 +5441,56 @@ function App() {
             <span className={`text-xs font-bold uppercase tracking-wider ${status === 'Online' ? 'text-emerald-400' : 'text-red-400'}`}>System {status}</span>
           </div>
           <div className="text-[10px] text-slate-600 font-mono mt-2">v2.1.0 • Cross-Platform</div>
+          {authStatus.enabled && authUser && (
+            <div className="mt-4 text-xs text-slate-400">
+              <div>Signed in as <span className="text-slate-200">{authUser.username}</span></div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">{authUser.role}</div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="mt-2 text-[10px] uppercase tracking-widest text-red-300 hover:text-red-200"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
       {/* Main Content */}
-      <main id="main-content" className="flex-1 ml-72 p-10 max-w-[1600px] mx-auto">
+      <main id="main-content" className="flex-1 pl-3 pr-8 py-8 min-w-0">
 
         {/* Top Bar */}
         {showHeader && (
-          <header className="flex justify-between items-end mb-12">
+          <header className="top-bar flex justify-between items-center mb-8 py-4">
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-white mb-2">{headerMeta.title}</h1>
-              <p className="text-slate-400 font-medium">{headerMeta.subtitle}</p>
+              <h1 className="text-3xl font-semibold tracking-tight text-white mb-2 font-display">{headerMeta.title}</h1>
+              <p className="text-sm text-slate-500 font-medium">{headerMeta.subtitle}</p>
             </div>
+            {activeWorkspace && (
+              <div className="flex items-center gap-3">
+                <div className="px-4 py-2 rounded-2xl border border-slate-800/70 bg-slate-900/40 flex items-center gap-3">
+                  <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Workspace</span>
+                  {authUser?.role === 'admin' && workspaces.length > 1 ? (
+                    <select
+                      value={activeWorkspace.id}
+                      onChange={(e) => handleWorkspaceSwitch(e.target.value)}
+                      className="bg-transparent text-sm text-slate-100 font-semibold focus:outline-none"
+                    >
+                      {workspaces.map((workspace) => (
+                        <option key={workspace.id} value={workspace.id} className="bg-slate-950 text-slate-100">
+                          {workspace.name || workspace.id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-sm text-slate-100 font-semibold">
+                      {activeWorkspace.name || activeWorkspace.id}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </header>
         )}
 
@@ -3144,6 +5506,8 @@ function App() {
               sessions={sessions}
               onNavigate={handleViewChange}
               appConfig={appConfig}
+              observabilitySummary={observabilitySummary}
+              jobs={jobs}
             />
           )}
 
@@ -3160,6 +5524,7 @@ function App() {
               onDirtyChange={setDirtyGoal}
               prefillGoal={prefillGoal}
               onPrefillConsumed={handlePrefillConsumed}
+              queueEnabled={appConfig?.config?.queue?.enabled === true}
             />
           )}
 
@@ -3167,7 +5532,11 @@ function App() {
             <RunsView runs={runs} />
           )}
 
-          {view === 'evaluations' && (
+          {view === 'jobs' && (
+            <JobsView jobs={jobs} onCancelJob={cancelJob} />
+          )}
+
+            {view === 'evaluations' && (
             <EvaluationsView
               datasets={datasets}
               runs={runs}
@@ -3178,6 +5547,11 @@ function App() {
               onAddDatasetItem={addDatasetItem}
               onCreateEvaluation={createEvaluation}
               onImportDataset={importDataset}
+              onCreateTemplate={createEvaluationTemplate}
+              onUpdateTemplate={updateEvaluationTemplate}
+              onDeleteTemplate={deleteEvaluationTemplate}
+              onImportTemplates={importEvaluationTemplates}
+              onExportTemplates={exportEvaluationTemplates}
             />
           )}
 
@@ -3197,46 +5571,52 @@ function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+      transition={SPRING_SMOOTH}
             >
               {/* Repository Overview */}
-              <div className="grid grid-cols-5 gap-6 mb-10">
-                {categories.map((cat, i) => {
-                  const config = CATEGORY_CONFIG[cat.toLowerCase()] || DEFAULT_CATEGORY;
-                  const sizeBytes = categorySizes[cat.toLowerCase()];
-                  const testKey = cat.toLowerCase();
-                  return (
-                    <StatCard
-                      key={cat}
-                      title={cat.charAt(0).toUpperCase() + cat.slice(1)}
-                      count={categorized[cat] ? categorized[cat].length : 0}
-                      sizeLabel={formatBytes(sizeBytes)}
-                      icon={config.icon}
-                      color={config.color}
-                      delay={i * 0.05}
-                      description={config.desc}
-                      testId={`stat-card-${testKey}`}
-                      sizeTestId={`stat-size-${testKey}`}
-                    />
-                  );
-                })}
-              {categories.length === 0 && (
-                  <div className="col-span-5 text-center text-slate-500 py-12 border border-dashed border-slate-800 rounded-3xl">
-                    Initializing Knowledge Base…
+              <div className="glass-panel rounded-3xl px-6 py-4 mb-8">
+                {categories.length === 0 ? (
+                  <div className="text-sm text-slate-500 py-4">Initializing Knowledge Base…</div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-6">
+                    {categories.map((cat, i) => {
+                      const sizeBytes = categorySizes[cat.toLowerCase()];
+                      const testKey = cat.toLowerCase();
+                      const count = categorized[cat] ? categorized[cat].length : 0;
+                      return (
+                        <div
+                          key={cat}
+                          data-testid={`stat-card-${testKey}`}
+                          className="flex items-center gap-4 pr-6 border-r border-white/5 last:border-r-0"
+                        >
+                          <div>
+                            <div className="text-[10px] font-medium text-slate-500 tracking-[0.18em] uppercase">
+                              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                            </div>
+                            <div className="text-2xl font-semibold text-slate-100 tabular-nums">
+                              {count}
+                            </div>
+                            <div className="text-[11px] text-slate-500" data-testid={`stat-size-${testKey}`}>
+                              Size {formatBytes(sizeBytes)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              <div className="glass-panel rounded-3xl p-6 mb-8 border border-slate-800/60 bg-slate-950/40">
+              <div className="glass-panel rounded-3xl p-6 mb-8">
                 <div className="mb-3">
                   <label
                     htmlFor="repo-url"
-                    className="text-xs font-bold text-slate-500 uppercase tracking-widest inline-flex items-center w-fit bg-slate-950 px-2 py-1 rounded-lg border border-slate-800/70"
+                    className="tag-inline tag-inline-muted"
                   >
                     Add Repository
                   </label>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 rounded-3xl focus-within:ring-2 focus-within:ring-cyan-500/20">
+                <div className="flex flex-wrap items-center gap-3 rounded-3xl">
                   <div className="flex-1 min-w-[260px]">
                     <input
                       id="repo-url"
@@ -3251,7 +5631,7 @@ function App() {
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck="false"
-                      className="w-full bg-slate-900/50 border border-slate-800 hover:border-slate-700/80 focus-visible:border-cyan-500/50 rounded-2xl px-4 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/20 transition-ui placeholder:text-slate-600 shadow-inner"
+                      className="w-full bg-slate-900/50 border border-slate-800 hover:border-slate-700/80 focus-visible:border-cyan-500/50 rounded-2xl px-4 py-3 text-sm focus-visible:outline-none transition-ui placeholder:text-slate-600 shadow-inner"
                     />
                   </div>
                   <button
@@ -3303,18 +5683,19 @@ function App() {
             </motion.div>
           )}
 
+          {view === 'audit' && (
+            <AuditView auditLogs={auditLogs} />
+          )}
+
           {view === 'logs' && (
             <motion.div
               key="logs"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="h-[calc(100vh-180px)] glass-panel rounded-3xl p-8 flex flex-col bg-slate-950/50 border border-slate-800"
+              transition={SPRING_SMOOTH}
+              className="h-[calc(100vh-180px)] glass-panel rounded-3xl p-6 flex flex-col"
             >
-              <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex justify-between border-b border-slate-800 pb-6">
-                <span>System Logs</span>
-              </div>
               <div className="flex-1 overflow-y-auto space-y-2 font-mono text-sm" role="log" aria-live="polite" aria-relevant="additions" data-testid="system-logs">
                 {logs.length === 0 && <div className="text-slate-600 italic">No activity recorded.</div>}
                 {logs.map((log, i) => (
@@ -3329,7 +5710,21 @@ function App() {
           {view === 'settings' && (
             <SettingsPanel
               config={appConfig}
-              onSave={(newConfig) => setAppConfig(prev => ({ ...prev, config: newConfig }))}
+              onSave={handleConfigSave}
+              authStatus={authStatus}
+              authUser={authUser}
+              users={users}
+              onCreateUser={createUser}
+              onUpdateUser={updateUser}
+              onDeleteUser={deleteUser}
+              vectorStatus={vectorStatus}
+              onRebuildVector={rebuildVectorIndex}
+              workspaces={workspaces}
+              activeWorkspace={activeWorkspace}
+              onCreateWorkspace={createWorkspace}
+              onUpdateWorkspace={updateWorkspace}
+              onDeleteWorkspace={deleteWorkspace}
+              onSetDefaultWorkspace={setDefaultWorkspace}
             />
           )}
         </AnimatePresence>

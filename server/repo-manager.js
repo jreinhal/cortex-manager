@@ -10,11 +10,16 @@ const { execSync, spawn } = require('child_process');
 const { getConfig } = require('./config');
 
 const SIZE_REFRESH_MS = 5000;
-const sizeCache = {
-  timestamp: 0,
-  data: {},
-  running: false
-};
+const sizeCacheByRoot = new Map();
+
+function getSizeCache(reposRoot) {
+  const config = getConfig();
+  const root = reposRoot || config.reposRoot;
+  if (!sizeCacheByRoot.has(root)) {
+    sizeCacheByRoot.set(root, { timestamp: 0, data: {}, running: false });
+  }
+  return { root, cache: sizeCacheByRoot.get(root) };
+}
 
 /**
  * Execute git command and return result
@@ -48,16 +53,17 @@ function isGitAvailable() {
 /**
  * Get the registry file path
  */
-function getRegistryPath() {
+function getRegistryPath(reposRootOverride = null) {
   const config = getConfig();
-  return path.join(config.reposRoot, '_system', 'repos.json');
+  const root = reposRootOverride || config.reposRoot;
+  return path.join(root, '_system', 'repos.json');
 }
 
 /**
  * Load repos registry
  */
-function loadRegistry() {
-  const registryPath = getRegistryPath();
+function loadRegistry(reposRootOverride = null) {
+  const registryPath = getRegistryPath(reposRootOverride);
   try {
     if (fs.existsSync(registryPath)) {
       const data = fs.readFileSync(registryPath, 'utf8').replace(/^\uFEFF/, '');
@@ -72,8 +78,8 @@ function loadRegistry() {
 /**
  * Save repos registry
  */
-function saveRegistry(repos) {
-  const registryPath = getRegistryPath();
+function saveRegistry(repos, reposRootOverride = null) {
+  const registryPath = getRegistryPath(reposRootOverride);
   const dir = path.dirname(registryPath);
 
   if (!fs.existsSync(dir)) {
@@ -219,9 +225,15 @@ function analyzeRepoContent(repoPath) {
 /**
  * Scan for repositories in the repos root
  */
-function scanRepositories(progressCallback = null) {
+function scanRepositories(reposRootOrCallback = null, progressCallback = null) {
   const config = getConfig();
-  const reposRoot = config.reposRoot;
+  let reposRoot = config.reposRoot;
+  let callback = progressCallback;
+  if (typeof reposRootOrCallback === 'function') {
+    callback = reposRootOrCallback;
+  } else if (typeof reposRootOrCallback === 'string') {
+    reposRoot = reposRootOrCallback;
+  }
   const results = {
     found: [],
     errors: [],
@@ -235,7 +247,7 @@ function scanRepositories(progressCallback = null) {
   }
 
   // Get existing registry
-  const existingRegistry = loadRegistry();
+  const existingRegistry = loadRegistry(reposRoot);
   const existingPaths = new Set(existingRegistry.map(r => r.Path));
 
   // Scan category directories
@@ -256,8 +268,8 @@ function scanRepositories(progressCallback = null) {
       // Check if it's a git repository
       if (!fs.existsSync(gitDir)) return;
 
-      if (progressCallback) {
-        progressCallback(`Scanning: ${entry.name}`);
+      if (callback) {
+        callback(`Scanning: ${entry.name}`);
       }
 
       // Detect branch
@@ -284,7 +296,7 @@ function scanRepositories(progressCallback = null) {
 
   // Update registry with found repos
   if (results.found.length > 0) {
-    saveRegistry(results.found);
+    saveRegistry(results.found, reposRoot);
   }
 
   return results;
@@ -293,9 +305,17 @@ function scanRepositories(progressCallback = null) {
 /**
  * Clone a repository and auto-categorize it
  */
-async function cloneRepository(url, progressCallback = null) {
+async function cloneRepository(url, progressCallback = null, options = {}) {
   const config = getConfig();
-  const reposRoot = config.reposRoot;
+  let reposRoot = config.reposRoot;
+  let callback = progressCallback;
+  if (progressCallback && typeof progressCallback === 'object') {
+    options = progressCallback;
+    callback = null;
+  }
+  if (options.reposRoot) {
+    reposRoot = options.reposRoot;
+  }
 
   if (!isGitAvailable()) {
     return { success: false, error: 'Git is not installed or not in PATH' };
@@ -310,7 +330,7 @@ async function cloneRepository(url, progressCallback = null) {
   }
 
   // Check for existing repo (by name or path)
-  const existingRegistry = loadRegistry();
+  const existingRegistry = loadRegistry(reposRoot);
   const existingRepo = existingRegistry.find(r => r.Name.toLowerCase() === repoName.toLowerCase());
   if (existingRepo) {
     return {
@@ -334,7 +354,7 @@ async function cloneRepository(url, progressCallback = null) {
     }
   }
 
-  if (progressCallback) progressCallback(`Cloning: ${repoName}`);
+  if (callback) callback(`Cloning: ${repoName}`);
 
   // Validate remote URL before cloning
   const remoteCheck = gitExec(`ls-remote --heads --tags "${trimmedUrl}"`);
@@ -352,13 +372,13 @@ async function cloneRepository(url, progressCallback = null) {
       return { success: false, error: `Clone failed: ${cloneResult.error}` };
     }
 
-    if (progressCallback) progressCallback(`Analyzing: ${repoName}`);
+    if (callback) callback(`Analyzing: ${repoName}`);
 
     // Analyze content to determine category
     const analysis = analyzeRepoContent(tempDir);
     const category = analysis.category;
 
-    if (progressCallback) progressCallback(`Categorized as: ${category} (${analysis.confidence} confidence)`);
+    if (callback) callback(`Categorized as: ${category} (${analysis.confidence} confidence)`);
 
     // Determine final destination
     const categoryDir = path.join(reposRoot, category);
@@ -382,7 +402,7 @@ async function cloneRepository(url, progressCallback = null) {
     } catch (renameErr) {
       if (renameErr.code === 'EXDEV') {
         // Cross-device link not permitted - use copy instead
-        if (progressCallback) progressCallback('Moving repository (cross-drive)...');
+        if (callback) callback('Moving repository (cross-drive)...');
         fs.cpSync(tempDir, destPath, { recursive: true });
         fs.rmSync(tempDir, { recursive: true, force: true });
       } else {
@@ -397,7 +417,7 @@ async function cloneRepository(url, progressCallback = null) {
     const branch = detectDefaultBranch(destPath);
 
     // Update registry
-    const registry = loadRegistry();
+    const registry = loadRegistry(reposRoot);
     registry.push({
       Name: repoName,
       Path: destPath,
@@ -406,9 +426,9 @@ async function cloneRepository(url, progressCallback = null) {
       Category: category,
       ClonedAt: new Date().toISOString()
     });
-    saveRegistry(registry);
+    saveRegistry(registry, reposRoot);
 
-    if (progressCallback) progressCallback(`Complete: ${repoName}`);
+    if (callback) callback(`Complete: ${repoName}`);
 
     return {
       success: true,
@@ -436,8 +456,8 @@ async function cloneRepository(url, progressCallback = null) {
 /**
  * Remove a repository from registry (optionally delete files)
  */
-function removeRepository(repoName, deleteFiles = false) {
-  const registry = loadRegistry();
+function removeRepository(repoName, deleteFiles = false, reposRootOverride = null) {
+  const registry = loadRegistry(reposRootOverride);
   const repo = registry.find(r => r.Name === repoName);
 
   if (!repo) {
@@ -446,7 +466,7 @@ function removeRepository(repoName, deleteFiles = false) {
 
   // Remove from registry
   const newRegistry = registry.filter(r => r.Name !== repoName);
-  saveRegistry(newRegistry);
+  saveRegistry(newRegistry, reposRootOverride);
 
   // Optionally delete files
   if (deleteFiles && fs.existsSync(repo.Path)) {
@@ -463,8 +483,8 @@ function removeRepository(repoName, deleteFiles = false) {
 /**
  * Update a repository (git pull)
  */
-function updateRepository(repoName) {
-  const registry = loadRegistry();
+function updateRepository(repoName, reposRootOverride = null) {
+  const registry = loadRegistry(reposRootOverride);
   const repo = registry.find(r => r.Name === repoName);
 
   if (!repo) {
@@ -485,9 +505,9 @@ function updateRepository(repoName) {
 /**
  * Get list of categories
  */
-function getCategories() {
+function getCategories(reposRootOverride = null) {
   const config = getConfig();
-  const reposRoot = config.reposRoot;
+  const reposRoot = reposRootOverride || config.reposRoot;
 
   if (!fs.existsSync(reposRoot)) {
     return [];
@@ -543,13 +563,13 @@ async function getDirSizeBytesAsync(targetPath) {
   return total;
 }
 
-async function refreshCategorySizes() {
-  if (sizeCache.running) return;
-  sizeCache.running = true;
+async function refreshCategorySizes(reposRootOverride = null) {
+  const { root, cache } = getSizeCache(reposRootOverride);
+  if (cache.running) return;
+  cache.running = true;
   try {
-    const config = getConfig();
-    const reposRoot = config.reposRoot;
-    const categories = getCategories();
+    const reposRoot = root;
+    const categories = getCategories(reposRoot);
     const sizes = {};
 
     for (const category of categories) {
@@ -557,20 +577,36 @@ async function refreshCategorySizes() {
       sizes[category] = await getDirSizeBytesAsync(categoryPath);
     }
 
-    sizeCache.timestamp = Date.now();
-    sizeCache.data = sizes;
+    cache.timestamp = Date.now();
+    cache.data = sizes;
   } catch (error) {
     console.error('Error refreshing category sizes:', error.message);
   } finally {
-    sizeCache.running = false;
+    cache.running = false;
   }
 }
 
-function getCategorySizes() {
-  if (!sizeCache.timestamp && !sizeCache.running) {
-    refreshCategorySizes();
+function getCategorySizes(reposRootOverride = null) {
+  const { cache } = getSizeCache(reposRootOverride);
+  if (!cache.timestamp && !cache.running) {
+    refreshCategorySizes(reposRootOverride);
   }
-  return sizeCache.data;
+  return cache.data;
+}
+
+async function getCategorySizesAsync(reposRootOverride = null) {
+  const { cache } = getSizeCache(reposRootOverride);
+  if (!cache.timestamp && !cache.running) {
+    await refreshCategorySizes(reposRootOverride);
+    return cache.data;
+  }
+  if (cache.running) {
+    const startedAt = Date.now();
+    while (cache.running && Date.now() - startedAt < 30000) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  return cache.data;
 }
 
 refreshCategorySizes();
@@ -585,6 +621,7 @@ module.exports = {
   saveRegistry,
   getCategories,
   getCategorySizes,
+  getCategorySizesAsync,
   analyzeRepoContent,
   isGitAvailable,
   detectDefaultBranch

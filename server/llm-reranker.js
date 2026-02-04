@@ -16,6 +16,12 @@ function isLocalEndpoint(endpoint) {
   }
 }
 
+function assertEndpointAllowed(llmConfig, endpoint) {
+  if (llmConfig?.allowRemote === false && !isLocalEndpoint(endpoint)) {
+    throw new Error('remote endpoints disabled');
+  }
+}
+
 function isDDrivePath(value) {
   if (!value || typeof value !== 'string') return false;
   return value.toLowerCase().startsWith('d:\\') || value.toLowerCase().startsWith('d:/');
@@ -71,6 +77,7 @@ function normalizeOrder(order, idSet) {
 
 async function callOpenAICompatible(llmConfig, messages) {
   const endpoint = llmConfig.endpoint;
+  assertEndpointAllowed(llmConfig, endpoint);
   const payload = {
     model: llmConfig.model,
     messages,
@@ -101,6 +108,7 @@ async function callOpenAICompatible(llmConfig, messages) {
 
 async function callOllama(llmConfig, messages) {
   const endpoint = llmConfig.endpoint || 'http://localhost:11434/api/chat';
+  assertEndpointAllowed(llmConfig, endpoint);
   const payload = {
     model: llmConfig.model,
     messages,
@@ -188,17 +196,17 @@ function buildResourceMessages(goal, category, candidates) {
   ];
 }
 
-async function rerankAgents({ goal, candidates, llmConfig, decisionConfig }) {
-  if (!llmConfig?.enabled) return { candidates, used: false, reason: 'llm disabled' };
+async function rerankAgents({ goal, candidates, llmConfig, decisionConfig, force = false }) {
+  if (!llmConfig?.enabled) return { candidates, used: false, reason: 'llm disabled', forced: force };
 
   const ddriveCheck = checkDDriveRequirement(llmConfig, decisionConfig);
   if (!ddriveCheck.ok) {
-    return { candidates, used: false, reason: ddriveCheck.reason };
+    return { candidates, used: false, reason: ddriveCheck.reason, forced: force };
   }
 
   const rerankGap = decisionConfig?.rerankGap ?? 0.12;
-  if (!shouldRerankByGap(candidates, rerankGap)) {
-    return { candidates, used: false, reason: 'deterministic gap strong' };
+  if (!force && !shouldRerankByGap(candidates, rerankGap)) {
+    return { candidates, used: false, reason: 'deterministic gap strong', forced: force };
   }
 
   const messages = buildAgentMessages(goal, candidates);
@@ -213,9 +221,9 @@ async function rerankAgents({ goal, candidates, llmConfig, decisionConfig }) {
 
     const byId = new Map(candidates.map(c => [c.agentId, c]));
     const reranked = order.map(id => byId.get(id));
-    return { candidates: reranked, used: true };
+    return { candidates: reranked, used: true, forced: force };
   } catch (error) {
-    return { candidates, used: false, reason: error.message };
+    return { candidates, used: false, reason: error.message, forced: force };
   }
 }
 

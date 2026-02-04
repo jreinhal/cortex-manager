@@ -15,6 +15,12 @@ function isLocalEndpoint(endpoint) {
   }
 }
 
+function assertEndpointAllowed(llmConfig, endpoint) {
+  if (llmConfig?.allowRemote === false && !isLocalEndpoint(endpoint)) {
+    throw new Error('remote endpoints disabled');
+  }
+}
+
 function isDDrivePath(value) {
   if (!value || typeof value !== 'string') return false;
   return value.toLowerCase().startsWith('d:\\') || value.toLowerCase().startsWith('d:/');
@@ -56,6 +62,7 @@ function extractJson(text) {
 
 async function callOpenAICompatible(llmConfig, messages) {
   const endpoint = llmConfig.endpoint;
+  assertEndpointAllowed(llmConfig, endpoint);
   const payload = {
     model: llmConfig.model,
     messages,
@@ -86,6 +93,7 @@ async function callOpenAICompatible(llmConfig, messages) {
 
 async function callOllama(llmConfig, messages) {
   const endpoint = llmConfig.endpoint || 'http://localhost:11434/api/chat';
+  assertEndpointAllowed(llmConfig, endpoint);
   const payload = {
     model: llmConfig.model,
     messages,

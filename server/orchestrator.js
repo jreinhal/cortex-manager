@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { performance } = require('perf_hooks');
 
 // Import new modules
 const { analyzeGoal } = require('./goal-analyzer');
@@ -17,6 +18,7 @@ const { rerankResources: rerankResourcesLate } = require('./late-interaction-rer
 const { createDecisionTrace } = require('./decision-trace');
 const { evaluateRetrievalGate } = require('./retrieval-gate');
 const { recordRun } = require('./runs-store');
+const { estimateTokens, estimateCost } = require('./token-estimator');
 
 let REPOS_ROOT;
 let OUTPUT_DIR;
@@ -76,12 +78,6 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function estimateTokens(text) {
-  if (!text) return 0;
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(words * 1.3));
-}
-
 function computeQualityScore({ uncertainty, resourceTotal, retrievalEnabled, lowConfidence, ambiguous }) {
   let score = 70;
   if (typeof uncertainty === 'number') {
@@ -136,13 +132,28 @@ function getGitMetadata(cwd) {
 
 async function orchestrate(goal, format = 'universal') {
   const startedAt = Date.now();
+  const perfStart = performance.now();
+  const spans = [];
+  const startSpan = (name) => {
+    const start = performance.now();
+    return () => {
+      spans.push({
+        name,
+        startMs: Math.round(start - perfStart),
+        durationMs: Math.round(performance.now() - start)
+      });
+    };
+  };
   const config = getConfig();
   REPOS_ROOT = config.reposRoot;
   OUTPUT_DIR = config.outputDir;
+  const workspaceId = process.env.CORTEX_WORKSPACE_ID || null;
   const decisionConfig = config.decisionMatrix || {};
   const llmConfig = config.llm || {};
   const llmRerankPolicy = {
     mode: 'lowConfidence',
+    agentMode: 'advisory',
+    resourceMode: 'lowConfidence',
     minUncertainty: 0.45,
     minTopScore: 0.35,
     minResourceCount: 3,
@@ -150,6 +161,8 @@ async function orchestrate(goal, format = 'universal') {
     allowWhenLowConfidence: true,
     ...(decisionConfig.llmRerank || {})
   };
+  const agentRerankMode = llmRerankPolicy.agentMode || llmRerankPolicy.mode;
+  const resourceRerankMode = llmRerankPolicy.resourceMode || llmRerankPolicy.mode;
 
   if (!fs.existsSync(OUTPUT_DIR)) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -166,9 +179,11 @@ async function orchestrate(goal, format = 'universal') {
 
   // Step 1: Analyze the goal semantically
   console.log("🔍 Analyzing goal...");
+  const endAnalyze = startSpan('analyze_goal');
   const analysis = analyzeGoal(goal, { decisionConfig });
   const retrievalGate = evaluateRetrievalGate(goal, analysis, decisionConfig.retrievalGate || {});
   analysis.retrieval = retrievalGate;
+  endAnalyze();
   trace.addStep('goal_analysis', {
     intent: analysis.intent.primary,
     confidence: analysis.intent.confidence,
@@ -204,6 +219,7 @@ async function orchestrate(goal, format = 'universal') {
 
   // Step 2: Select best agent
   console.log("\n🎯 Selecting agent...");
+  const endAgentSelect = startSpan('select_agent');
   const selection = selectAgent(analysis, AGENTS_DIR);
   let selectedAgent = selection.selected;
   let alternatives = selection.alternatives;
@@ -215,11 +231,15 @@ async function orchestrate(goal, format = 'universal') {
       rerankedSelected: null,
       rerankUsed: false,
       rerankAccepted: false,
+      rerankReason: null,
+      rerankForced: false,
+      rerankPolicy: agentRerankMode,
       lowConfidence: false,
       ambiguous: false
     },
     resourceSelection: {
       rerankUsed: false,
+      rerankPolicy: resourceRerankMode,
       rrfUsed: false,
       ragFusionUsed: false,
       hydeUsed: false,
@@ -243,37 +263,43 @@ async function orchestrate(goal, format = 'universal') {
   const ambiguous = scoreGap < (decisionConfig.ambiguityGap ?? 15);
   decisionMeta.agentSelection.lowConfidence = lowConfidence;
   decisionMeta.agentSelection.ambiguous = ambiguous;
-  decisionMeta.agentSelection.rerankPolicy = llmRerankPolicy.mode;
   if (lowConfidence || ambiguous) {
     analysis.actions.requiresReview = true;
   }
 
   const allowAgentRerank =
-    llmRerankPolicy.mode === 'always' ||
-    (llmRerankPolicy.mode !== 'never' &&
+    agentRerankMode === 'always' ||
+    agentRerankMode === 'advisory' ||
+    (agentRerankMode !== 'never' &&
       ((llmRerankPolicy.allowWhenLowConfidence && lowConfidence) ||
         (llmRerankPolicy.allowWhenAmbiguous && ambiguous)));
   decisionMeta.agentSelection.rerankEligible = allowAgentRerank;
+  const forceAgentRerank = agentRerankMode === 'always' || agentRerankMode === 'advisory';
 
   const agentRerank = allowAgentRerank
     ? await rerankAgents({
         goal,
         candidates: [selectedAgent, ...alternatives],
         llmConfig,
-        decisionConfig
+        decisionConfig,
+        force: forceAgentRerank
       })
     : { candidates: [selectedAgent, ...alternatives], used: false, reason: 'policy' };
 
+  decisionMeta.agentSelection.rerankForced = agentRerank.forced === true;
   if (agentRerank.used) {
     decisionMeta.agentSelection.rerankUsed = true;
     const rerankedTop = agentRerank.candidates[0];
     decisionMeta.agentSelection.rerankedSelected = rerankedTop.agentId;
 
-    if (lowConfidence || ambiguous) {
+    const acceptRerank = agentRerankMode === 'always' || lowConfidence || ambiguous;
+    if (acceptRerank) {
       selectedAgent = rerankedTop;
       alternatives = agentRerank.candidates.slice(1);
       decisionMeta.agentSelection.rerankAccepted = true;
     }
+  } else {
+    decisionMeta.agentSelection.rerankReason = agentRerank.reason || null;
   }
 
   console.log(`   Selected: ${selectedAgent.agentName} (score: ${Math.round(selectedAgent.score)})`);
@@ -291,25 +317,38 @@ async function orchestrate(goal, format = 'universal') {
   if (alternatives.length > 0) {
     console.log(`   Alternatives: ${alternatives.map(a => `${a.agentId}(${Math.round(a.score)})`).join(', ')}`);
   }
+  trace.addStep('agent_llm_router', {
+    mode: agentRerankMode,
+    used: decisionMeta.agentSelection.rerankUsed,
+    forced: decisionMeta.agentSelection.rerankForced,
+    accepted: decisionMeta.agentSelection.rerankAccepted,
+    reason: decisionMeta.agentSelection.rerankReason || null
+  });
   trace.addStep('agent_selection', {
     selected: selectedAgent.agentId,
     lowConfidence,
     ambiguous,
-    rerankUsed: decisionMeta.agentSelection.rerankUsed
+    rerankUsed: decisionMeta.agentSelection.rerankUsed,
+    rerankAccepted: decisionMeta.agentSelection.rerankAccepted,
+    rerankMode: agentRerankMode
   });
+  endAgentSelect();
 
   // Step 3: Find relevant resources with tech filtering
   console.log("\n📚 Searching resources...");
-  let resources = findResources(analysis, REPOS_ROOT, {
+  const endResourceSearch = startSpan('resource_search');
+  let resources = await findResources(analysis, REPOS_ROOT, {
     maxResults: decisionConfig.maxCandidates || 5,
     minScore: 0.15,
     rrf: decisionConfig.rrf || {},
     ragFusion: decisionConfig.ragFusion || {},
     hyde: decisionConfig.hyde || {},
     hybrid: decisionConfig.hybridRetrieval || decisionConfig.hybrid || {},
+    vectorIndex: config.vectorIndex || {},
     retrievalEnabled: retrievalGate.enabled,
     includeMeta: true,
-    agentsMdPriority: decisionConfig.agentsMdPriority === true
+    agentsMdPriority: decisionConfig.agentsMdPriority === true,
+    workspaceId
   });
   const resourceMeta = resources.__meta || {};
   decisionMeta.resourceSelection.rrfUsed = resourceMeta.rrfUsed === true;
@@ -317,6 +356,7 @@ async function orchestrate(goal, format = 'universal') {
   decisionMeta.resourceSelection.ragFusionVariants = resourceMeta.ragFusionVariants;
   decisionMeta.resourceSelection.hydeUsed = resourceMeta.hydeUsed === true;
   decisionMeta.resourceSelection.hybridUsed = resourceMeta.hybridUsed === true;
+  decisionMeta.resourceSelection.vectorIndexUsed = resourceMeta.vectorIndexUsed === true;
 
   const lateInteraction = rerankResourcesLate({
     goalText: goal,
@@ -344,8 +384,9 @@ async function orchestrate(goal, format = 'universal') {
   })();
 
   const allowResourceRerank =
-    llmRerankPolicy.mode === 'always' ||
-    (llmRerankPolicy.mode !== 'never' &&
+    resourceRerankMode === 'always' ||
+    resourceRerankMode === 'advisory' ||
+    (resourceRerankMode !== 'never' &&
       retrievalGate.enabled &&
       (analysis.uncertainty.score >= llmRerankPolicy.minUncertainty ||
         resourceStats.topScore < llmRerankPolicy.minTopScore ||
@@ -395,6 +436,7 @@ async function orchestrate(goal, format = 'universal') {
     retrievalEnabled: decisionMeta.resourceSelection.retrievalEnabled,
     routingMode: resourceMeta.routingMode || analysis.routing.mode
   });
+  endResourceSearch();
 
   // Step 4: Get agent template path
   const templatePath = getAgentTemplatePath(selectedAgent.agentId, AGENTS_DIR);
@@ -406,6 +448,7 @@ async function orchestrate(goal, format = 'universal') {
   });
   decisionMeta.trace = decisionTrace;
 
+  const endPlan = startSpan('generate_flight_plan');
   const flightPlan = generateFlightPlan({
     goal,
     analysis,
@@ -420,11 +463,14 @@ async function orchestrate(goal, format = 'universal') {
     format,
     decisionMeta
   });
+  endPlan();
 
   // Step 6: Save flight plan
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outPath = path.join(OUTPUT_DIR, `spawned_agent_${timestamp}.md`);
+  const endPersist = startSpan('persist_output');
   fs.writeFileSync(outPath, flightPlan);
+  endPersist();
 
   console.log(`\n✅ FLIGHT PLAN GENERATED!`);
   console.log(`   Saved to: ${outPath}`);
@@ -435,6 +481,7 @@ async function orchestrate(goal, format = 'universal') {
   const durationMs = Date.now() - startedAt;
   const resourceTotal = knowledgeCount + skillsCount + toolsCount;
   const tokensEstimated = estimateTokens(flightPlan);
+  const costEstimated = estimateCost(tokensEstimated, llmConfig);
   const qualityScore = computeQualityScore({
     uncertainty: analysis.uncertainty?.score,
     resourceTotal,
@@ -453,12 +500,20 @@ async function orchestrate(goal, format = 'universal') {
   if (analysis.uncertainty?.score >= (decisionConfig.uncertainty?.requiresReviewThreshold ?? 0.6)) {
     issues.push('High uncertainty');
   }
+  const observabilityConfig = config.observability || {};
+  if (observabilityConfig.alertTokens && tokensEstimated > observabilityConfig.alertTokens) {
+    issues.push('High token estimate');
+  }
+  if (observabilityConfig.alertCost && costEstimated > observabilityConfig.alertCost) {
+    issues.push('High cost estimate');
+  }
 
   const runRecord = {
     id: generateRunId(),
     timestamp: new Date().toISOString(),
     goal,
     format,
+    workspaceId,
     durationMs,
     agent: {
       id: selectedAgent.agentId,
@@ -472,13 +527,24 @@ async function orchestrate(goal, format = 'universal') {
     },
     metrics: {
       tokensEstimated,
+      costEstimated,
+      currency: llmConfig.currency || 'USD',
       qualityScore,
       issues,
       uncertainty: analysis.uncertainty?.score ?? null,
       requiresReview: analysis.actions.requiresReview
     },
+    usage: {
+      tokensEstimated,
+      costEstimated,
+      currency: llmConfig.currency || 'USD'
+    },
     decisionMatrix: decisionMeta,
     trace: decisionMeta.trace,
+    performance: {
+      totalMs: durationMs,
+      spans
+    },
     git: getGitMetadata(process.cwd()),
     outputPath: outPath,
     outputPreview: flightPlan.substring(0, 500)
@@ -578,11 +644,17 @@ function generateFlightPlan({ goal, analysis, selectedAgent, selection, resource
     : 'not used';
   const hydeLabel = decisionMeta?.resourceSelection?.hydeUsed ? 'used' : 'not used';
   const hybridLabel = decisionMeta?.resourceSelection?.hybridUsed ? 'enabled' : 'disabled';
+  const vectorIndexLabel = decisionMeta?.resourceSelection?.vectorIndexUsed ? 'used' : 'not used';
   const lateInteractionLabel = decisionMeta?.resourceSelection?.lateInteractionUsed ? 'used' : 'not used';
   const llmPolicyLabel = decisionMeta?.agentSelection?.rerankPolicy || 'n/a';
+  const agentRerankLabel = decisionMeta?.agentSelection?.rerankUsed
+    ? (decisionMeta.agentSelection.rerankAccepted ? 'used (accepted)' : 'used (ignored)')
+    : `not used${decisionMeta?.agentSelection?.rerankReason ? ` (${decisionMeta.agentSelection.rerankReason})` : ''}`;
+  const resourceRerankLabel = decisionMeta?.resourceSelection?.rerankUsed ? 'used' : 'not used';
+  const resourceRerankPolicyLabel = decisionMeta?.resourceSelection?.rerankPolicy || 'n/a';
 
   const decisionMatrixSection = decisionMeta
-    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Retrieval gate: ${retrievalLabel}\n- Query expansion: ${queryExpansionLabel}\n- RAG-Fusion: ${ragFusionLabel}\n- HyDE fallback: ${hydeLabel}\n- Hybrid retrieval: ${hybridLabel}\n- Routing: ${routingLabel}\n- RRF fusion: ${decisionMeta.resourceSelection.rrfUsed ? 'enabled' : 'disabled'}\n- Late interaction rerank: ${lateInteractionLabel}\n- LLM rerank policy: ${llmPolicyLabel}\n- Agent rerank: ${decisionMeta.agentSelection.rerankUsed ? (decisionMeta.agentSelection.rerankAccepted ? 'used (accepted)' : 'used (ignored)') : 'not used'}\n- Resource rerank: ${decisionMeta.resourceSelection.rerankUsed ? 'used' : 'not used'}\n- Uncertainty: ${uncertaintyLabel}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
+    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Retrieval gate: ${retrievalLabel}\n- Query expansion: ${queryExpansionLabel}\n- RAG-Fusion: ${ragFusionLabel}\n- HyDE fallback: ${hydeLabel}\n- Hybrid retrieval: ${hybridLabel}\n- Semantic index: ${vectorIndexLabel}\n- Routing: ${routingLabel}\n- RRF fusion: ${decisionMeta.resourceSelection.rrfUsed ? 'enabled' : 'disabled'}\n- Late interaction rerank: ${lateInteractionLabel}\n- LLM agent mode: ${llmPolicyLabel}\n- LLM agent router: ${agentRerankLabel}\n- LLM resource mode: ${resourceRerankPolicyLabel}\n- Resource rerank: ${resourceRerankLabel}\n- Uncertainty: ${uncertaintyLabel}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
     : '';
 
   const decisionTraceSection = decisionMeta?.trace?.steps?.length

@@ -2,31 +2,19 @@
  * Runs Store - persist run traces + metrics for observability.
  */
 
-const fs = require('fs');
 const path = require('path');
+const { readJsonFile, writeJsonAtomic } = require('./storage');
 
 const RUNS_PATH = path.join(__dirname, '..', 'runs.json');
 const MAX_RUNS = 200;
 
 function loadRuns() {
-  if (!fs.existsSync(RUNS_PATH)) return [];
-  try {
-    const data = JSON.parse(fs.readFileSync(RUNS_PATH, 'utf8'));
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.error('Error loading runs:', e.message);
-    return [];
-  }
+  const data = readJsonFile(RUNS_PATH, []);
+  return Array.isArray(data) ? data : [];
 }
 
 function saveRuns(runs) {
-  try {
-    fs.writeFileSync(RUNS_PATH, JSON.stringify(runs, null, 2), 'utf8');
-    return true;
-  } catch (e) {
-    console.error('Error saving runs:', e.message);
-    return false;
-  }
+  return writeJsonAtomic(RUNS_PATH, runs);
 }
 
 function recordRun(run) {

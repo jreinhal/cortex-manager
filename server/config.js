@@ -6,6 +6,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const { readJsonFile, writeJsonAtomic } = require('./storage');
 
 // Config file location (in project root)
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
@@ -90,6 +92,8 @@ const DEFAULT_CONFIG = {
     },
     llmRerank: {
       mode: 'lowConfidence',
+      agentMode: 'advisory',
+      resourceMode: 'lowConfidence',
       minUncertainty: 0.55,
       minTopScore: 0.32,
       minResourceCount: 3,
@@ -111,13 +115,15 @@ const DEFAULT_CONFIG = {
     model: 'qwen2.5-14b-instruct-q4',
     endpoint: 'http://localhost:8080/v1/chat/completions',
     fallbackEndpoint: null,
-    allowRemote: true,
+    allowRemote: false,
     modelDir: null,
     modelPath: null,
     timeoutMs: 10000,
     temperature: 0.1,
     maxTokens: 400,
-    topN: 6
+    topN: 6,
+    costPer1kTokens: 0,
+    currency: 'USD'
   },
   evaluation: {
     passThreshold: 0.75,
@@ -125,6 +131,126 @@ const DEFAULT_CONFIG = {
     maxOutputChars: 120000,
     llmGraderEnabled: true,
     llmMaxItems: 12
+  },
+  auth: {
+    enabled: false,
+    tokenTtlHours: 12,
+    secret: null,
+    bootstrapAllowed: true,
+    rbac: {
+      enabled: true,
+      allowAdminBypass: true,
+      roles: {
+        viewer: {
+          config: ['read'],
+          system: ['read'],
+          llm: ['read'],
+          workspaces: ['read'],
+          users: [],
+          repos: ['read'],
+          vector_index: ['read'],
+          runs: ['read'],
+          jobs: ['read'],
+          datasets: ['read', 'export'],
+          evaluations: ['read', 'compare'],
+          evaluation_templates: ['read', 'export'],
+          prompts: ['read'],
+          agents: ['read'],
+          tools: ['read'],
+          analytics: ['read'],
+          observability: ['read'],
+          audit: ['read'],
+          sessions: ['read'],
+          logs: ['read']
+        },
+        editor: {
+          config: ['read'],
+          system: ['read'],
+          llm: ['read', 'test'],
+          workspaces: ['read'],
+          users: [],
+          repos: ['read', 'scan', 'create', 'update'],
+          vector_index: ['read', 'rebuild'],
+          runs: ['read', 'create'],
+          jobs: ['read', 'create', 'update'],
+          datasets: ['read', 'create', 'update', 'delete', 'export', 'import'],
+          evaluations: ['read', 'create', 'compare'],
+          evaluation_templates: ['read', 'create', 'update', 'delete', 'export', 'import'],
+          prompts: ['read', 'create', 'update', 'delete'],
+          agents: ['read'],
+          tools: ['read'],
+          analytics: ['read'],
+          observability: ['read'],
+          audit: ['read'],
+          sessions: ['read', 'create'],
+          logs: ['read']
+        },
+        admin: {
+          '*': ['*']
+        }
+      }
+    },
+    sso: {
+      enabled: false,
+      mode: 'header',
+      headerUser: 'x-cortex-user',
+      headerRole: 'x-cortex-role',
+      headerWorkspace: 'x-cortex-workspace',
+      defaultRole: 'viewer',
+      autoProvision: true
+    },
+    scim: {
+      enabled: false,
+      token: null
+    }
+  },
+  queue: {
+    enabled: true,
+    concurrency: 2,
+    maxJobs: 200,
+    retainCompleted: 120,
+    workers: {
+      mode: 'inline',
+      min: 1,
+      max: 3,
+      scaleUpThreshold: 3,
+      scaleDownIdleMs: 60000,
+      pollIntervalMs: 1500,
+      heartbeatMs: 4000,
+      jobTimeoutMs: 1200000,
+      concurrency: 1
+    }
+  },
+  vectorIndex: {
+    enabled: true,
+    chunkSize: 900,
+    chunkOverlap: 120,
+    maxFiles: 2000,
+    maxCharsPerFile: 20000,
+    autoRebuild: false,
+    minScore: 0.08,
+    mode: 'hash',
+    embedding: {
+      enabled: false,
+      endpoint: 'http://localhost:8080/v1/embeddings',
+      model: 'text-embedding-3-small',
+      dimensions: 768,
+      batchSize: 16,
+      timeoutMs: 12000,
+      allowRemote: false
+    }
+  },
+  observability: {
+    alertCost: 5,
+    alertDurationMs: 30000,
+    alertTokens: 50000
+  },
+  workspaces: {
+    defaultId: 'default',
+    items: []
+  },
+  ui: {
+    density: 'comfortable'
   },
   // Analytics
   analytics: {
@@ -194,6 +320,43 @@ function getDefaultModelDir() {
   }
 
   return path.join(os.homedir(), 'models', 'qwen2.5-14b-instruct-q4');
+}
+
+function normalizeWorkspaces(config) {
+  const items = Array.isArray(config.workspaces?.items) ? [...config.workspaces.items] : [];
+  const defaultId = config.workspaces?.defaultId || 'default';
+  const fallbackReposRoot = config.reposRoot || getDefaultReposRoot();
+  const fallbackOutputDir = config.outputDir || getDefaultOutputDir();
+  const envReposRoot = process.env.REPOS_ROOT || null;
+  const envOutputDir = process.env.CORTEX_OUTPUT_DIR || null;
+
+  const normalized = items.map((workspace) => ({
+    id: workspace.id || `ws-${Math.random().toString(36).slice(2, 8)}`,
+    name: workspace.name || workspace.id || 'Workspace',
+    reposRoot: workspace.reposRoot || fallbackReposRoot,
+    outputDir: workspace.outputDir || fallbackOutputDir,
+    createdAt: workspace.createdAt || new Date().toISOString()
+  }));
+
+  let defaultWorkspace = normalized.find((ws) => ws.id === defaultId);
+  if (!defaultWorkspace) {
+    defaultWorkspace = {
+      id: defaultId,
+      name: 'Default Workspace',
+      reposRoot: envReposRoot || fallbackReposRoot,
+      outputDir: envOutputDir || fallbackOutputDir,
+      createdAt: new Date().toISOString()
+    };
+    normalized.unshift(defaultWorkspace);
+  } else {
+    if (envReposRoot) defaultWorkspace.reposRoot = envReposRoot;
+    if (envOutputDir) defaultWorkspace.outputDir = envOutputDir;
+  }
+
+  config.workspaces = { defaultId: defaultWorkspace.id, items: normalized };
+  config.reposRoot = defaultWorkspace.reposRoot;
+  config.outputDir = defaultWorkspace.outputDir;
+  return config;
 }
 
 function hasReposStructure(candidate) {
@@ -285,14 +448,16 @@ function autoDetectReposRoot() {
 function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
-      const data = fs.readFileSync(CONFIG_PATH, 'utf8');
-      const loaded = JSON.parse(data);
-      // Merge with defaults to ensure all fields exist
-      return { ...DEFAULT_CONFIG, ...loaded };
+      const loaded = readJsonFile(CONFIG_PATH, null);
+      if (loaded && typeof loaded === 'object') {
+        // Merge with defaults to ensure all fields exist
+        return { ...DEFAULT_CONFIG, ...loaded };
+      }
     }
   } catch (e) {
     console.error('Error loading config:', e.message);
   }
+  saveConfig(DEFAULT_CONFIG);
   return { ...DEFAULT_CONFIG };
 }
 
@@ -300,14 +465,7 @@ function loadConfig() {
  * Save configuration to file
  */
 function saveConfig(config) {
-  try {
-    const data = JSON.stringify(config, null, 2);
-    fs.writeFileSync(CONFIG_PATH, data, 'utf8');
-    return true;
-  } catch (e) {
-    console.error('Error saving config:', e.message);
-    return false;
-  }
+  return writeJsonAtomic(CONFIG_PATH, config);
 }
 
 /**
@@ -328,6 +486,54 @@ function getConfig() {
   config.evaluation = {
     ...DEFAULT_CONFIG.evaluation,
     ...(config.evaluation || {})
+  };
+  config.ui = {
+    ...DEFAULT_CONFIG.ui,
+    ...(config.ui || {})
+  };
+  config.auth = {
+    ...DEFAULT_CONFIG.auth,
+    ...(config.auth || {})
+  };
+  config.auth.rbac = {
+    ...DEFAULT_CONFIG.auth.rbac,
+    ...(config.auth.rbac || {}),
+    roles: {
+      ...DEFAULT_CONFIG.auth.rbac.roles,
+      ...(config.auth.rbac?.roles || {})
+    }
+  };
+  config.auth.sso = {
+    ...DEFAULT_CONFIG.auth.sso,
+    ...(config.auth.sso || {})
+  };
+  config.auth.scim = {
+    ...DEFAULT_CONFIG.auth.scim,
+    ...(config.auth.scim || {})
+  };
+  config.queue = {
+    ...DEFAULT_CONFIG.queue,
+    ...(config.queue || {})
+  };
+  config.queue.workers = {
+    ...DEFAULT_CONFIG.queue.workers,
+    ...(config.queue.workers || {})
+  };
+  config.vectorIndex = {
+    ...DEFAULT_CONFIG.vectorIndex,
+    ...(config.vectorIndex || {})
+  };
+  config.vectorIndex.embedding = {
+    ...DEFAULT_CONFIG.vectorIndex.embedding,
+    ...(config.vectorIndex.embedding || {})
+  };
+  config.observability = {
+    ...DEFAULT_CONFIG.observability,
+    ...(config.observability || {})
+  };
+  config.workspaces = {
+    ...DEFAULT_CONFIG.workspaces,
+    ...(config.workspaces || {})
   };
 
   // Environment variable overrides
@@ -351,6 +557,9 @@ function getConfig() {
   if (process.env.LLM_ENDPOINT) {
     config.llm.endpoint = process.env.LLM_ENDPOINT;
   }
+  if (process.env.LLM_ALLOW_REMOTE) {
+    config.llm.allowRemote = /^(1|true|yes)$/i.test(process.env.LLM_ALLOW_REMOTE);
+  }
   if (process.env.LLM_MODEL_DIR) {
     config.llm.modelDir = process.env.LLM_MODEL_DIR;
   }
@@ -372,6 +581,13 @@ function getConfig() {
   if (process.env.LLM_TOP_N) {
     const parsed = Number(process.env.LLM_TOP_N);
     if (!Number.isNaN(parsed)) config.llm.topN = parsed;
+  }
+  if (process.env.LLM_COST_PER_1K_TOKENS) {
+    const parsed = Number(process.env.LLM_COST_PER_1K_TOKENS);
+    if (!Number.isNaN(parsed)) config.llm.costPer1kTokens = parsed;
+  }
+  if (process.env.LLM_CURRENCY) {
+    config.llm.currency = process.env.LLM_CURRENCY;
   }
 
   // Apply defaults if not set
@@ -402,7 +618,12 @@ function getConfig() {
     config.llm.modelDir = getDefaultModelDir();
   }
 
-  return config;
+  if (!config.auth.secret) {
+    config.auth.secret = crypto.randomBytes(32).toString('hex');
+    saveConfig(config);
+  }
+
+  return normalizeWorkspaces(config);
 }
 
 /**
@@ -410,7 +631,14 @@ function getConfig() {
  */
 function updateConfig(updates) {
   const config = loadConfig();
-  const newConfig = { ...config, ...updates };
+  const merged = {
+    ...config,
+    ...updates,
+    workspaces: updates.workspaces
+      ? { ...(config.workspaces || {}), ...(updates.workspaces || {}) }
+      : (config.workspaces || {})
+  };
+  const newConfig = normalizeWorkspaces(merged);
   return saveConfig(newConfig) ? newConfig : null;
 }
 
@@ -532,7 +760,7 @@ function getSystemInfo() {
 }
 
 // Analytics helpers
-function recordSpawn(goal, agent, resourceCount) {
+function recordSpawn(goal, agent, resourceCount, workspaceId = null) {
   const config = loadConfig();
   if (!config.analytics) {
     config.analytics = { enabled: true, spawns: [], lastReset: null };
@@ -542,7 +770,8 @@ function recordSpawn(goal, agent, resourceCount) {
     timestamp: new Date().toISOString(),
     goal: goal.substring(0, 100), // Truncate for storage
     agent,
-    resourceCount
+    resourceCount,
+    workspaceId: workspaceId || null
   });
 
   // Keep only last 100 spawns
@@ -553,9 +782,14 @@ function recordSpawn(goal, agent, resourceCount) {
   saveConfig(config);
 }
 
-function getAnalytics() {
+function getAnalytics(workspaceId = null) {
   const config = loadConfig();
-  const spawns = config.analytics?.spawns || [];
+  const defaultId = config.workspaces?.defaultId || 'default';
+  const spawns = (config.analytics?.spawns || []).filter((spawn) => {
+    if (!workspaceId) return true;
+    if (!spawn.workspaceId) return workspaceId === defaultId;
+    return spawn.workspaceId === workspaceId;
+  });
 
   // Calculate stats
   const now = new Date();
@@ -586,37 +820,35 @@ function getAnalytics() {
 
 function loadPromptsFromFile() {
   if (!fs.existsSync(PROMPTS_PATH)) return null;
-  try {
-    const data = JSON.parse(fs.readFileSync(PROMPTS_PATH, 'utf8'));
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.error('Error loading saved prompts:', e.message);
-    return null;
-  }
+  const data = readJsonFile(PROMPTS_PATH, []);
+  return Array.isArray(data) ? data : [];
 }
 
 function savePromptsToFile(prompts) {
-  try {
-    fs.writeFileSync(PROMPTS_PATH, JSON.stringify(prompts, null, 2), 'utf8');
-    return true;
-  } catch (e) {
-    console.error('Error saving prompts:', e.message);
-    return false;
-  }
+  return writeJsonAtomic(PROMPTS_PATH, prompts);
+}
+
+function matchesWorkspace(record, workspaceId, defaultId) {
+  if (!workspaceId) return true;
+  if (!record?.workspaceId) return workspaceId === defaultId;
+  return record.workspaceId === workspaceId;
 }
 
 /**
  * Get all saved prompts
  */
-function getSavedPrompts() {
+function getSavedPrompts(workspaceId = null) {
   const fromFile = loadPromptsFromFile();
-  if (fromFile) return fromFile;
-
   const config = loadConfig();
+  const defaultId = config.workspaces?.defaultId || 'default';
+  if (fromFile) {
+    return fromFile.filter((prompt) => matchesWorkspace(prompt, workspaceId, defaultId));
+  }
+
   const legacy = config.savedPrompts || [];
   if (legacy.length > 0) {
     savePromptsToFile(legacy);
-    return legacy;
+    return legacy.filter((prompt) => matchesWorkspace(prompt, workspaceId, defaultId));
   }
   return [];
 }
@@ -624,13 +856,14 @@ function getSavedPrompts() {
 /**
  * Save a new prompt
  */
-function savePrompt(title, query) {
-  const prompts = getSavedPrompts();
+function savePrompt(title, query, workspaceId = null) {
+  const prompts = loadPromptsFromFile() || [];
 
   const newPrompt = {
     id: Date.now().toString(),
     title: title || 'Untitled',
     query,
+    workspaceId: workspaceId || null,
     createdAt: new Date().toISOString()
   };
 
@@ -643,7 +876,7 @@ function savePrompt(title, query) {
  * Update an existing prompt
  */
 function updatePrompt(id, updates) {
-  const prompts = getSavedPrompts();
+  const prompts = loadPromptsFromFile() || [];
 
   const index = prompts.findIndex(p => p.id === id);
   if (index === -1) return null;
@@ -662,7 +895,7 @@ function updatePrompt(id, updates) {
  * Delete a saved prompt
  */
 function deletePrompt(id) {
-  const prompts = getSavedPrompts();
+  const prompts = loadPromptsFromFile() || [];
 
   const initialLength = prompts.length;
   const next = prompts.filter(p => p.id !== id);

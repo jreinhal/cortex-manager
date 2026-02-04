@@ -15,6 +15,15 @@ module.exports = defineConfig({
     baseURL: `http://localhost:${FRONTEND_PORT}`,
     trace: 'on-first-retry',
   },
+  projects: [
+    { name: 'chromium' },
+    {
+      name: 'edge',
+      use: {
+        channel: 'msedge',
+      },
+    },
+  ],
   webServer: [
     {
       command: 'node server/index.js',

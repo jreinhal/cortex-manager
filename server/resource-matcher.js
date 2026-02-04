@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const stringSimilarity = require('string-similarity');
+const vectorIndex = require('./vector-index');
 
 // Tech stack detection from file extensions and content
 const TECH_DETECTION = {
@@ -330,6 +331,9 @@ function buildHydeDocument(goalText, analyzedGoal) {
 
 function computeSemanticScore(goalText, resource) {
   if (!goalText || !resource) return 0;
+  if (typeof resource.semanticScoreOverride === 'number') {
+    return Math.max(0, Math.min(1, resource.semanticScoreOverride));
+  }
   const docText = `${resource.fileName || ''} ${resource.relativePath || ''} ${resource.summary || ''}`.trim();
   if (!docText) return 0;
 
@@ -716,7 +720,7 @@ function applyRagFusion(variantLists, config) {
   return { used: true, items };
 }
 
-function buildResourceIndex(files, reposRoot, cat) {
+function buildResourceIndex(files, reposRoot, cat, semanticLookup) {
   return files.map((filePath) => {
     let content = '';
     try {
@@ -751,7 +755,8 @@ function buildResourceIndex(files, reposRoot, cat) {
       pathSignals,
       isInstruction: pathSignals.isAgents,
       summary: extractSummary(content),
-      fileSize: stat.size
+      fileSize: stat.size,
+      semanticScoreOverride: semanticLookup ? (semanticLookup.get(filePath) || null) : null
     };
   });
 }
@@ -810,7 +815,7 @@ function resolveRoutingOptions(analyzedGoal, options) {
 /**
  * Main entry point - find relevant resources
  */
-function findResources(analyzedGoal, reposRoot, options = {}) {
+async function findResources(analyzedGoal, reposRoot, options = {}) {
   const {
     category = null,
     rrf = {},
@@ -819,7 +824,8 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     retrievalEnabled = true,
     ragFusion = {},
     hyde = {},
-    hybrid = {}
+    hybrid = {},
+    vectorIndex: vectorConfig = {}
   } = options;
 
   const results = {
@@ -853,6 +859,7 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
   if (!ragFusionConfig.k) {
     ragFusionConfig.k = rrfConfig.k;
   }
+  const vectorEnabled = vectorConfig?.enabled === true;
 
   const intent = analyzedGoal.intent?.primary || 'coding';
   const goalKeywords = analyzedGoal.expandedKeywords || analyzedGoal.keywords || [];
@@ -933,6 +940,22 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
     };
   });
 
+  let semanticLookup = null;
+  let vectorUsed = false;
+  if (vectorEnabled) {
+    const vectorResults = await vectorIndex.search(goalText, {
+      topK: Math.max(12, maxResults * 4),
+      workspaceId: options.workspaceId,
+      reposRoot
+    });
+    semanticLookup = new Map();
+    vectorResults.forEach((result) => {
+      const current = semanticLookup.get(result.filePath) || 0;
+      if (result.score > current) semanticLookup.set(result.filePath, result.score);
+    });
+    vectorUsed = vectorResults.length > 0;
+  }
+
   const resourceIndex = {};
   categories.forEach((cat) => {
     const catDir = path.join(reposRoot, cat);
@@ -944,7 +967,7 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
       ? TOOL_EXTENSIONS
       : (cat === 'skills' ? DOC_EXTENSIONS : DATA_EXTENSIONS);
     const files = walkDirectory(catDir, [], { allowedExtensions });
-    resourceIndex[cat] = buildResourceIndex(files, reposRoot, cat);
+    resourceIndex[cat] = buildResourceIndex(files, reposRoot, cat, semanticLookup);
   });
 
   const variantListsByCategory = {};
@@ -1038,6 +1061,7 @@ function findResources(analyzedGoal, reposRoot, options = {}) {
       ragFusionVariants: variantTexts.length + (hydeUsed ? 1 : 0),
       hydeUsed,
       hybridUsed: hybridConfig.enabled === true,
+      vectorIndexUsed: vectorEnabled && vectorUsed,
       routingMode: routingOptions.routingMode,
       maxResults,
       minScore

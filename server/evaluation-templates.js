@@ -2,7 +2,7 @@
  * Evaluation templates for rubric-based grading.
  */
 
-const templates = [
+const DEFAULT_TEMPLATES = [
   {
     id: 'rubric-clarity-structure',
     name: 'Clarity & Structure',
@@ -26,4 +26,4 @@ const templates = [
   }
 ];
 
-module.exports = { templates };
+module.exports = { DEFAULT_TEMPLATES };

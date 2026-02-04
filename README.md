@@ -4,8 +4,6 @@
 
 > **The Model-Agnostic AI Operations Platform for Local-First Teams**
 
-![CORTEX Dashboard](https://via.placeholder.com/1200x600/0f172a/38bdf8?text=CORTEX+Operations+Dashboard)
-
 ---
 
 ## 🎯 What is CORTEX?
@@ -64,6 +62,7 @@ Spawn specialized AI agents using natural language prompts. CORTEX analyzes your
 ### 🔒 **Local-First Architecture**
 - **Runs Locally by Default**: Everything works on `localhost` out of the box
 - **Optional Remote LLMs**: You can connect to a cloud or LAN LLM endpoint when desired
+- **Remote Endpoints Disabled by Default**: Explicitly enable remote endpoints in Settings to use non-local LLMs
 - **File Path References**: Instead of uploading code, CORTEX generates plans with file paths
 - **Flexible Execution**: Copy/paste plans or integrate via API
 
@@ -73,12 +72,37 @@ Built with React, Tailwind CSS, and Framer Motion, featuring:
 - **Real-Time Monitoring**: Watch repository scans and agent spawns in action
 - **One-Click Operations**: Spawn agents, manage repos, view logs—all from a beautiful interface
 
+### 📸 **Product Screenshots**
+![Command Center](docs/screenshots/command-center.png)
+![Agent Factory](docs/screenshots/agent-factory.png)
+![Knowledge Base](docs/screenshots/knowledge-base.png)
+![Evaluations](docs/screenshots/evaluations.png)
+![Audit Trail](docs/screenshots/audit-trail.png)
+![Settings](docs/screenshots/settings.png)
+
+To refresh screenshots: `npm run e2e:edge -- tests/e2e/screenshots.spec.js`
+
 ### 📚 **Reference Repository Management**
 Organize your AI knowledge base into structured categories:
 - **Agents**: Pre-configured agent templates (Agent-S, Standard Agent)
 - **Skills**: Reusable procedures (Testing frameworks, API patterns)
 - **Knowledge**: Documentation, best practices, research papers
 - **Tools**: Utility scripts and automation helpers
+
+### 🧭 **Workspaces & Multi‑Tenant Control**
+- Create multiple workspaces with isolated repos and outputs.
+- Workspace-scoped analytics, runs, evaluations, and audit trails.
+- Admin-only switching for shared installations.
+
+### 🧪 **Evaluation Lab (Rubrics + Retrieval Benchmarks)**
+- LLM rubric grading with reusable template library.
+- Dataset import/export for repeatable QA.
+- Retrieval benchmarks with precision/recall/MRR scoring.
+
+### 🧾 **Audit Trail & Compliance**
+- Append‑only audit log with user, workspace, and event metadata.
+- SCIM‑style provisioning and header‑based SSO for enterprise IdPs.
+- Export audit events as CSV/JSON for compliance reviews.
 
 ### 🖥️ **Cross-Platform Support**
 CORTEX runs on Windows, macOS, and Linux with zero configuration changes.
@@ -87,25 +111,50 @@ CORTEX runs on Windows, macOS, and Linux with zero configuration changes.
 - Track agent spawn history and success rates
 - Reuse previous sessions with one click
 - View most-used agents and resources
+- Audit log written to `audit.log.jsonl` for compliance reviews
 
 ### 🧭 **Run Explorer**
 - Inspect decision matrices, traces, and quality signals per spawn
 - Review run duration, uncertainty, and resource coverage
+- Drill into a performance timeline with per‑stage durations
 - Surface issues like low-confidence routing or sparse retrieval
 - Compare runs side‑by‑side and view git metadata/diff stats
+- Track estimated token usage and cost per run
 
 ### 🧪 **Evaluation Lab**
 - Build datasets of prompts + expected outcomes
   - Per‑item grading with pass/fail thresholds
   - Optional LLM rubric grading with built‑in templates
   - Export/import datasets as JSON for sharing and versioning
+  - Versioned datasets with update history
 - Score runs against datasets for regression testing
   - Compare run quality metrics over time
+  - Trendline snapshots for response vs retrieval benchmarks
+  - Manage rubric templates (create, edit, delete, import/export)
+  - Capture LLM grading usage and cost estimates
 
 ### 📦 **Library & Templates**
 - Save and reuse prompts across teams
 - Browse agent templates and tool catalog
 - Jump from library assets directly into Agent Factory
+
+### 🔐 **Authentication & RBAC**
+- Optional local authentication with Viewer/Editor/Admin roles
+- Bootstrap-first admin flow to secure initial setup
+- Resource-level RBAC policy with per-action permissions
+
+### 🧵 **Background Job Queue**
+- Queue spawns and index rebuilds for long-running tasks
+- Monitor status, cancel jobs, and view outputs
+
+### 🧠 **Semantic Vector Index**
+- Local TF‑IDF vector index with chunking + overlap
+- Hybrid sparse/semantic retrieval support
+- Manual rebuild or auto‑rebuild when missing
+
+### 📈 **Observability & Cost Tracking**
+- Aggregate run/eval tokens + cost estimates
+- Alert thresholds for cost, tokens, and duration
 
 ---
 
@@ -127,12 +176,22 @@ cortex/
 │   ├── resource-matcher.js # Resource scoring + filtering
 │   ├── llm-reranker.js     # Optional Qwen rerank layer
 │   ├── late-interaction-reranker.js # Token-level rerank (ColBERT-style)
+│   ├── auth.js             # Auth middleware + token issuance
+│   ├── auth-store.js       # Local user store
+│   ├── job-queue.js        # Background job queue
+│   ├── vector-index.js     # Semantic vector index lifecycle
+│   ├── token-estimator.js  # Token + cost estimation helpers
+│   ├── observability.js    # Usage summary helpers
 │   ├── config.js           # Configuration Management
 │   └── repo-manager.js     # Cross-platform Git Operations
 ├── config.json             # User Configuration (created on first run)
 ├── runs.json               # Run history (auto-generated)
 ├── datasets.json           # Evaluation datasets (auto-generated)
 ├── evaluations.json        # Evaluation results (auto-generated)
+├── evaluation_templates.json # Rubric templates (auto-generated)
+├── jobs.json               # Background queue (auto-generated)
+├── users.json              # Local auth users (auto-generated)
+├── vector_index.json       # Semantic index (auto-generated)
 └── package.json            # Monorepo Root
 ```
 
@@ -266,32 +325,39 @@ Your `reference-repos` folder structure might look like:
 CORTEX automatically categorizes repos based on their content.
 
 ### Decision Matrix (AGENTS‑First)
-CORTEX uses a deterministic decision matrix with retrieval gating, query expansion (RAG‑Fusion), hybrid retrieval (sparse + semantic) with RRF fusion, optional HyDE fallback, a late‑interaction rerank, and an optional Qwen2.5 rerank layer for low‑confidence cases. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
+CORTEX uses a deterministic decision matrix with an LLM-assisted agent router (advisory by default), retrieval gating, query expansion (RAG‑Fusion), hybrid retrieval (sparse + semantic) with RRF fusion, optional HyDE fallback, a late‑interaction rerank, and an optional Qwen2.5 resource rerank layer for low‑confidence/uncertain cases. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
 
 ```mermaid
 flowchart TD
     A[User goal] --> B[Goal analysis]
-    B --> C{Retrieval gate}
-    C -->|Skip| O[Generate flight plan]
-    C -->|Retrieve| D[Query expansion + RAG-Fusion]
-    D --> E[Hybrid retrieval (sparse + semantic)]
-    E --> F[Deterministic scoring + RRF fusion]
-    F --> G{AGENTS.md present?}
-    G -->|Yes| H[Inject AGENTS.md as highest priority]
-    G -->|No| I[Proceed]
-    H --> J[Routing + uncertainty gates]
-    I --> J
-    J -->|Needs review| K[Require human review]
-    J -->|OK| L[Late-interaction rerank]
-    L --> M{LLM rerank enabled + low confidence?}
-    M -->|Yes| N[Qwen2.5 14B rerank top N]
-    N --> P{Rerank valid?}
-    P -->|No| Q[Fallback to deterministic]
-    P -->|Yes| R[Apply reranked order]
-    M -->|No| Q
-    Q --> O
-    R --> O
-    O --> S[Output]
+    B --> C[Deterministic agent scoring]
+    C --> D{LLM agent router enabled?}
+    D -->|Yes| E[LLM agent rerank (advisory/always)]
+    D -->|No| F[Keep deterministic agent]
+    E --> G{Accept LLM override?}
+    G -->|Yes| H[Select LLM-ranked agent]
+    G -->|No| F
+    F --> I{Retrieval gate}
+    I -->|Skip| O[Generate flight plan]
+    I -->|Retrieve| J[Query expansion + RAG-Fusion]
+    J --> K[Hybrid retrieval (sparse + semantic)]
+    K --> L[Deterministic scoring + RRF fusion]
+    L --> M{AGENTS.md present?}
+    M -->|Yes| N[Inject AGENTS.md as highest priority]
+    M -->|No| P[Proceed]
+    N --> Q[Routing + uncertainty gates]
+    P --> Q
+    Q -->|Needs review| R[Require human review]
+    Q -->|OK| S[Late-interaction rerank]
+    S --> T{LLM resource rerank enabled + uncertainty?}
+    T -->|Yes| U[Qwen2.5 rerank top N]
+    U --> V{Rerank valid?}
+    V -->|No| W[Fallback to deterministic]
+    V -->|Yes| X[Apply reranked order]
+    T -->|No| W
+    W --> O
+    X --> O
+    O --> Y[Output]
 ```
 
 See `docs/decision-matrix.md` for the full spec and gating rules.
@@ -374,7 +440,8 @@ Optionally add `agent.config.json` for custom keywords:
 - [ ] Human-in-the-Loop Checkpoints
 - [ ] Multi-Repo Knowledge Graphs
 - [ ] Cloud Sync (Encrypted)
-- [ ] Enterprise readiness (SSO/RBAC/audit logs) — deferred to later phase
+- [x] Local auth + RBAC + audit logs
+- [ ] SSO + enterprise IdP integration
 
 ---
 

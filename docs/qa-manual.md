@@ -8,7 +8,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - Repos root configured and valid (Settings or Setup Wizard).
 
 ## 1) Navigation & Layout
-- Sidebar buttons navigate to: Command Center, Agent Factory, Runs, Evaluations, Library, Knowledge Base, System Logs, Settings.
+- Sidebar buttons navigate to: Command Center, Agent Factory, Runs, Evaluations, Library, Knowledge Base, Audit Trail, System Logs, Settings.
 - Active nav state highlights the current page.
 - Page header title + subtitle match the view.
 
@@ -27,6 +27,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - Decision Matrix:
   - Flight Plan includes a **Decision Matrix** section.
   - Matrix shows **Retrieval gate**, **Query expansion**, **RAG-Fusion**, **Hybrid retrieval**, **Routing**, **RRF fusion**, and **Uncertainty** lines.
+  - Matrix shows **LLM agent mode** and **LLM agent router** lines when LLM is enabled.
   - If any AGENTS.md is present, it appears first in Required Reading.
   - Skill usage note appears (explore context first, then consult skills).
   - For an ambiguous or low-confidence goal, “Requires Review” is flagged in the plan.
@@ -50,6 +51,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
   - Create dataset, add at least one item, and generate an evaluation.
   - Evaluation status shows pass/warn/fail with per-item grading.
   - LLM rubric items return rationale when LLM is enabled.
+  - Evaluation Trends panel shows response vs retrieval sparkline.
 - Library view:
   - Saved prompts list renders.
   - Use button routes to Agent Factory with prompt prefilled.
@@ -81,6 +83,11 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - **Save Settings** persists valid paths and shows saved state.
 - **Test Connection** pings the configured LLM endpoint(s) and reports reachability.
 
+### Audit Trail
+- Event list renders with timestamp, user, workspace, and metadata.
+- Filters/search narrow results without UI overlap.
+- Export CSV/JSON downloads without errors.
+
 ## 5) Knowledge Base
 - Stats cards show:
   - Correct repo counts per category.
@@ -103,6 +110,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 ## 7) Settings
 - Empty repos root shows validation error.
 - Valid path saves successfully and shows “Saved!” state.
+- RBAC policy editor accepts valid JSON and blocks invalid JSON saves.
 
 ## 8) Accessibility & Usability
 - Keyboard-only: all controls are reachable; focus ring is visible.

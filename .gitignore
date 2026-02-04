@@ -38,3 +38,12 @@ saved_prompts.json
 runs.json
 datasets.json
 evaluations.json
+evaluation_templates.json
+jobs.json
+users.json
+sessions.json
+audit.log.jsonl
+config.json
+vector_index*.json
+spawned_agents/
+test-results/

@@ -411,6 +411,17 @@ app.get('/api/config', auth.requirePermission('config', 'read', 'viewer'), (req,
   });
 });
 
+// Serve the quickstart checklist markdown
+app.get('/api/checklist', auth.requirePermission('system', 'read', 'viewer'), (req, res) => {
+  const checklistPath = path.resolve(__dirname, '..', 'TESTING.md');
+  if (!fs.existsSync(checklistPath)) {
+    return res.status(404).json({ error: 'Checklist not found.' });
+  }
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', 'inline; filename="TESTING.md"');
+  return res.send(fs.readFileSync(checklistPath, 'utf8'));
+});
+
 // Update configuration
 app.post('/api/config', auth.requirePermission('config', 'update', 'admin'), (req, res) => {
   const updates = req.body || {};

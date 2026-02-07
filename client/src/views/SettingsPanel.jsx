@@ -1256,7 +1256,7 @@ export function SettingsPanel({
                             >
                               <div className="font-mono">{u.providerId}:{u.slug}</div>
                               <div className="text-slate-400 font-mono">
-                                {(u.installedVersion || 'unknown')} -> {(u.latestVersion || 'unknown')}
+                                {`${u.installedVersion || 'unknown'} -> ${u.latestVersion || 'unknown'}`}
                               </div>
                             </div>
                           ))}

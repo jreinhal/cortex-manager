@@ -4138,7 +4138,7 @@ function App() {
       addLog("Starting System Scan…");
       const res = await apiFetch(`/scan`, { method: 'POST' });
       const data = await res.json();
-      addLog(data.output || "Scan Complete");
+      addLog(`Scan: ${data.output || "Complete"}`);
       pushRepoNotice(data.output || 'Scan complete.', 'success');
       fetchData();
       fetchCategorySizes();
@@ -4249,7 +4249,9 @@ function App() {
 
   /* Seed system logs from recent audit trail so Logs view is never empty on load */
   useEffect(() => {
-    if (auditLogs.length > 0 && logs.length === 0) {
+    if (auditLogs.length === 0) return;
+    setLogs((prev) => {
+      if (prev.length > 0) return prev;
       const seeded = auditLogs.slice(0, 20).reverse().map(entry => {
         const rawTs = entry.ts || entry.timestamp;
         const ts = rawTs ? new Date(rawTs).toLocaleTimeString() : '—';
@@ -4257,8 +4259,8 @@ function App() {
         const detail = meta.name || meta.source || meta.id || '';
         return `[${ts}] ${entry.event}${detail ? ': ' + detail : ''}`;
       });
-      setLogs(seeded);
-    }
+      return seeded;
+    });
   }, [auditLogs]);
 
   if (authStatus.enabled && !authReady) {
@@ -4563,8 +4565,8 @@ function App() {
       <main id="main-content" className={cn("flex-1 min-w-0", mainPadding)}>
 
         {/* Top Bar */}
-        {showHeader && (
-          <header className="top-bar flex justify-between items-center mb-8 py-4">
+          {showHeader && (
+            <header className="top-bar flex justify-between items-center mb-8 px-6 py-4">
             <div>
               <h1 className="text-2xl font-semibold tracking-[0.04em] text-slate-100 mb-2 font-display">{headerMeta.title}</h1>
               <p className="text-[11px] uppercase tracking-[0.32em] text-slate-500 font-semibold">{headerMeta.subtitle}</p>
@@ -4579,8 +4581,8 @@ function App() {
                 <BookOpen size={14} aria-hidden="true" />
                 User Manual
               </a>
-              {activeWorkspace && (
-                <div className="px-4 py-2 rounded-2xl border border-slate-800/70 bg-slate-900/50 flex items-center gap-3">
+                {activeWorkspace && (
+                  <div className="px-5 py-2 rounded-2xl border border-slate-800/70 bg-slate-900/50 flex items-center gap-3">
                   <span className="text-[10px] uppercase tracking-[0.3em] text-slate-500">Workspace</span>
                   {authUser?.role === 'admin' && workspaces.length > 1 ? (
                     <select

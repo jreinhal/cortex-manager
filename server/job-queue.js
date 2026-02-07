@@ -238,6 +238,16 @@ function startJob(job, options = {}) {
     const workspaceReposRoot = job.payload?.reposRoot || config.getConfig().reposRoot;
     const workspaceOutputDir = job.payload?.outputDir || config.getConfig().outputDir;
     const workspaceId = job.workspaceId || job.payload?.workspaceId || null;
+    const externalSkillsRequest = job.payload?.externalSkills || null;
+    const externalSkillsEnv = {};
+    if (externalSkillsRequest && typeof externalSkillsRequest === 'object') {
+      if (typeof externalSkillsRequest.online === 'boolean') {
+        externalSkillsEnv.CORTEX_ONLINE_SKILLS = externalSkillsRequest.online ? '1' : '0';
+      }
+      if (typeof externalSkillsRequest.trainingMode === 'string' && externalSkillsRequest.trainingMode.trim()) {
+        externalSkillsEnv.CORTEX_ONLINE_SKILLS_TRAINING = externalSkillsRequest.trainingMode.trim();
+      }
+    }
 
     const child = spawn('node', [orchestratorPath, goal, normalizedFormat], {
       cwd: path.join(__dirname, '..'),
@@ -245,7 +255,8 @@ function startJob(job, options = {}) {
         ...process.env,
         REPOS_ROOT: workspaceReposRoot,
         CORTEX_OUTPUT_DIR: workspaceOutputDir,
-        CORTEX_WORKSPACE_ID: workspaceId
+        CORTEX_WORKSPACE_ID: workspaceId,
+        ...externalSkillsEnv
       }
     });
 

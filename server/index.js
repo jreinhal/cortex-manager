@@ -21,6 +21,7 @@ const auth = require('./auth');
 const authStore = require('./auth-store');
 const jobQueue = require('./job-queue');
 const vectorIndex = require('./vector-index');
+const externalSkills = require('./external-skills');
 const { summarizeObservability } = require('./observability');
 const { estimateTokens, estimateCost } = require('./token-estimator');
 const workspaces = require('./workspaces');
@@ -32,6 +33,10 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(bodyParser.json());
+const manualDir = path.resolve(__dirname, '..', 'docs', 'user-manual');
+if (fs.existsSync(manualDir)) {
+  app.use('/manual', express.static(manualDir));
+}
 app.use(auth.middleware);
 app.use((req, res, next) => {
   req.workspace = workspaces.resolveWorkspace(req);
@@ -66,6 +71,33 @@ function isLocalEndpoint(endpoint) {
   } catch {
     return true;
   }
+}
+
+function isPathWithin(root, target) {
+  if (!root || !target) return false;
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+  if (process.platform === 'win32') {
+    const rootLower = resolvedRoot.toLowerCase();
+    const targetLower = resolvedTarget.toLowerCase();
+    return targetLower === rootLower || targetLower.startsWith(`${rootLower}${path.sep}`);
+  }
+  return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`);
+}
+
+function normalizeRepoPath(value) {
+  if (!value) return '';
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function resolveRunOutputPath(run, workspace) {
+  if (!run?.outputPath) return null;
+  const currentConfig = config.getConfig();
+  const outputRoot = workspace?.outputDir || currentConfig.outputDir;
+  if (!outputRoot) return null;
+  if (!isPathWithin(outputRoot, run.outputPath)) return null;
+  return path.resolve(run.outputPath);
 }
 
 function computeEvaluationMetrics(run, dataset) {
@@ -1022,8 +1054,25 @@ app.get('/api/status', auth.requirePermission('system', 'read', 'viewer'), (req,
 
 app.get('/api/repos', auth.requirePermission('repos', 'read', 'viewer'), (req, res) => {
   try {
-    const repos = repoManager.loadRegistry(req.workspace?.reposRoot);
-    res.json(repos);
+    const reposRoot = req.workspace?.reposRoot;
+    const repos = repoManager.loadRegistry(reposRoot);
+    const existingPaths = new Set(repos.map((repo) => normalizeRepoPath(repo.Path)));
+    const externalInstalled = externalSkills.listInstalledExternalSkills(reposRoot);
+    const externalRepos = (externalInstalled || [])
+      .map((item) => ({
+        Name: item.slug || path.basename(item.dir || ''),
+        Path: item.dir,
+        Branch: item.version || 'external',
+        Enabled: true,
+        Category: 'skills',
+        LastScanned: item.installedAt || new Date().toISOString(),
+        External: true,
+        ProviderId: item.providerId || null,
+        ProviderType: item.providerType || null,
+        Version: item.version || null
+      }))
+      .filter((entry) => entry.Path && !existingPaths.has(normalizeRepoPath(entry.Path)));
+    res.json([...repos, ...externalRepos]);
   } catch (e) {
     console.error('Repo read error:', e);
     res.status(500).json({ error: 'Failed to read registry' });
@@ -1163,6 +1212,31 @@ app.post('/api/vector-index/rebuild', auth.requirePermission('vector_index', 're
   res.json({ success: true, summary });
 });
 
+// ==========================================
+// External Skills API (Admin / Integrations)
+// ==========================================
+
+app.get('/api/external-skills/installed', auth.requirePermission('config', 'read', 'viewer'), (req, res) => {
+  try {
+    const reposRoot = req.workspace?.reposRoot || config.getConfig().reposRoot;
+    const installed = externalSkills.listInstalledExternalSkills(reposRoot);
+    res.json({ success: true, reposRoot, installed });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/external-skills/scan-updates', auth.requirePermission('config', 'update', 'admin'), async (req, res) => {
+  try {
+    const reposRoot = req.workspace?.reposRoot || config.getConfig().reposRoot;
+    const result = await externalSkills.scanForUpdates({ reposRoot, config: config.getConfig() });
+    audit('externalSkills.scan_updates', { updates: result?.updates?.length || 0 }, req);
+    res.json({ success: true, reposRoot, ...result });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Update a repository
 app.post('/api/repos/:name/update', auth.requirePermission('repos', 'update', 'editor'), (req, res) => {
   const { name } = req.params;
@@ -1182,7 +1256,7 @@ app.post('/api/repos/:name/update', auth.requirePermission('repos', 'update', 'e
 // ==========================================
 
 app.post('/api/spawn', auth.requirePermission('runs', 'create', 'editor'), (req, res) => {
-  const { goal, format, async: asyncMode } = req.body;
+  const { goal, format, async: asyncMode, externalSkills: externalSkillsRequest } = req.body;
   if (!goal) {
     return res.status(400).json({ error: 'Goal required' });
   }
@@ -1196,6 +1270,16 @@ app.post('/api/spawn', auth.requirePermission('runs', 'create', 'editor'), (req,
   console.log(`[ORCHESTRATOR] Spawning: ${goal} (format: ${normalizedFormat})`);
   audit('spawn.start', { format: normalizedFormat, goal }, req);
 
+  const externalSkillsEnv = {};
+  if (externalSkillsRequest && typeof externalSkillsRequest === 'object') {
+    if (typeof externalSkillsRequest.online === 'boolean') {
+      externalSkillsEnv.CORTEX_ONLINE_SKILLS = externalSkillsRequest.online ? '1' : '0';
+    }
+    if (typeof externalSkillsRequest.trainingMode === 'string' && externalSkillsRequest.trainingMode.trim()) {
+      externalSkillsEnv.CORTEX_ONLINE_SKILLS_TRAINING = externalSkillsRequest.trainingMode.trim();
+    }
+  }
+
   const queueEnabled = config.getConfig().queue?.enabled === true;
   if (asyncMode === true && queueEnabled === true) {
     const job = jobQueue.enqueueJob({
@@ -1203,6 +1287,7 @@ app.post('/api/spawn', auth.requirePermission('runs', 'create', 'editor'), (req,
       payload: {
         goal,
         format: normalizedFormat,
+        externalSkills: externalSkillsRequest || null,
         workspaceId: req.workspace?.id || null,
         reposRoot: req.workspace?.reposRoot || null,
         outputDir: req.workspace?.outputDir || null
@@ -1220,7 +1305,8 @@ app.post('/api/spawn', auth.requirePermission('runs', 'create', 'editor'), (req,
       ...process.env,
       REPOS_ROOT: req.workspace?.reposRoot || config.getConfig().reposRoot,
       CORTEX_OUTPUT_DIR: req.workspace?.outputDir || config.getConfig().outputDir,
-      CORTEX_WORKSPACE_ID: req.workspace?.id || null
+      CORTEX_WORKSPACE_ID: req.workspace?.id || null,
+      ...externalSkillsEnv
     }
   });
 
@@ -1379,6 +1465,49 @@ app.get('/api/runs/:id', auth.requirePermission('runs', 'read', 'viewer'), (req,
     return res.status(404).json({ error: 'Run not found' });
   }
   res.json(run);
+});
+
+app.get('/api/runs/:id/export', auth.requirePermission('runs', 'read', 'viewer'), (req, res) => {
+  const run = runsStore.getRun(req.params.id);
+  if (!run) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+  if (!matchesWorkspace(run, req.workspace?.id || null)) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+
+  const includeOutput = req.query.includeOutput === 'true' || req.query.includeOutput === '1';
+  let output = null;
+  if (includeOutput) {
+    const resolved = resolveRunOutputPath(run, req.workspace);
+    if (resolved && fs.existsSync(resolved)) {
+      output = fs.readFileSync(resolved, 'utf8');
+    }
+  }
+
+  audit('runs.export', { id: run.id, includeOutput }, req);
+  res.setHeader('Content-Disposition', `attachment; filename="cortex-run-${run.id}.json"`);
+  res.json({ run, output });
+});
+
+app.get('/api/runs/:id/plan', auth.requirePermission('runs', 'read', 'viewer'), (req, res) => {
+  const run = runsStore.getRun(req.params.id);
+  if (!run) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+  if (!matchesWorkspace(run, req.workspace?.id || null)) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+
+  const resolved = resolveRunOutputPath(run, req.workspace);
+  if (!resolved || !fs.existsSync(resolved)) {
+    return res.status(404).json({ error: 'Flight plan not found' });
+  }
+
+  audit('runs.plan.download', { id: run.id, file: path.basename(resolved) }, req);
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(resolved)}"`);
+  res.send(fs.readFileSync(resolved, 'utf8'));
 });
 
 app.get('/api/observability/summary', auth.requirePermission('observability', 'read', 'viewer'), (req, res) => {

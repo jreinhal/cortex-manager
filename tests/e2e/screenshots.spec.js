@@ -64,8 +64,12 @@ test('capture product screenshots', async ({ page }, testInfo) => {
     await page.getByRole('button', { name: 'Close' }).click();
   }
   await capture({ label: 'agent-factory', navTestId: 'nav-agents', heading: 'Agent Factory' });
+  await capture({ label: 'run-explorer', navTestId: 'nav-runs', heading: 'Run Explorer' });
+  await capture({ label: 'jobs', navTestId: 'nav-jobs', heading: 'Job Queue' });
+  await capture({ label: 'library', navTestId: 'nav-library', heading: 'Library' });
   await capture({ label: 'knowledge-base', navTestId: 'nav-knowledge', heading: 'Knowledge Base' });
   await capture({ label: 'evaluations', navTestId: 'nav-evaluations', heading: 'Evaluations' });
   await capture({ label: 'audit-trail', navTestId: 'nav-audit', heading: 'Audit Trail' });
+  await capture({ label: 'system-logs', navTestId: 'nav-logs', heading: 'System Logs' });
   await capture({ label: 'settings', navTestId: 'nav-settings', heading: 'Settings' });
 });

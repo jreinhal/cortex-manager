@@ -74,7 +74,7 @@ export function AuditView({ auditLogs, apiFetch, EmptyState, transition }) {
               type="button"
               onClick={() => handleExport('csv')}
               disabled={exporting === 'csv'}
-              className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-xs border border-slate-700/60 disabled:opacity-50"
+              className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-[10px] uppercase tracking-[0.2em] border border-slate-700/60 disabled:opacity-50"
             >
               {exporting === 'csv' ? 'Exporting…' : 'Export CSV'}
             </button>
@@ -82,7 +82,7 @@ export function AuditView({ auditLogs, apiFetch, EmptyState, transition }) {
               type="button"
               onClick={() => handleExport('json')}
               disabled={exporting === 'json'}
-              className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-xs border border-slate-700/60 disabled:opacity-50"
+              className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-[10px] uppercase tracking-[0.2em] border border-slate-700/60 disabled:opacity-50"
             >
               {exporting === 'json' ? 'Exporting…' : 'Export JSON'}
             </button>

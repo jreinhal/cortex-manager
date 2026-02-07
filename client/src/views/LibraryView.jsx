@@ -39,14 +39,14 @@ export function LibraryView({
                   <button
                     type="button"
                     onClick={() => onUsePrompt?.(prompt.query)}
-                    className="text-xs px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30"
+                    className="text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30"
                   >
                     Use
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeletePrompt(prompt)}
-                    className="text-xs px-3 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/30"
+                    className="text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 rounded-full bg-red-500/10 text-red-300 border border-red-500/30"
                   >
                     Delete
                   </button>

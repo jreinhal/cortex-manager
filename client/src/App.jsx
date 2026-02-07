@@ -21,6 +21,11 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 const AUTH_TOKEN_KEY = 'cortex_token';
 const WORKSPACE_KEY = 'cortex_workspace_id';
 const THEME_KEY = 'cortex_theme';
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
+const MANUAL_URL = (() => {
+  const base = API_BASE.replace(/\/api\/?$/, '');
+  return `${base}/manual/index.html`;
+})();
 
 function apiFetch(path, options = {}) {
   const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
@@ -130,8 +135,15 @@ const DEFAULT_RBAC_ROLES = {
   }
 };
 const VIEW_KEYS = ['home', 'agents', 'runs', 'jobs', 'evaluations', 'library', 'knowledge', 'audit', 'logs', 'settings'];
-const SPRING_SMOOTH = { type: 'spring', stiffness: 210, damping: 26, mass: 0.85 };
-const SPRING_FAST = { type: 'spring', stiffness: 260, damping: 22, mass: 0.7 };
+const SPRING_SMOOTH = { type: 'tween', duration: 0.2, ease: [0.2, 0.7, 0.2, 1] };
+const SPRING_FAST = { type: 'tween', duration: 0.16, ease: [0.2, 0.7, 0.2, 1] };
+const FORMAT_OPTIONS = [
+  { value: 'universal', label: 'Universal', accent: 'bg-cyan-400/80' },
+  { value: 'chatgpt', label: 'ChatGPT', accent: 'bg-sky-400/80' },
+  { value: 'claude', label: 'Claude', accent: 'bg-amber-400/80' },
+  { value: 'gemini', label: 'Gemini', accent: 'bg-violet-400/80' }
+];
+const DEFAULT_FORMAT = FORMAT_OPTIONS[0].value;
 
 // ==========================================
 // Setup Wizard Component
@@ -815,28 +827,37 @@ function OrchestratorView({
   onDirtyChange,
   prefillGoal,
   onPrefillConsumed,
-  queueEnabled
+  queueEnabled,
+  externalSkillsConfig
 }) {
   const [goal, setGoal] = useState('');
-  const [format, setFormat] = useState('universal');
+  const [format, setFormat] = useState(DEFAULT_FORMAT);
   const [formatMenuOpen, setFormatMenuOpen] = useState(false);
+  const [trainingMenuOpen, setTrainingMenuOpen] = useState(false);
   const [spawnSteps, setSpawnSteps] = useState([]);
   const [copied, setCopied] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [promptTitle, setPromptTitle] = useState('');
   const [justSaved, setJustSaved] = useState(false);
   const [runInBackground, setRunInBackground] = useState(false);
+  const [onlineSkills, setOnlineSkills] = useState(false);
+  const [onlineSkillsTrainingMode, setOnlineSkillsTrainingMode] = useState('blocking');
   const spawnTimeoutsRef = useRef([]);
   const formatMenuRef = useRef(null);
   const formatButtonRef = useRef(null);
+  const trainingMenuRef = useRef(null);
+  const trainingButtonRef = useRef(null);
 
-  const formatOptions = [
-    { value: 'universal', label: 'Universal', accent: 'bg-cyan-400/80' },
-    { value: 'chatgpt', label: 'ChatGPT', accent: 'bg-sky-400/80' },
-    { value: 'claude', label: 'Claude', accent: 'bg-amber-400/80' },
-    { value: 'gemini', label: 'Gemini', accent: 'bg-violet-400/80' }
+  const externalSkillsEnabled = externalSkillsConfig?.enabled === true;
+  const externalSkillsAllowRemote = externalSkillsConfig?.allowRemote === true;
+  const showOnlineSkillsToggle = externalSkillsEnabled || import.meta.env.DEV;
+
+  const currentFormat = FORMAT_OPTIONS.find((option) => option.value === format) || FORMAT_OPTIONS[0];
+  const trainingOptions = [
+    { value: 'blocking', label: 'Blocking' },
+    { value: 'background', label: 'Background' }
   ];
-  const currentFormat = formatOptions.find((option) => option.value === format) || formatOptions[0];
+  const currentTraining = trainingOptions.find((option) => option.value === onlineSkillsTrainingMode) || trainingOptions[0];
 
   useEffect(() => {
     if (onDirtyChange) {
@@ -853,19 +874,27 @@ function OrchestratorView({
   }, [prefillGoal, onPrefillConsumed]);
 
   useEffect(() => {
-    if (!formatMenuOpen) return;
+    if (!formatMenuOpen && !trainingMenuOpen) return;
 
     const handleClick = (event) => {
-      if (!formatMenuRef.current) return;
-      if (!formatMenuRef.current.contains(event.target)) {
+      if (formatMenuOpen && formatMenuRef.current && !formatMenuRef.current.contains(event.target)) {
         setFormatMenuOpen(false);
+      }
+      if (trainingMenuOpen && trainingMenuRef.current && !trainingMenuRef.current.contains(event.target)) {
+        setTrainingMenuOpen(false);
       }
     };
 
     const handleKey = (event) => {
       if (event.key === 'Escape') {
-        setFormatMenuOpen(false);
-        formatButtonRef.current?.focus();
+        if (formatMenuOpen) {
+          setFormatMenuOpen(false);
+          formatButtonRef.current?.focus();
+        }
+        if (trainingMenuOpen) {
+          setTrainingMenuOpen(false);
+          trainingButtonRef.current?.focus();
+        }
       }
     };
 
@@ -875,10 +904,10 @@ function OrchestratorView({
 
     return () => {
       window.removeEventListener('mousedown', handleClick);
-    window.removeEventListener('touchstart', handleClick);
-    window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('touchstart', handleClick);
+      window.removeEventListener('keydown', handleKey);
     };
-  }, [formatMenuOpen]);
+  }, [formatMenuOpen, trainingMenuOpen]);
 
   const clearSpawnTimeouts = useCallback(() => {
     spawnTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -900,42 +929,6 @@ function OrchestratorView({
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2000);
     }
-  };
-
-  const startEditWorkspace = (workspace) => {
-    setEditingWorkspaceId(workspace.id);
-    setWorkspaceName(workspace.name || '');
-    setWorkspaceReposRoot(workspace.reposRoot || '');
-    setWorkspaceOutputDir(workspace.outputDir || '');
-    setWorkspaceCreateStructure(false);
-  };
-
-  const resetWorkspaceForm = () => {
-    setEditingWorkspaceId(null);
-    setWorkspaceName('');
-    setWorkspaceReposRoot('');
-    setWorkspaceOutputDir('');
-    setWorkspaceCreateStructure(true);
-  };
-
-  const handleSaveWorkspace = async () => {
-    if (!workspaceReposRoot.trim()) {
-      setError('Workspace repos root is required.');
-      return;
-    }
-    setError('');
-    const payload = {
-      name: workspaceName.trim() || undefined,
-      reposRoot: workspaceReposRoot.trim(),
-      outputDir: workspaceOutputDir.trim() || undefined,
-      createStructure: workspaceCreateStructure
-    };
-    if (editingWorkspaceId) {
-      await onUpdateWorkspace?.(editingWorkspaceId, payload);
-    } else {
-      await onCreateWorkspace?.(payload);
-    }
-    resetWorkspaceForm();
   };
 
   const handleDeletePrompt = async (id) => {
@@ -999,7 +992,11 @@ function OrchestratorView({
       spawnTimeoutsRef.current.push(timeoutId);
     });
 
-    await onSpawn(goal, format, runInBackground);
+    const externalSkillsRequest = showOnlineSkillsToggle
+      ? { online: onlineSkills, trainingMode: onlineSkillsTrainingMode }
+      : null;
+
+    await onSpawn(goal, format, runInBackground, externalSkillsRequest);
 
     // Mark all done
     clearSpawnTimeouts();
@@ -1018,10 +1015,24 @@ function OrchestratorView({
     );
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(result);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      /* Fallback for non-secure contexts */
+      const textarea = document.createElement('textarea');
+      textarea.value = result;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleReuseSession = (sessionGoal) => {
@@ -1035,118 +1046,219 @@ function OrchestratorView({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={SPRING_SMOOTH}
-      className="w-full space-y-8 density-stack"
+      className="w-full space-y-2 density-stack"
     >
       <div>
         <h1 className="text-2xl font-semibold text-white tracking-tight mb-2">Agent Factory</h1>
         <p className="text-slate-400 text-sm">Spawn specialized autonomous agents using natural language.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Input Area */}
-        <div className="lg:col-span-8 flex flex-col gap-6">
-          <div className="glass-panel rounded-[28px] p-8 h-full relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -z-10 transition-opacity group-hover:opacity-80 opacity-40 pointer-events-none" />
-
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 layer-top">
-              <label htmlFor="goal-input" className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.22em]">Describe the outcome</label>
-              <div className="flex items-center gap-2" ref={formatMenuRef}>
-                <label htmlFor="format-select" className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.22em]">Format</label>
-                <div className="relative z-40">
-                  <button
-                    id="format-select"
-                    name="format"
-                    data-testid="format-select"
-                    type="button"
-                    ref={formatButtonRef}
-                    aria-haspopup="listbox"
-                    aria-expanded={formatMenuOpen}
-                    onClick={() => setFormatMenuOpen((open) => !open)}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-start">
+          {/* Input Area */}
+        <div className="lg:col-span-8 flex flex-col gap-2 self-start">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+            <label htmlFor="goal-input" className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.22em]">Describe the outcome</label>
+            <div className="flex items-center gap-2" ref={formatMenuRef}>
+              <label htmlFor="format-select" className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.22em]">Format</label>
+              <div className="relative z-40">
+                <button
+                  id="format-select"
+                  name="format"
+                  data-testid="format-select"
+                  type="button"
+                  ref={formatButtonRef}
+                  aria-haspopup="listbox"
+                  aria-expanded={formatMenuOpen}
+                  onClick={() => setFormatMenuOpen((open) => !open)}
+                  className={cn(
+                    "group inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition-ui",
+                    "bg-white/5 text-slate-200 border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+                    "hover:border-cyan-400/50 hover:text-white focus-visible:outline-none",
+                    formatMenuOpen ? "border-cyan-400/60" : ""
+                  )}
+                >
+                  <span className="relative flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/90 shadow-[0_0_8px_rgba(34,211,238,0.55)]"></span>
+                    {currentFormat.label}
+                  </span>
+                  <ChevronDown
+                    size={14}
                     className={cn(
-                      "group inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-ui",
-                      "bg-white/5 text-slate-200 border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-                      "hover:border-cyan-400/50 hover:text-white focus-visible:outline-none",
-                      formatMenuOpen ? "border-cyan-400/60" : ""
+                      "transition-transform duration-200 text-slate-400 group-hover:text-cyan-200",
+                      formatMenuOpen ? "rotate-180 text-cyan-200" : ""
                     )}
-                  >
-                    <span className="relative flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/90 shadow-[0_0_8px_rgba(34,211,238,0.55)]"></span>
-                      {currentFormat.label}
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className={cn(
-                        "transition-transform duration-200 text-slate-400 group-hover:text-cyan-200",
-                        formatMenuOpen ? "rotate-180 text-cyan-200" : ""
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
+                    aria-hidden="true"
+                  />
+                </button>
 
-                  <AnimatePresence>
-                    {formatMenuOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                        transition={SPRING_FAST}
-                        className="absolute right-0 mt-2 w-44 rounded-2xl border border-white/10 bg-slate-950/90 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-xl p-1.5 z-50"
-                        role="listbox"
-                        aria-label="Format"
-                      >
-                        <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"></div>
-                        {formatOptions.map((option, index) => (
-                          <motion.button
-                            key={option.value}
-                            type="button"
-                            role="option"
-                            data-testid={`format-option-${option.value}`}
-                            aria-selected={format === option.value}
-                            initial={{ opacity: 0, x: -4 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ ...SPRING_FAST, delay: index * 0.03 }}
-                            onClick={() => {
-                              setFormat(option.value);
-                              setFormatMenuOpen(false);
-                              formatButtonRef.current?.focus();
-                            }}
-                            className={cn(
-                              "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-ui flex items-center gap-2",
-                              format === option.value
-                                ? "bg-cyan-400/10 text-cyan-200"
-                                : "text-slate-200 hover:bg-white/5 hover:text-white"
-                            )}
-                          >
-                            <span className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.35)]", option.accent)}></span>
-                            <span>{option.label}</span>
-                          </motion.button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                <AnimatePresence>
+                  {formatMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      transition={SPRING_FAST}
+                      className="absolute right-0 mt-2 w-44 rounded-2xl border border-white/10 bg-slate-950/90 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-xl p-1.5 z-50"
+                      role="listbox"
+                      aria-label="Format"
+                    >
+                      <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"></div>
+                      {FORMAT_OPTIONS.map((option, index) => (
+                        <motion.button
+                          key={option.value}
+                          type="button"
+                          role="option"
+                          data-testid={`format-option-${option.value}`}
+                          aria-selected={format === option.value}
+                          initial={{ opacity: 0, x: -4 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ ...SPRING_FAST, delay: index * 0.03 }}
+                          onClick={() => {
+                            setFormat(option.value);
+                            setFormatMenuOpen(false);
+                            formatButtonRef.current?.focus();
+                          }}
+                          className={cn(
+                            "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-ui flex items-center gap-2",
+                            format === option.value
+                              ? "bg-cyan-400/10 text-cyan-200"
+                              : "text-slate-200 hover:bg-white/5 hover:text-white"
+                          )}
+                        >
+                          <span className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.35)]", option.accent)}></span>
+                          <span>{option.label}</span>
+                        </motion.button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
-            <div className="relative">
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               <textarea
                 id="goal-input"
                 name="goal"
                 data-testid="goal-input"
+                rows={2}
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder="Example: Audit the dashboard UI for clarity, accessibility, and visual hierarchy…"
                 autoComplete="off"
-                className="w-full bg-white/[0.03] border border-white/10 rounded-3xl p-6 text-lg text-slate-100 focus-visible:outline-none focus-visible:border-cyan-400/50 transition-ui min-h-[140px] resize-none leading-relaxed placeholder:text-slate-500 font-medium"
+                className="w-full bg-white/[0.03] border border-white/10 rounded-3xl p-2.5 text-[13px] text-slate-100 focus-visible:outline-none focus-visible:border-cyan-400/50 transition-ui h-[72px] max-h-[96px] resize-none leading-normal placeholder:text-slate-500 font-medium"
               />
 
-              <div className="mt-5 flex items-center justify-between gap-3">
+              {showOnlineSkillsToggle && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-2.5 py-1.5">
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center gap-2 text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={onlineSkills}
+                        disabled={externalSkillsEnabled && !externalSkillsAllowRemote && !import.meta.env.DEV}
+                        onChange={(e) => setOnlineSkills(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30 disabled:opacity-50"
+                      />
+                      Search online for skills
+                    </label>
+                    {externalSkillsEnabled && !externalSkillsAllowRemote && !import.meta.env.DEV && (
+                      <div className="text-[10px] text-slate-500">
+                        Remote providers are disabled in Settings.
+                      </div>
+                    )}
+                    {!externalSkillsEnabled && import.meta.env.DEV && (
+                      <div className="text-[10px] text-slate-500">
+                        Dev mode: requires server env `CORTEX_DEV_MODE=1` if remote is disabled in Settings.
+                      </div>
+                    )}
+                  </div>
+
+                  {onlineSkills && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400" ref={trainingMenuRef}>
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.22em]">Training</span>
+                      <div className="relative z-40">
+                        <button
+                          type="button"
+                          ref={trainingButtonRef}
+                          aria-haspopup="listbox"
+                          aria-expanded={trainingMenuOpen}
+                          onClick={() => setTrainingMenuOpen((open) => !open)}
+                          className={cn(
+                            "group inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] transition-ui",
+                            "bg-white/5 text-slate-200 border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+                            "hover:border-cyan-400/50 hover:text-white focus-visible:outline-none",
+                            trainingMenuOpen ? "border-cyan-400/60" : ""
+                          )}
+                        >
+                          <span className="relative flex items-center gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/90 shadow-[0_0_8px_rgba(34,211,238,0.55)]"></span>
+                            {currentTraining.label}
+                          </span>
+                          <ChevronDown
+                            size={14}
+                            className={cn(
+                              "transition-transform duration-200 text-slate-400 group-hover:text-cyan-200",
+                              trainingMenuOpen ? "rotate-180 text-cyan-200" : ""
+                            )}
+                            aria-hidden="true"
+                          />
+                        </button>
+
+                        <AnimatePresence>
+                          {trainingMenuOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                              transition={SPRING_FAST}
+                              className="absolute right-0 mt-2 w-44 rounded-2xl border border-white/10 bg-slate-950/90 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-xl p-1.5 z-50"
+                              role="listbox"
+                              aria-label="Training"
+                            >
+                              <div className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"></div>
+                              {trainingOptions.map((option, index) => (
+                                <motion.button
+                                  key={option.value}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={onlineSkillsTrainingMode === option.value}
+                                  initial={{ opacity: 0, x: -4 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ ...SPRING_FAST, delay: index * 0.03 }}
+                                  onClick={() => {
+                                    setOnlineSkillsTrainingMode(option.value);
+                                    setTrainingMenuOpen(false);
+                                    trainingButtonRef.current?.focus();
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-ui flex items-center gap-2",
+                                    onlineSkillsTrainingMode === option.value
+                                      ? "bg-cyan-400/10 text-cyan-200"
+                                      : "text-slate-200 hover:bg-white/5 hover:text-white"
+                                  )}
+                                >
+                                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/90 shadow-[0_0_6px_rgba(34,211,238,0.55)]"></span>
+                                  <span>{option.label}</span>
+                                </motion.button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 pt-0">
                 <button
                   type="button"
                   onClick={() => setShowSaveModal(true)}
                   disabled={!goal}
                   data-testid="save-prompt-btn"
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-ui border",
+                    "flex items-center gap-2 px-3 py-2 rounded-full text-[11px] font-semibold uppercase tracking-[0.2em] transition-ui border",
                     justSaved
                       ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
                       : "bg-white/5 text-slate-300 border-white/10 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40"
@@ -1161,7 +1273,7 @@ function OrchestratorView({
                   onClick={handleSpawn}
                   disabled={loading || !goal}
                   data-testid="generate-flight-plan"
-                  className="flex items-center gap-2 px-5 py-3 bg-cyan-500 hover:bg-cyan-400 text-white rounded-full shadow-lg shadow-cyan-500/20 transition-ui text-sm font-semibold disabled:opacity-50 disabled:shadow-none"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-cyan-500/40 bg-cyan-500/20 text-slate-100 uppercase tracking-[0.2em] text-[11px] font-semibold transition-ui hover:bg-cyan-500/30 hover:text-white disabled:opacity-50"
                   title="Generate Flight Plan"
                 >
                   {loading ? <RefreshCw size={18} className="animate-spin text-white" aria-hidden="true" /> : <ChevronRight size={18} className="text-white" aria-hidden="true" />}
@@ -1169,7 +1281,7 @@ function OrchestratorView({
                 </button>
               </div>
               {queueEnabled && (
-                <label className="mt-4 flex items-center gap-2 text-xs text-slate-400">
+                <label className="flex items-center gap-2 text-[11px] text-slate-400">
                   <input
                     type="checkbox"
                     checked={runInBackground}
@@ -1183,7 +1295,7 @@ function OrchestratorView({
 
             {/* Status Timeline */}
             {spawnSteps.length > 0 && (
-              <div className="mt-6 p-4 bg-white/[0.04] rounded-2xl border border-white/[0.08]">
+              <div className="mt-3 p-4 bg-white/[0.04] rounded-2xl border border-white/[0.08]">
                 <SpawnTimeline steps={spawnSteps} />
               </div>
             )}
@@ -1630,10 +1742,12 @@ function HomeView({
   );
 }
 
-function RunsView({ runs }) {
+function RunsView({ runs, apiFetch }) {
   const [selectedId, setSelectedId] = useState(runs[0]?.id || null);
   const [query, setQuery] = useState('');
   const [compareId, setCompareId] = useState('');
+  const [exporting, setExporting] = useState('');
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     if (!selectedId && runs.length > 0) {
@@ -1676,6 +1790,38 @@ function RunsView({ runs }) {
   const resourceRerankLabel = matrix.resourceSelection?.rerankUsed ? 'used' : 'not used';
   const perfTotal = selected?.performance?.totalMs ?? selected?.durationMs ?? 0;
   const perfSpans = Array.isArray(selected?.performance?.spans) ? selected.performance.spans : [];
+
+  const planFileName = selected?.outputPath
+    ? selected.outputPath.split(/[\\/]/).pop()
+    : `cortex-run-${selected?.id || 'plan'}.md`;
+
+  const handleExport = async (type) => {
+    if (!selected || !apiFetch) return;
+    setExporting(type);
+    setExportError('');
+    try {
+      const endpoint = type === 'plan'
+        ? `/runs/${selected.id}/plan`
+        : `/runs/${selected.id}/export?includeOutput=true`;
+      const res = await apiFetch(endpoint);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = type === 'plan' ? planFileName : `cortex-run-${selected.id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e.message || 'Export failed');
+    }
+    setExporting('');
+  };
 
   return (
     <motion.div
@@ -1729,9 +1875,27 @@ function RunsView({ runs }) {
         {selected && (
           <>
             <div className="glass-panel rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run Detail</div>
-                <span className="text-[10px] text-slate-500 font-mono">{selected.id}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] text-slate-500 font-mono">{selected.id}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleExport('json')}
+                    disabled={exporting === 'json'}
+                    className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-xs border border-slate-700/60 disabled:opacity-50"
+                  >
+                    {exporting === 'json' ? 'Exporting...' : 'Export JSON'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExport('plan')}
+                    disabled={!selected.outputPath || exporting === 'plan'}
+                    className="px-3 py-1.5 rounded-2xl bg-slate-800/70 hover:bg-slate-800 text-slate-200 text-xs border border-slate-700/60 disabled:opacity-50"
+                  >
+                    {exporting === 'plan' ? 'Exporting...' : 'Download plan'}
+                  </button>
+                </div>
               </div>
               <div className="text-lg font-semibold text-white leading-snug mb-4">{selected.goal}</div>
               <div className="grid sm:grid-cols-2 gap-4 text-sm text-slate-300">
@@ -1759,6 +1923,11 @@ function RunsView({ runs }) {
               {selected.metrics?.issues?.length > 0 && (
                 <div className="mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
                   {selected.metrics.issues.join(' • ')}
+                </div>
+              )}
+              {exportError && (
+                <div className="mt-4 text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-xl px-3 py-2">
+                  {exportError}
                 </div>
               )}
             </div>
@@ -2992,14 +3161,14 @@ function NavItem({ icon: Icon, label, active, badge, href, onClick, testId }) {
       aria-current={active ? 'page' : undefined}
       data-testid={testId}
       className={cn(
-        "nav-pill w-full flex items-center gap-3 px-4 py-3 rounded-full transition-ui text-sm font-semibold group no-underline",
+        "nav-pill w-full flex items-center gap-3 px-4 py-2.5 rounded-full transition-ui text-[11px] font-semibold group no-underline",
         active
           ? "nav-pill-active text-slate-100"
           : "text-slate-400 hover:text-slate-200"
       )}
     >
       <Icon size={20} className={cn("", active ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300")} aria-hidden="true" />
-      <span>{label}</span>
+      <span className="font-display uppercase tracking-[0.26em] text-[11px] leading-none">{label}</span>
 
       {badge && (
         <span className={cn("ml-auto tag-chip tag-chip-muted tabular-nums", active ? "text-slate-100" : "text-slate-300")}>
@@ -3028,7 +3197,16 @@ function App() {
   const repoNoticeTimeoutRef = useRef(null);
   const [logs, setLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [view, setView] = useState('home');
+  const [view, setView] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get('view');
+    const normalized = urlView === 'dashboard'
+      ? 'home'
+      : urlView === 'repos' || urlView === 'repositories'
+        ? 'knowledge'
+        : urlView;
+    return (normalized && VIEW_KEYS.includes(normalized)) ? normalized : 'home';
+  });
   const [spawnResult, setSpawnResult] = useState('');
   const [dirtyGoal, setDirtyGoal] = useState(false);
   const [runs, setRuns] = useState([]);
@@ -3130,19 +3308,6 @@ function App() {
       console.error('Checklist copy failed:', err);
     }
   };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlView = params.get('view');
-    const normalizedView = urlView === 'dashboard'
-      ? 'home'
-      : urlView === 'repos' || urlView === 'repositories'
-        ? 'knowledge'
-        : urlView;
-    if (normalizedView && VIEW_KEYS.includes(normalizedView)) {
-      setView(normalizedView);
-    }
-  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -3605,6 +3770,8 @@ function App() {
       const data = await res.json();
       if (data.success) {
         setDatasets(prev => [data.dataset, ...prev]);
+        addLog(`Dataset created: ${name}`);
+        fetchEvaluations();
         return data.dataset;
       }
     } catch (e) {
@@ -3619,6 +3786,7 @@ function App() {
       const data = await res.json();
       if (data.success) {
         setDatasets(prev => prev.filter(dataset => dataset.id !== id));
+        addLog(`Dataset deleted: ${id}`);
         return true;
       }
     } catch (e) {
@@ -3655,6 +3823,7 @@ function App() {
       const data = await res.json();
       if (data.success) {
         setEvaluations(prev => [data.evaluation, ...prev]);
+        addLog(`Evaluation created for dataset ${datasetId}`);
         return data.evaluation;
       }
     } catch (e) {
@@ -3974,7 +4143,7 @@ function App() {
     if (shouldRefresh) fetchData();
   };
 
-  const handleSpawn = async (goal, format = 'universal', runInBackground = false) => {
+  const handleSpawn = async (goal, format = 'universal', runInBackground = false, externalSkillsRequest = null) => {
     setLoading(true);
     setSpawnResult('');
     addLog(`Orchestrating agent for: “${goal}”…`);
@@ -3982,7 +4151,7 @@ function App() {
       const res = await apiFetch(`/spawn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal, format, async: runInBackground })
+        body: JSON.stringify({ goal, format, async: runInBackground, externalSkills: externalSkillsRequest })
       });
       const data = await res.json();
       if (data.success) {
@@ -4013,8 +4182,22 @@ function App() {
   };
 
   const addLog = (msg) => {
-    setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
+    setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 200));
   };
+
+  /* Seed system logs from recent audit trail so Logs view is never empty on load */
+  useEffect(() => {
+    if (auditLogs.length > 0 && logs.length === 0) {
+      const seeded = auditLogs.slice(0, 20).reverse().map(entry => {
+        const rawTs = entry.ts || entry.timestamp;
+        const ts = rawTs ? new Date(rawTs).toLocaleTimeString() : '—';
+        const meta = entry.metadata || entry.meta || {};
+        const detail = meta.name || meta.source || meta.id || '';
+        return `[${ts}] ${entry.event}${detail ? ': ' + detail : ''}`;
+      });
+      setLogs(seeded);
+    }
+  }, [auditLogs]);
 
   if (authStatus.enabled && !authReady) {
     return (
@@ -4119,6 +4302,9 @@ function App() {
 
   const headerMeta = viewMeta[view] || viewMeta.home;
   const showHeader = !['agents', 'home'].includes(view);
+  const mainPadding = view === 'agents'
+    ? 'pl-4 pr-6 pt-4 pb-8'
+    : 'pl-4 pr-6 py-8';
   const handleViewChange = (nextView) => {
     if (nextView === view) return;
     if (dirtyGoal && view === 'agents') {
@@ -4129,8 +4315,12 @@ function App() {
     setView(nextView);
   };
 
-  const handleLibraryUsePrompt = (query) => {
+  const handleAgentUsePrompt = (query) => {
     setPrefillGoal(query);
+  };
+
+  const handleLibraryUsePrompt = (query) => {
+    handleAgentUsePrompt(query);
     handleViewChange('agents');
   };
 
@@ -4217,7 +4407,7 @@ function App() {
             <NavItem
               icon={FlaskConical}
               label="Evaluations"
-              badge={evaluations.length}
+              badge={datasets.length + evaluations.length}
               active={view === 'evaluations'}
               href="?view=evaluations"
               onClick={() => handleViewChange('evaluations')}
@@ -4274,9 +4464,18 @@ function App() {
               <div className={`w-2.5 h-2.5 rounded-full ${status === 'Online' ? 'bg-emerald-500' : 'bg-red-500'} z-10 relative`}></div>
               <div className={`absolute inset-0 rounded-full ${status === 'Online' ? 'bg-emerald-500' : 'bg-red-500'} animate-ping opacity-75`}></div>
             </div>
-            <span className={`text-xs font-bold uppercase tracking-wider ${status === 'Online' ? 'text-emerald-400' : 'text-red-400'}`}>System {status}</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-[0.28em] font-display ${status === 'Online' ? 'text-emerald-400' : 'text-red-400'}`}>System {status}</span>
           </div>
-          <div className="text-[10px] text-slate-600 font-mono mt-2">v2.1.0 • Cross-Platform</div>
+          <div className="text-[10px] text-slate-600 font-display mt-2">v{APP_VERSION} • Cross-Platform</div>
+          <a
+            href={MANUAL_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] font-display text-slate-400 hover:text-slate-200 transition-ui"
+          >
+            <BookOpen size={14} aria-hidden="true" />
+            User Manual
+          </a>
           {authStatus.enabled && authUser && (
             <div className="mt-4 text-xs text-slate-400">
               <div>Signed in as <span className="text-slate-200">{authUser.username}</span></div>
@@ -4294,24 +4493,33 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main id="main-content" className="flex-1 pl-4 pr-6 py-8 min-w-0">
+      <main id="main-content" className={cn("flex-1 min-w-0", mainPadding)}>
 
         {/* Top Bar */}
         {showHeader && (
           <header className="top-bar flex justify-between items-center mb-8 py-4">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-white mb-2 font-display">{headerMeta.title}</h1>
-              <p className="text-sm text-slate-500 font-medium">{headerMeta.subtitle}</p>
+              <h1 className="text-2xl font-semibold tracking-[0.04em] text-slate-100 mb-2 font-display">{headerMeta.title}</h1>
+              <p className="text-[11px] uppercase tracking-[0.32em] text-slate-500 font-semibold">{headerMeta.subtitle}</p>
             </div>
-            {activeWorkspace && (
-              <div className="flex items-center gap-3">
-                <div className="px-4 py-2 rounded-2xl border border-slate-800/70 bg-slate-900/40 flex items-center gap-3">
-                  <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500">Workspace</span>
+            <div className="flex items-center gap-3">
+              <a
+                href={MANUAL_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-2xl border border-slate-800/70 bg-slate-900/50 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300 hover:text-white transition-ui"
+              >
+                <BookOpen size={14} aria-hidden="true" />
+                User Manual
+              </a>
+              {activeWorkspace && (
+                <div className="px-4 py-2 rounded-2xl border border-slate-800/70 bg-slate-900/50 flex items-center gap-3">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-slate-500">Workspace</span>
                   {authUser?.role === 'admin' && workspaces.length > 1 ? (
                     <select
                       value={activeWorkspace.id}
                       onChange={(e) => handleWorkspaceSwitch(e.target.value)}
-                      className="bg-transparent text-sm text-slate-100 font-semibold focus:outline-none"
+                      className="bg-transparent text-xs text-slate-100 font-semibold focus:outline-none"
                     >
                       {workspaces.map((workspace) => (
                         <option key={workspace.id} value={workspace.id} className="bg-slate-950 text-slate-100">
@@ -4325,8 +4533,8 @@ function App() {
                     </span>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </header>
         )}
 
@@ -4357,23 +4565,24 @@ function App() {
               savedPrompts={savedPrompts}
               onSavePrompt={savePrompt}
               onDeletePrompt={deletePrompt}
-              onUsePrompt={() => {}}
+              onUsePrompt={handleAgentUsePrompt}
               onDirtyChange={setDirtyGoal}
               prefillGoal={prefillGoal}
               onPrefillConsumed={handlePrefillConsumed}
               queueEnabled={appConfig?.config?.queue?.enabled === true}
+              externalSkillsConfig={appConfig?.config?.externalSkills}
             />
           )}
 
           {view === 'runs' && (
-            <RunsView runs={runs} />
+            <RunsView runs={runs} apiFetch={apiFetch} />
           )}
 
           {view === 'jobs' && (
             <JobsView jobs={jobs} onCancelJob={cancelJob} />
           )}
 
-            {view === 'evaluations' && (
+          {view === 'evaluations' && (
             <EvaluationsView
               datasets={datasets}
               runs={runs}
@@ -4558,6 +4767,7 @@ function App() {
               apiFetch={apiFetch}
               cn={cn}
               defaultRbacRoles={DEFAULT_RBAC_ROLES}
+              manualUrl={MANUAL_URL}
               transition={SPRING_SMOOTH}
             />
           )}

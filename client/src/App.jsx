@@ -1643,7 +1643,7 @@ function HomeView({
             <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Quickstart</div>
             <span className="text-[10px] text-slate-500">Keep momentum</span>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 pl-1">
             {steps.map((step, index) => (
               <div key={index} className="flex items-center gap-3">
                 <div className={cn(

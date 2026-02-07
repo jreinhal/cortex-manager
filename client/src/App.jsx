@@ -1879,6 +1879,14 @@ function RunsView({ runs, apiFetch }) {
                 <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Run Detail</div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[10px] text-slate-500 font-mono">{selected.id}</span>
+                  {selected.metrics?.issues?.length > 0 && (
+                    <span
+                      className="px-2 py-1 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[10px] font-semibold uppercase tracking-[0.2em]"
+                      title={selected.metrics.issues.join(' • ')}
+                    >
+                      {selected.metrics.issues[0]}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleExport('json')}
@@ -1920,11 +1928,6 @@ function RunsView({ runs, apiFetch }) {
                   <div>{selected.metrics?.costEstimated ?? selected.usage?.costEstimated ?? '—'} {selected.metrics?.currency || selected.usage?.currency || ''}</div>
                 </div>
               </div>
-              {selected.metrics?.issues?.length > 0 && (
-                <div className="mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
-                  {selected.metrics.issues.join(' • ')}
-                </div>
-              )}
               {exportError && (
                 <div className="mt-4 text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-xl px-3 py-2">
                   {exportError}

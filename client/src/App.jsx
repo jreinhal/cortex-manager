@@ -1884,7 +1884,7 @@ function RunsView({ runs, apiFetch }) {
                       className="px-2 py-1 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[10px] font-semibold uppercase tracking-[0.2em]"
                       title={selected.metrics.issues.join(' • ')}
                     >
-                      {selected.metrics.issues[0]}
+                      {selected.metrics.issues.length > 1 ? `${selected.metrics.issues.length} issues` : selected.metrics.issues[0]}
                     </span>
                   )}
                   <button

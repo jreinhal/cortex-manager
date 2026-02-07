@@ -3237,6 +3237,7 @@ function App() {
   const [repos, setRepos] = useState([]);
   const [categories, setCategories] = useState([]);
   const [categorySizes, setCategorySizes] = useState({});
+  const [externalSkillsInstalled, setExternalSkillsInstalled] = useState([]);
   const [status, setStatus] = useState('Online');
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -3558,6 +3559,7 @@ function App() {
     fetchWorkspaces();
     fetchRepos();
     fetchCategories();
+    fetchExternalSkillsInstalled();
     fetchRuns();
     fetchAuditLogs();
     fetchDatasets();
@@ -3748,6 +3750,17 @@ function App() {
       }
     } catch (e) {
       console.error("Failed to fetch category sizes", e);
+    }
+  };
+
+  const fetchExternalSkillsInstalled = async () => {
+    try {
+      const res = await apiFetch(`/external-skills/installed`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setExternalSkillsInstalled(Array.isArray(data?.installed) ? data.installed : []);
+    } catch (e) {
+      console.error('Failed to fetch external skills:', e);
     }
   };
 
@@ -4305,6 +4318,11 @@ function App() {
   categories.forEach(cat => {
     categorized[cat] = repos.filter(r => r.Purpose?.toLowerCase().includes(cat.toLowerCase()));
   });
+  const externalSkillsCount = externalSkillsInstalled.length;
+  const latestExternalSkills = runs[0]?.decisionMatrix?.resourceSelection?.externalSkills || null;
+  const externalSkillsInstalledThisRun = Array.isArray(latestExternalSkills?.installed)
+    ? latestExternalSkills.installed.filter((item) => item?.installed === true).length
+    : 0;
 
   const viewMeta = {
     home: {
@@ -4676,32 +4694,54 @@ function App() {
                 {categories.length === 0 ? (
                   <div className="text-sm text-slate-500 py-4">Initializing Knowledge Base…</div>
                 ) : (
-                  <div className="flex flex-wrap items-center gap-6">
-                    {categories.map((cat, i) => {
-                      const sizeBytes = categorySizes[cat.toLowerCase()] ?? 0;
-                      const testKey = cat.toLowerCase();
-                      const count = categorized[cat] ? categorized[cat].length : 0;
-                      return (
-                        <div
-                          key={cat}
-                          data-testid={`stat-card-${testKey}`}
-                          className="flex items-center gap-4 pr-6 border-r border-white/5 last:border-r-0"
-                        >
-                          <div>
-                            <div className="text-[10px] font-medium text-slate-500 tracking-[0.18em] uppercase">
-                              {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                            </div>
-                            <div className="text-2xl font-semibold text-slate-100 tabular-nums">
-                              {count}
-                            </div>
-                            <div className="text-[11px] text-slate-500" data-testid={`stat-size-${testKey}`}>
-                              Size {formatBytes(sizeBytes)}
+                    <div className="flex flex-wrap items-center gap-6">
+                      {categories.map((cat, i) => {
+                        const sizeBytes = categorySizes[cat.toLowerCase()] ?? 0;
+                        const testKey = cat.toLowerCase();
+                        const count = categorized[cat] ? categorized[cat].length : 0;
+                        const label = cat.toLowerCase() === 'skills' ? 'Skill Repos' : cat;
+                        return (
+                          <div
+                            key={cat}
+                            data-testid={`stat-card-${testKey}`}
+                            className="flex items-center gap-4 pr-6 border-r border-white/5 last:border-r-0"
+                          >
+                            <div>
+                              <div className="text-[10px] font-medium text-slate-500 tracking-[0.18em] uppercase">
+                                {label}
+                              </div>
+                              <div className="text-2xl font-semibold text-slate-100 tabular-nums">
+                                {count}
+                              </div>
+                              <div className="text-[11px] text-slate-500" data-testid={`stat-size-${testKey}`}>
+                                Size {formatBytes(sizeBytes)}
+                              </div>
                             </div>
                           </div>
+                        );
+                      })}
+                      <div
+                        data-testid="stat-card-external-skills"
+                        className="flex items-center gap-4 pr-6"
+                      >
+                        <div>
+                          <div className="text-[10px] font-medium text-slate-500 tracking-[0.18em] uppercase">
+                            External Skills
+                          </div>
+                          <div className="text-2xl font-semibold text-slate-100 tabular-nums">
+                            {externalSkillsCount}
+                            {externalSkillsInstalledThisRun > 0 && (
+                              <span className="ml-2 inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                                +{externalSkillsInstalledThisRun}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Installed from providers
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    </div>
                 )}
               </div>
 

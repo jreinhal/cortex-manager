@@ -34,8 +34,43 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(bodyParser.json());
 const manualDir = path.resolve(__dirname, '..', 'docs', 'user-manual');
+const manualMarkdownPath = path.resolve(__dirname, '..', 'USER_MANUAL.md');
 if (fs.existsSync(manualDir)) {
   app.use('/manual', express.static(manualDir));
+} else if (fs.existsSync(manualMarkdownPath)) {
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const renderManual = () => {
+    const markdown = fs.readFileSync(manualMarkdownPath, 'utf8');
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CORTEX User Manual</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #e2e8f0; background: #0f172a; }
+    pre { white-space: pre-wrap; line-height: 1.6; font-size: 14px; }
+    h1 { font-size: 20px; }
+  </style>
+</head>
+<body>
+  <h1>CORTEX User Manual</h1>
+  <pre>${escapeHtml(markdown)}</pre>
+</body>
+</html>`;
+  };
+
+  app.get('/manual', (req, res) => res.redirect('/manual/index.html'));
+  app.get('/manual/index.html', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderManual());
+  });
 }
 app.use(auth.middleware);
 app.use((req, res, next) => {

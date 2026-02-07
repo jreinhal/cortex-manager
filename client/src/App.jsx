@@ -828,7 +828,8 @@ function OrchestratorView({
   prefillGoal,
   onPrefillConsumed,
   queueEnabled,
-  externalSkillsConfig
+  externalSkillsConfig,
+  latestRun
 }) {
   const [goal, setGoal] = useState('');
   const [format, setFormat] = useState(DEFAULT_FORMAT);
@@ -858,6 +859,27 @@ function OrchestratorView({
     { value: 'background', label: 'Background' }
   ];
   const currentTraining = trainingOptions.find((option) => option.value === onlineSkillsTrainingMode) || trainingOptions[0];
+  const latestExternalSkills = latestRun?.decisionMatrix?.resourceSelection?.externalSkills || null;
+  const externalSkillsInstalled = Array.isArray(latestExternalSkills?.installed)
+    ? latestExternalSkills.installed
+        .filter((item) => item && (item.installed || item.alreadyInstalled) && item.slug)
+        .map((item) => (item.providerId ? `${item.providerId}:${item.slug}` : item.slug))
+    : [];
+  const externalSkillsStatus = (() => {
+    if (!latestExternalSkills) return null;
+    if (latestExternalSkills.error) return { tone: 'error', label: `Error: ${latestExternalSkills.error}` };
+    if (latestExternalSkills.skippedReason) {
+      return { tone: 'warn', label: `Skipped (${latestExternalSkills.skippedReason.replace(/_/g, ' ')})` };
+    }
+    if (latestExternalSkills.enabled !== true || latestExternalSkills.mode === 'off') {
+      return { tone: 'muted', label: 'Disabled' };
+    }
+    if (latestExternalSkills.used) return { tone: 'success', label: `Used (${latestExternalSkills.mode})` };
+    return { tone: 'info', label: `Enabled (${latestExternalSkills.mode})` };
+  })();
+  const externalSkillsSummary = externalSkillsInstalled.length > 0
+    ? `Installed: ${externalSkillsInstalled.slice(0, 3).join(', ')}${externalSkillsInstalled.length > 3 ? ` +${externalSkillsInstalled.length - 3}` : ''}`
+    : null;
 
   useEffect(() => {
     if (onDirtyChange) {
@@ -1297,6 +1319,30 @@ function OrchestratorView({
             {spawnSteps.length > 0 && (
               <div className="mt-3 p-4 bg-white/[0.04] rounded-2xl border border-white/[0.08]">
                 <SpawnTimeline steps={spawnSteps} />
+              </div>
+            )}
+            {externalSkillsStatus && (
+              <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-slate-400">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="uppercase tracking-[0.22em] text-[10px] text-slate-500 font-semibold">
+                    Last run external skills
+                  </span>
+                  <span
+                    className={cn(
+                      "text-xs font-semibold",
+                      externalSkillsStatus.tone === 'error' && "text-red-300",
+                      externalSkillsStatus.tone === 'warn' && "text-amber-300",
+                      externalSkillsStatus.tone === 'success' && "text-emerald-300",
+                      externalSkillsStatus.tone === 'info' && "text-slate-200",
+                      externalSkillsStatus.tone === 'muted' && "text-slate-500"
+                    )}
+                  >
+                    {externalSkillsStatus.label}
+                  </span>
+                  {externalSkillsSummary && (
+                    <span className="text-slate-500">{externalSkillsSummary}</span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -4574,6 +4620,7 @@ function App() {
               onPrefillConsumed={handlePrefillConsumed}
               queueEnabled={appConfig?.config?.queue?.enabled === true}
               externalSkillsConfig={appConfig?.config?.externalSkills}
+              latestRun={runs[0] || null}
             />
           )}
 

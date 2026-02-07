@@ -109,6 +109,18 @@ const DEFAULT_CONFIG = {
       weight: 0.45
     }
   },
+  stackProfile: {
+    enabled: false,
+    mode: 'soft',
+    include: {
+      languages: [],
+      frameworks: [],
+      tools: [],
+      platforms: [],
+      tags: []
+    },
+    exclude: []
+  },
   llm: {
     enabled: true,
     provider: 'openai-compatible',
@@ -535,6 +547,17 @@ function getConfig() {
     ...DEFAULT_CONFIG.decisionMatrix,
     ...(config.decisionMatrix || {})
   };
+  config.stackProfile = {
+    ...DEFAULT_CONFIG.stackProfile,
+    ...(config.stackProfile || {})
+  };
+  config.stackProfile.include = {
+    ...DEFAULT_CONFIG.stackProfile.include,
+    ...(config.stackProfile.include || {})
+  };
+  config.stackProfile.exclude = Array.isArray(config.stackProfile.exclude)
+    ? config.stackProfile.exclude
+    : DEFAULT_CONFIG.stackProfile.exclude.slice();
   config.llm = {
     ...DEFAULT_CONFIG.llm,
     ...(config.llm || {})

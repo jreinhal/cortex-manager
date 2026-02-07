@@ -253,6 +253,18 @@
       }
     ]
   },
+  "stackProfile": {
+    "enabled": false,
+    "mode": "soft",
+    "include": {
+      "languages": [],
+      "frameworks": [],
+      "tools": [],
+      "platforms": [],
+      "tags": []
+    },
+    "exclude": []
+  },
   "clawhub": {
     "enabled": false,
     "allowRemote": false,

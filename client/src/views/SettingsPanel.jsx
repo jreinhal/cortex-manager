@@ -85,6 +85,14 @@ export function SettingsPanel({
   const [externalSkillsProvidersJson, setExternalSkillsProvidersJson] = useState(() => (
     JSON.stringify(config?.config?.externalSkills?.providers || [], null, 2)
   ));
+  const [stackProfileEnabled, setStackProfileEnabled] = useState(config?.config?.stackProfile?.enabled ?? false);
+  const [stackProfileMode, setStackProfileMode] = useState(config?.config?.stackProfile?.mode || 'soft');
+  const [stackProfileLanguages, setStackProfileLanguages] = useState((config?.config?.stackProfile?.include?.languages || []).join(', '));
+  const [stackProfileFrameworks, setStackProfileFrameworks] = useState((config?.config?.stackProfile?.include?.frameworks || []).join(', '));
+  const [stackProfileTools, setStackProfileTools] = useState((config?.config?.stackProfile?.include?.tools || []).join(', '));
+  const [stackProfilePlatforms, setStackProfilePlatforms] = useState((config?.config?.stackProfile?.include?.platforms || []).join(', '));
+  const [stackProfileTags, setStackProfileTags] = useState((config?.config?.stackProfile?.include?.tags || []).join(', '));
+  const [stackProfileExclude, setStackProfileExclude] = useState((config?.config?.stackProfile?.exclude || []).join(', '));
   const [externalSkillsError, setExternalSkillsError] = useState('');
   const [externalSkillsUpdates, setExternalSkillsUpdates] = useState(null);
   const [externalSkillsUpdatesLoading, setExternalSkillsUpdatesLoading] = useState(false);
@@ -107,6 +115,12 @@ export function SettingsPanel({
   const [editingWorkspaceId, setEditingWorkspaceId] = useState(null);
   const defaultWorkspaceId = config?.config?.workspaces?.defaultId;
   const resolvedManualUrl = manualUrl || '/manual/index.html';
+  const parseTokenList = (value) => Array.from(new Set(
+    (value || '')
+      .split(/[,\\n]/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  ));
 
   const handleSave = async () => {
     // Guard against empty submissions
@@ -214,6 +228,20 @@ export function SettingsPanel({
         alertTokens: Number(alertTokens) || 0,
         alertDurationMs: Number(alertDuration) || 0
       };
+      const stackProfile = {
+        ...(config?.config?.stackProfile || {}),
+        enabled: stackProfileEnabled,
+        mode: stackProfileMode,
+        include: {
+          ...(config?.config?.stackProfile?.include || {}),
+          languages: parseTokenList(stackProfileLanguages),
+          frameworks: parseTokenList(stackProfileFrameworks),
+          tools: parseTokenList(stackProfileTools),
+          platforms: parseTokenList(stackProfilePlatforms),
+          tags: parseTokenList(stackProfileTags)
+        },
+        exclude: parseTokenList(stackProfileExclude)
+      };
 
       let parsedExternalProviders = config?.config?.externalSkills?.providers || [];
       if (externalSkillsProvidersJson && externalSkillsProvidersJson.trim().length > 0) {
@@ -254,7 +282,17 @@ export function SettingsPanel({
       const res = await apiFetch(`/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reposRoot: reposRoot.trim(), llm, ui, auth: authConfig, queue, vectorIndex, observability, externalSkills })
+        body: JSON.stringify({
+          reposRoot: reposRoot.trim(),
+          llm,
+          ui,
+          auth: authConfig,
+          queue,
+          vectorIndex,
+          observability,
+          stackProfile,
+          externalSkills
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -535,6 +573,109 @@ export function SettingsPanel({
           </div>
           <p className="text-xs text-slate-500 mt-2">
             Dense mode increases data density for power users.
+          </p>
+        </div>
+
+        {/* Stack Profile */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Stack Profile
+          </label>
+          <div className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-4">
+            <label className="flex items-center gap-3 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={stackProfileEnabled}
+                onChange={(e) => setStackProfileEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Enable stack profile
+            </label>
+            <div className="grid sm:grid-cols-2 gap-4 items-start">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Mode</div>
+                <select
+                  value={stackProfileMode}
+                  onChange={(e) => setStackProfileMode(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                >
+                  <option value="soft">Soft match</option>
+                  <option value="strict">Strict match</option>
+                </select>
+              </div>
+              <p className="text-xs text-slate-500 mt-6">
+                Soft nudges results. Strict filters mismatches (except AGENTS.md).
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Languages</div>
+                <input
+                  type="text"
+                  value={stackProfileLanguages}
+                  onChange={(e) => setStackProfileLanguages(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="java, kotlin"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Frameworks</div>
+                <input
+                  type="text"
+                  value={stackProfileFrameworks}
+                  onChange={(e) => setStackProfileFrameworks(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="spring, junit"
+                />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Tools</div>
+                <input
+                  type="text"
+                  value={stackProfileTools}
+                  onChange={(e) => setStackProfileTools(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="maven, gradle"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Platforms</div>
+                <input
+                  type="text"
+                  value={stackProfilePlatforms}
+                  onChange={(e) => setStackProfilePlatforms(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="server, web"
+                />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Tags</div>
+                <input
+                  type="text"
+                  value={stackProfileTags}
+                  onChange={(e) => setStackProfileTags(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="backend, e2e"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Exclude</div>
+                <input
+                  type="text"
+                  value={stackProfileExclude}
+                  onChange={(e) => setStackProfileExclude(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="ios, android"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Comma or newline separated. Tokens are normalized to lowercase.
           </p>
         </div>
 

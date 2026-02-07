@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CORTEX User Manual</title>
+  <style>
+    :root {
+      /* Obsidian Dark (default) */
+      --bg: #0c141d;
+      --bg-gradient: linear-gradient(180deg, rgba(9, 13, 19, 0.98), rgba(7, 10, 15, 0.98));
+      --bg-radial-1: radial-gradient(1200px 720px at 8% -10%, rgba(93, 143, 176, 0.22), transparent 60%);
+      --bg-radial-2: radial-gradient(900px 540px at 92% 6%, rgba(47, 111, 138, 0.22), transparent 58%);
+      --card: rgba(12, 20, 29, 0.92);
+      --card-top: rgba(17, 28, 39, 0.92);
+      --card-bottom: rgba(10, 16, 24, 0.94);
+      --card-border: rgba(98, 117, 140, 0.18);
+      --card-highlight: rgba(255, 255, 255, 0.05);
+      --card-shadow: 0 18px 34px rgba(0, 0, 0, 0.45);
+      --header-bg: rgba(10, 16, 24, 0.98);
+      --header-border: rgba(98, 117, 140, 0.16);
+      --text: #e5ebf2;
+      --muted: #8a9aac;
+      --accent: #2f6f8a;
+      --accent-soft: rgba(47, 111, 138, 0.18);
+      --accent-strong: #255a70;
+      --border: rgba(98, 117, 140, 0.18);
+      --code-bg: rgba(10, 16, 24, 0.88);
+      --code-text: #c1ceda;
+      --inline-code-bg: rgba(255, 255, 255, 0.06);
+      --callout-bg: rgba(47, 111, 138, 0.12);
+      --callout-border: var(--accent);
+      --badge-bg: rgba(47, 111, 138, 0.22);
+      --badge-text: #7aa2ff;
+      --kbd-bg: rgba(255, 255, 255, 0.06);
+      --kbd-border: rgba(98, 117, 140, 0.22);
+      --figcaption-bg: rgba(10, 16, 24, 0.7);
+      --figure-bg: rgba(12, 20, 29, 0.6);
+      --nav-bg: rgba(12, 20, 29, 0.92);
+      --nav-link: #7aa2ff;
+      --selection-bg: rgba(93, 143, 176, 0.35);
+      --scrollbar-track: #111b26;
+      --scrollbar-thumb: rgba(37, 52, 70, 0.7);
+      --scrollbar-hover: rgba(51, 70, 92, 0.8);
+      color-scheme: dark;
+    }
+    html[data-theme="light"] {
+      --bg: #f4f7fb;
+      --bg-gradient: linear-gradient(180deg, rgba(248, 250, 253, 0.98), rgba(235, 242, 248, 0.98));
+      --bg-radial-1: radial-gradient(1200px 720px at 10% -12%, rgba(93, 143, 176, 0.2), transparent 60%);
+      --bg-radial-2: radial-gradient(900px 540px at 92% 6%, rgba(47, 111, 138, 0.18), transparent 58%);
+      --card: rgba(235, 242, 250, 0.98);
+      --card-top: rgba(251, 253, 255, 0.98);
+      --card-bottom: rgba(223, 232, 245, 0.98);
+      --card-border: rgba(71, 90, 111, 0.18);
+      --card-highlight: rgba(12, 20, 32, 0.04);
+      --card-shadow: 0 12px 28px rgba(16, 24, 40, 0.12);
+      --header-bg: rgba(236, 242, 249, 0.98);
+      --header-border: rgba(71, 90, 111, 0.18);
+      --text: #121d2b;
+      --muted: #475a6f;
+      --accent: #2f6f8a;
+      --accent-soft: rgba(47, 111, 138, 0.12);
+      --accent-strong: #255a70;
+      --border: rgba(71, 90, 111, 0.18);
+      --code-bg: rgba(18, 26, 39, 0.06);
+      --code-text: #2d3c50;
+      --inline-code-bg: rgba(18, 26, 39, 0.08);
+      --callout-bg: rgba(47, 111, 138, 0.08);
+      --callout-border: var(--accent);
+      --badge-bg: rgba(47, 111, 138, 0.12);
+      --badge-text: #2f6f8a;
+      --kbd-bg: rgba(18, 26, 39, 0.06);
+      --kbd-border: rgba(71, 90, 111, 0.22);
+      --figcaption-bg: rgba(236, 242, 249, 0.92);
+      --figure-bg: rgba(251, 253, 255, 0.6);
+      --nav-bg: rgba(244, 248, 252, 0.98);
+      --nav-link: #2f6f8a;
+      --selection-bg: rgba(93, 143, 176, 0.25);
+      --scrollbar-track: #e4e9f1;
+      --scrollbar-thumb: #c2cddd;
+      --scrollbar-hover: #a9b7cb;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'IBM Plex Sans', 'Source Sans 3', 'Space Grotesk', 'Segoe UI', sans-serif;
+      color: var(--text);
+      background-color: var(--bg);
+      background-image: var(--bg-radial-1), var(--bg-radial-2), var(--bg-gradient);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    ::selection {
+      background-color: var(--selection-bg);
+      color: var(--text);
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+    header {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--header-border);
+      padding: 32px 24px;
+      backdrop-filter: blur(14px) saturate(1.02);
+      -webkit-backdrop-filter: blur(14px) saturate(1.02);
+    }
+    header h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      font-family: 'Saira Semi Condensed', 'Rajdhani', 'IBM Plex Sans', 'Segoe UI', sans-serif;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    header p { margin: 0; color: var(--muted); }
+    .header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+    nav {
+      background: var(--nav-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 20px;
+      margin-bottom: 28px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--card-shadow);
+    }
+    nav h2 { margin: 0 0 12px; font-size: 18px; }
+    nav ul { margin: 0; padding-left: 18px; columns: 2; }
+    nav li { margin: 6px 0; }
+    nav a { color: var(--nav-link); text-decoration: none; transition: color 0.15s ease; }
+    nav a:hover { color: var(--accent); text-decoration: underline; }
+    section {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
+      background-color: var(--card);
+      backdrop-filter: blur(12px) saturate(1.02);
+      -webkit-backdrop-filter: blur(12px) saturate(1.02);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: inset 0 1px 0 var(--card-highlight), var(--card-shadow);
+    }
+    section::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 30%);
+      opacity: 0.4;
+      z-index: 0;
+      pointer-events: none;
+    }
+    html[data-theme="light"] section::before {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 40%);
+      opacity: 0.5;
+    }
+    section > * { position: relative; z-index: 1; }
+    section h2 {
+      margin-top: 0;
+      font-size: 24px;
+      font-family: 'Saira Semi Condensed', 'Rajdhani', 'IBM Plex Sans', 'Segoe UI', sans-serif;
+      letter-spacing: 0.02em;
+    }
+    section h3 { margin-top: 20px; font-size: 18px; }
+    section h4 { margin-top: 16px; font-size: 16px; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    code {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+      font-size: 0.9em;
+      background: var(--inline-code-bg);
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: var(--code-text);
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 14px;
+      border-radius: 10px;
+      overflow: auto;
+      border: 1px solid var(--border);
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .callout {
+      border-left: 4px solid var(--callout-border);
+      background: var(--callout-bg);
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin: 12px 0;
+      backdrop-filter: blur(8px);
+    }
+    figure {
+      margin: 16px 0 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--figure-bg);
+    }
+    figure img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    figcaption {
+      padding: 10px 14px;
+      font-size: 14px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: var(--figcaption-bg);
+    }
+    .toc-link { font-weight: 600; }
+    .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .kbd {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+      background: var(--kbd-bg);
+      border: 1px solid var(--kbd-border);
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      padding: 2px 6px;
+      color: var(--muted);
+    }
+    strong { color: var(--text); }
+    ul, ol { padding-left: 20px; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>CORTEX User Manual</h1>
+        <p class="muted">Version 1.0.0 | Last Updated: February 2026</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <nav>
+      <h2>Table of Contents</h2>
+      <ul>
+        <li><a class="toc-link" href="#introduction">Introduction</a></li>
+        <li><a class="toc-link" href="#installation">Installation</a></li>
+        <li><a class="toc-link" href="#getting-started">Getting Started</a></li>
+        <li><a class="toc-link" href="#command-center">Command Center</a></li>
+        <li><a class="toc-link" href="#agent-factory">Agent Factory</a></li>
+        <li><a class="toc-link" href="#knowledge-base">Knowledge Base</a></li>
+        <li><a class="toc-link" href="#run-explorer">Run Explorer</a></li>
+        <li><a class="toc-link" href="#job-queue">Job Queue</a></li>
+        <li><a class="toc-link" href="#evaluations">Evaluations</a></li>
+        <li><a class="toc-link" href="#evaluation-methodology">Evaluation Methodology</a></li>
+        <li><a class="toc-link" href="#library">Library</a></li>
+        <li><a class="toc-link" href="#workspaces">Workspaces</a></li>
+        <li><a class="toc-link" href="#audit-trail">Audit Trail</a></li>
+        <li><a class="toc-link" href="#system-logs">System Logs</a></li>
+        <li><a class="toc-link" href="#settings">Settings</a></li>
+        <li><a class="toc-link" href="#llm-endpoints">LLM Endpoints</a></li>
+        <li><a class="toc-link" href="#external-skills">External Skills</a></li>
+        <li><a class="toc-link" href="#security-access">Security and Access</a></li>
+        <li><a class="toc-link" href="#storage-security">Storage Security</a></li>
+        <li><a class="toc-link" href="#observability">Observability</a></li>
+        <li><a class="toc-link" href="#performance-benchmarks">Performance Benchmarks</a></li>
+        <li><a class="toc-link" href="#advanced-workflows">Advanced Workflows</a></li>
+        <li><a class="toc-link" href="#troubleshooting">Troubleshooting</a></li>
+        <li><a class="toc-link" href="#best-practices">Best Practices</a></li>
+        <li><a class="toc-link" href="#shortcuts">Keyboard Shortcuts</a></li>
+        <li><a class="toc-link" href="#api-reference">API Reference</a></li>
+        <li><a class="toc-link" href="#support">Support and Community</a></li>
+      </ul>
+    </nav>
+
+    <section id="introduction">
+      <h2>Introduction</h2>
+      <h3>What is CORTEX?</h3>
+      <p>CORTEX (Centralized Orchestration and Repository Training for Expert eXecution) is a local-first AI orchestration platform designed for development teams who need powerful AI assistance with flexible deployment options.</p>
+      <h3>Key Benefits</h3>
+      <ul>
+        <li><strong>Model Agnostic</strong>: Works with any LLM (GPT-4, Claude, Gemini, Llama)</li>
+        <li><strong>Local-First</strong>: Your code stays local by default; optional remote LLM endpoints are supported</li>
+        <li><strong>Cost Efficient</strong>: Lazy loading reduces token usage by 10x</li>
+        <li><strong>Auditable</strong>: Every AI operation is documented and reviewable</li>
+        <li><strong>Team Ready</strong>: Standardize AI workflows across your organization</li>
+      </ul>
+    </section>
+
+    <section id="installation">
+      <h2>Installation</h2>
+      <h3>System Requirements</h3>
+      <ul>
+        <li><strong>Operating System</strong>: Windows 10+, macOS 12+, or Linux</li>
+        <li><strong>Node.js</strong>: Version 18.0 or higher</li>
+        <li><strong>RAM</strong>: 4 GB minimum, 8 GB recommended</li>
+        <li><strong>Disk Space</strong>: 500 MB for application, additional space for repositories</li>
+      </ul>
+
+      <h3>Step-by-Step Installation</h3>
+      <h4>1. Install Node.js</h4>
+      <p>Download and install from nodejs.org. Verify installation:</p>
+      <pre><code>node --version
+npm --version</code></pre>
+
+      <h4>2. Clone CORTEX</h4>
+      <pre><code>git clone https://github.com/your-org/cortex.git
+cd cortex</code></pre>
+
+      <h4>3. Install Dependencies</h4>
+      <pre><code># Install root dependencies
+npm install
+
+# Install client dependencies
+cd client
+npm install
+cd ..</code></pre>
+
+      <h4>4. Configure Repository Path</h4>
+      <p>Launch the UI and complete the Setup Wizard. It will:</p>
+      <ul>
+        <li>Prompt for your <code>reference-repos</code> directory</li>
+        <li>Validate permissions</li>
+        <li>Create the standard folder structure if needed</li>
+      </ul>
+      <p>You can revisit this later in <strong>Settings</strong>.</p>
+
+      <h4>5. Start CORTEX</h4>
+      <p><strong>Windows</strong>: Double-click <code>start.bat</code></p>
+      <p><strong>Mac/Linux</strong>:</p>
+      <pre><code>npm start</code></pre>
+
+      <h4>6. Verify Installation</h4>
+      <p>Open your browser to <code>http://localhost:5173</code>. You should see the CORTEX Command Center.</p>
+    </section>
+
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+      <h3>Creating Your First Reference Repository</h3>
+      <ol>
+        <li>Create the root folder:</li>
+      </ol>
+      <pre><code>mkdir -p ~/Projects/reference-repos
+cd ~/Projects/reference-repos</code></pre>
+      <ol start="2">
+        <li>Clone your first repository:</li>
+      </ol>
+      <pre><code>git clone https://github.com/your-org/security-guidelines.git</code></pre>
+      <ol start="3">
+        <li>Let CORTEX categorize it. CORTEX analyzes README content and assigns a category:</li>
+      </ol>
+      <ul>
+        <li><strong>Agents</strong>: Pre-configured AI personas</li>
+        <li><strong>Skills</strong>: Procedural knowledge (how to test, deploy, etc.)</li>
+        <li><strong>Knowledge</strong>: Reference materials (guidelines, docs)</li>
+        <li><strong>Tools</strong>: Utility scripts</li>
+      </ul>
+      <ol start="4">
+        <li>Verify in the Knowledge Base view.</li>
+      </ol>
+    </section>
+
+    <section id="command-center">
+      <h2>Command Center</h2>
+      <p>The Command Center provides an operational snapshot of runs, evaluations, and knowledge coverage.</p>
+      <h3>Navigation</h3>
+      <ol>
+        <li>Command Center</li>
+        <li>Agent Factory</li>
+        <li>Runs</li>
+        <li>Jobs</li>
+        <li>Evaluations</li>
+        <li>Library</li>
+        <li>Knowledge Base</li>
+        <li>Audit Trail</li>
+        <li>Logs</li>
+        <li>Settings</li>
+      </ol>
+      <h3>Command Center Cards</h3>
+      <p>Each card shows key totals for runs, evaluations, prompts, and repositories.</p>
+      <figure>
+        <img src="screenshots/command-center.png" alt="Command Center overview" />
+        <figcaption>Command Center overview.</figcaption>
+      </figure>
+    </section>
+
+    <section id="agent-factory">
+      <h2>Agent Factory</h2>
+      <h3>What is an Agent?</h3>
+      <p>An Agent in CORTEX is a specialized AI configuration designed for a specific task. The Agent Factory generates a Flight Plan, a structured prompt that tells your chosen LLM exactly what to do.</p>
+
+      <h3>How to Spawn an Agent</h3>
+      <ol>
+        <li>Navigate to Agent Factory in the sidebar.</li>
+        <li>Describe your objective in the input box.</li>
+        <li>Click the send button to spawn.</li>
+        <li>Review the generated Flight Plan.</li>
+        <li>Copy it to your LLM (Gemini, Claude, ChatGPT, or local Llama).</li>
+      </ol>
+
+      <h3>Generation Chain</h3>
+      <p>The status timeline shows each stage of the spawn. When online skills are enabled, additional steps appear.</p>
+      <ul>
+        <li>Create agent profile</li>
+        <li>Analyze goal keywords</li>
+        <li>Select best agent</li>
+        <li>Search knowledge base</li>
+        <li>Search online skills (if enabled)</li>
+        <li>Persist external skills (if any are found)</li>
+        <li>Train agent knowledge (blocking or background)</li>
+        <li>Generate flight plan</li>
+      </ul>
+
+      <div class="callout">
+        <strong>Example prompts:</strong>
+        <ul>
+          <li>Audit my authentication module for security vulnerabilities</li>
+          <li>Refactor the user service to follow clean architecture</li>
+          <li>Generate unit tests for the payment processing logic</li>
+        </ul>
+      </div>
+
+      <h3>Understanding Flight Plans</h3>
+      <pre><code># AGENT MISSION ORDER: Audit authentication module
+
+## 1. IDENTITY ASSIGNMENT
+**Selected Personnel:** Standard Agent
+
+## 2. INTELLIGENCE BRIEFING
+### KNOWLEDGE
+- [ ] C:\reference-repos\knowledge\security-guidelines\auth-best-practices.md
+- [ ] C:\reference-repos\knowledge\owasp-top-10.md
+
+### SKILLS
+- [ ] C:\reference-repos\skills\security-audit\checklist.md
+
+## 3. EXECUTION
+> Audit the authentication module for vulnerabilities including:
+> - SQL injection risks
+> - Session management flaws
+> - Password storage compliance</code></pre>
+
+      <h3>Agent Types</h3>
+      <ul>
+        <li><strong>Standard Agent</strong>: General-purpose reasoning and coding</li>
+        <li><strong>Agent-S</strong>: OS-level automation with browser and file system access</li>
+        <li><strong>Custom Agents</strong>: Add your own templates in <code>reference-repos/agents/</code></li>
+      </ul>
+
+      <figure>
+        <img src="screenshots/agent-factory.png" alt="Agent Factory" />
+        <figcaption>Agent Factory view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="knowledge-base">
+      <h2>Knowledge Base</h2>
+      <h3>Adding Repositories (UI)</h3>
+      <ol>
+        <li>Navigate to Knowledge Base.</li>
+        <li>Click <strong>Add Repository</strong>.</li>
+        <li>Paste a GitHub URL.</li>
+        <li>Click <strong>Smart Clone</strong>.</li>
+      </ol>
+      <p>CORTEX clones, analyzes, categorizes, and updates the Knowledge Base view automatically.</p>
+
+      <h3>Skill Repos vs External Skills</h3>
+      <p><strong>Skill Repos</strong> counts repositories stored under your reference root. <strong>External Skills</strong> counts downloaded SKILL.md bundles installed from online providers.</p>
+      <p>External skills are persisted inside your skills repo (for example, <code>D:\Projects\reference-repos\skills</code>), and they are indexed like any other local skill.</p>
+
+      <h3>Updating Repositories</h3>
+      <pre><code>cd ~/Projects/reference-repos/your-repo
+git pull</code></pre>
+
+      <h3>Removing Repositories</h3>
+      <pre><code>rm -rf ~/Projects/reference-repos/old-repo</code></pre>
+
+      <figure>
+        <img src="screenshots/knowledge-base.png" alt="Knowledge Base" />
+        <figcaption>Knowledge Base view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="run-explorer">
+      <h2>Run Explorer</h2>
+      <p>The Run Explorer aggregates spawns with decision matrices and performance signals.</p>
+      <h3>Reviewing a Run</h3>
+      <ol>
+        <li>Open Runs from the sidebar.</li>
+        <li>Select a run from the list.</li>
+        <li>Review Decision Matrix, Trace, and Issues panels.</li>
+        <li>Use comparison tools to evaluate quality and duration.</li>
+      </ol>
+      <p>Use Export JSON or Download Plan in the Run Detail panel to save run artifacts.</p>
+      <p>Each run captures git metadata (branch, commit, dirty status) for traceability.</p>
+
+      <figure>
+        <img src="screenshots/run-explorer.png" alt="Run Explorer" />
+        <figcaption>Run Explorer view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="job-queue">
+      <h2>Job Queue</h2>
+      <p>The Job Queue keeps long-running tasks responsive:</p>
+      <ul>
+        <li>Background spawns (when enabled in Agent Factory)</li>
+        <li>Vector index rebuilds</li>
+      </ul>
+      <h3>Monitoring Jobs</h3>
+      <ol>
+        <li>Open Jobs in the sidebar.</li>
+        <li>Select a job to view status, duration, and output.</li>
+        <li>Cancel queued or running jobs if needed.</li>
+      </ol>
+      <figure>
+        <img src="screenshots/jobs.png" alt="Job Queue" />
+        <figcaption>Job Queue view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="evaluations">
+      <h2>Evaluations</h2>
+      <h3>Create a Dataset</h3>
+      <ol>
+        <li>Go to Evaluations.</li>
+        <li>Name a dataset and add prompt/expected outcome pairs.</li>
+        <li>Use datasets to standardize regression testing.</li>
+      </ol>
+
+      <h3>Import/Export Datasets</h3>
+      <ul>
+        <li>Export to download a dataset JSON file.</li>
+        <li>Import to upload a previously exported dataset.</li>
+      </ul>
+
+      <h3>Score a Run</h3>
+      <ol>
+        <li>Select a dataset and a recent run.</li>
+        <li>Create Evaluation to store the scorecard.</li>
+        <li>Results include per-item grading and pass/fail thresholds.</li>
+      </ol>
+
+      <h3>Retrieval Benchmarks</h3>
+      <ul>
+        <li>Set dataset type to Retrieval.</li>
+        <li>Provide expected resource paths for each item.</li>
+      </ul>
+
+      <h3>LLM Rubric Grading</h3>
+      <ul>
+        <li>Set item type to LLM Rubric and include a rubric for qualitative grading.</li>
+        <li>LLM grading uses your configured local/remote LLM endpoint.</li>
+      </ul>
+
+      <h3>Rubric Templates</h3>
+      <ul>
+        <li>Use the rubric template dropdown to prefill common grading criteria.</li>
+      </ul>
+
+      <figure>
+        <img src="screenshots/evaluations.png" alt="Evaluations" />
+        <figcaption>Evaluations view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="evaluation-methodology">
+      <h2>Evaluation Methodology</h2>
+      <p>CORTEX supports response grading and retrieval benchmarks. The scoring model uses pass/warn/fail thresholds and can optionally use an LLM rubric for qualitative grading.</p>
+      <ul>
+        <li><strong>Response evaluation</strong>: matches expected text (contains/regex) or uses LLM rubric grading when enabled.</li>
+        <li><strong>Retrieval evaluation</strong>: computes precision@K, recall@K, and MRR.</li>
+      </ul>
+      <p>See <code>docs/evaluation-methodology.md</code> for details and configuration defaults.</p>
+    </section>
+
+    <section id="library">
+      <h2>Library</h2>
+      <p>The Library keeps reusable assets in one place.</p>
+      <h3>Saved Prompts</h3>
+      <ul>
+        <li>Save prompts from Agent Factory.</li>
+        <li>Reuse them directly from the Library.</li>
+      </ul>
+      <h3>Agent Templates and Tools</h3>
+      <ul>
+        <li>Browse available agent templates.</li>
+        <li>Review tools registered in the tools folder.</li>
+      </ul>
+
+      <figure>
+        <img src="screenshots/library.png" alt="Library" />
+        <figcaption>Library view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="workspaces">
+      <h2>Workspaces</h2>
+      <p>Workspaces isolate repositories, runs, evaluations, and audit trails per team or customer.</p>
+      <h3>Create a Workspace</h3>
+      <ol>
+        <li>Open Settings and select Workspaces.</li>
+        <li>Enter a name, repos root, and output directory.</li>
+        <li>Optionally enable Create structure to bootstrap the folder layout.</li>
+      </ol>
+      <h3>Switch Workspaces</h3>
+      <ul>
+        <li>Admins can switch the active workspace from the top bar.</li>
+        <li>Data in Runs, Evaluations, Library, and Logs is scoped to the active workspace.</li>
+      </ul>
+    </section>
+
+    <section id="audit-trail">
+      <h2>Audit Trail</h2>
+      <p>The Audit Trail records security-relevant actions such as spawns, evaluations, and config changes.</p>
+      <h3>What is Logged</h3>
+      <ul>
+        <li>Event name (for example, <code>runs.spawn</code>, <code>repos.clone</code>, <code>evaluations.create</code>)</li>
+        <li>User and role (if authenticated)</li>
+        <li>Workspace ID</li>
+        <li>Metadata (paths, IDs, error messages)</li>
+      </ul>
+      <h3>How to Use</h3>
+      <ol>
+        <li>Open Audit Trail from the sidebar.</li>
+        <li>Filter by event type or search by user/IP.</li>
+        <li>Export CSV/JSON for compliance reviews.</li>
+      </ol>
+
+      <figure>
+        <img src="screenshots/audit-trail.png" alt="Audit Trail" />
+        <figcaption>Audit Trail view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="system-logs">
+      <h2>System Logs</h2>
+      <p>System Logs capture real-time operational output so you can troubleshoot spawns, repository scans, and evaluations.</p>
+      <figure>
+        <img src="screenshots/system-logs.png" alt="System Logs" />
+        <figcaption>System Logs view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="settings">
+      <h2>Settings</h2>
+      <p>Configure repository roots, authentication, observability alerts, and workspace settings.</p>
+      <figure>
+        <img src="screenshots/settings.png" alt="Settings" />
+        <figcaption>Settings view.</figcaption>
+      </figure>
+    </section>
+
+    <section id="llm-endpoints">
+      <h2>LLM Endpoints</h2>
+      <p>CORTEX supports local inference servers such as Ollama and LM Studio. Configure the provider, endpoint, and model in Settings.</p>
+      <ol>
+        <li>Start your local server (for example, Ollama on <code>http://localhost:11434/api/chat</code>).</li>
+        <li>Open Settings and select the provider.</li>
+        <li>Paste the endpoint URL and set the model name.</li>
+        <li>Use Test Connection to verify reachability.</li>
+      </ol>
+      <p>See <code>docs/llm-endpoints-setup.md</code> for step-by-step setup.</p>
+      <figure>
+        <img src="screenshots/settings.png" alt="LLM settings" />
+        <figcaption>LLM configuration lives in Settings.</figcaption>
+      </figure>
+    </section>
+
+    <section id="external-skills">
+      <h2>External Skills (Online Providers)</h2>
+      <p>External Skills let agents download and install new <code>SKILL.md</code> bundles from approved online registries (for example, ClawHub) during agent spawn.</p>
+
+      <h3>Safety Model</h3>
+      <ul>
+        <li>Disabled by default.</li>
+        <li>Admins must enable External Skills and allow remote downloads in Settings.</li>
+        <li>Dev override: set <code>CORTEX_DEV_MODE=1</code> to allow remote providers while testing (even if remote downloads are disabled in Settings).</li>
+        <li>Per-spawn toggle: enable <strong>Search online for skills</strong> in Agent Factory.</li>
+        <li>Bundles are treated as untrusted input and extracted with zip-slip protections and blocked extensions.</li>
+      </ul>
+
+      <h3>Where Skills Are Stored</h3>
+      <p>Downloaded skills are persisted under <code>&lt;reposRoot&gt;/skills/</code> (for example, <code>D:\Projects\reference-repos\skills</code> or <code>skills/_clawhub/&lt;slug&gt;/SKILL.md</code>) and become available to retrieval like any other local skill.</p>
+
+      <h3>Configuration</h3>
+      <ol>
+        <li>Open <strong>Settings &gt; External Skills (Online Providers)</strong>.</li>
+        <li>Enable online skill providers.</li>
+        <li>Enable Allow remote downloads.</li>
+        <li>Paste provider entries into Providers (JSON) and set <code>"enabled": true</code> per provider.</li>
+        <li>Save settings.</li>
+      </ol>
+
+      <h3>Provider Adapter Types</h3>
+      <ul>
+        <li><code>clawhub_v1</code>: ClawHub registry API (search + download zip bundles).</li>
+        <li><code>index_json_v1</code>: A JSON index URL that returns skills with <code>slug</code> and <code>downloadUrl</code> (optional <code>version</code>, optional <code>sha256</code>).</li>
+      </ul>
+
+      <h3>Provider JSON Examples</h3>
+      <pre><code>[
+  {
+    "id": "clawhub",
+    "type": "clawhub_v1",
+    "enabled": true,
+    "registryBase": "https://auth.clawdhub.com/api/v1",
+    "providerDirName": "_clawhub",
+    "maxSkills": 2,
+    "minScore": 0.35,
+    "timeoutMs": 8000,
+    "maxZipBytes": 15728640,
+    "overwrite": true
+  },
+  {
+    "id": "my-skill-index",
+    "type": "index_json_v1",
+    "enabled": false,
+    "indexUrl": "https://example.com/skills/index.json",
+    "providerDirName": "_external/my-skill-index",
+    "maxSkills": 2,
+    "minScore": 0.35,
+    "timeoutMs": 8000,
+    "maxZipBytes": 15728640,
+    "overwrite": true
+  }
+]</code></pre>
+
+      <h3>Using External Skills During Spawn</h3>
+      <ul>
+        <li>Enable <strong>Search online for skills</strong> in Agent Factory.</li>
+        <li>Optional: In explicit mode, include slugs in the goal: <code>clawhub: slack, jira</code>.</li>
+        <li>Training: choose Blocking or Background. Index rebuild runs only after all downloads complete.</li>
+      </ul>
+
+      <h3>Update Scans</h3>
+      <p>Settings includes a Scan for updates button that compares installed skill versions against their provider. CORTEX does not auto-update skills on spawn; use scan results to decide when to refresh.</p>
+    </section>
+
+    <section id="security-access">
+      <h2>Security and Access</h2>
+      <h3>Enable Authentication</h3>
+      <ol>
+        <li>Open Settings.</li>
+        <li>Toggle Enable authentication.</li>
+        <li>Optionally enable Resource-level RBAC and refine the policy JSON.</li>
+        <li>Save settings.</li>
+        <li>Bootstrap the first admin when prompted.</li>
+      </ol>
+
+      <h3>Roles</h3>
+      <ul>
+        <li><strong>Viewer</strong>: Read-only access to runs, evaluations, and repositories.</li>
+        <li><strong>Editor</strong>: Can spawn agents, manage datasets, and add repositories.</li>
+        <li><strong>Admin</strong>: Full access to configuration and user management.</li>
+      </ul>
+
+      <h3>RBAC Policy</h3>
+      <ul>
+        <li>The RBAC editor lets you define per-resource actions (read, create, update, delete, export).</li>
+        <li>Use <code>"*": ["*"]</code> to grant full access for a role (default for Admins).</li>
+      </ul>
+
+      <h3>SSO (Header-Based)</h3>
+      <ul>
+        <li>Enable SSO in Settings to trust identity headers from your reverse proxy or IdP.</li>
+        <li>Configure header names for user, role, and workspace.</li>
+        <li>Optionally enable auto-provisioning to create users on first login.</li>
+      </ul>
+
+      <h3>SCIM Provisioning</h3>
+      <ul>
+        <li>Enable SCIM in Settings and set a provisioning token.</li>
+        <li>Use the SCIM endpoints to create, update, or disable users programmatically.</li>
+      </ul>
+    </section>
+
+    <section id="storage-security">
+      <h2>Storage Security</h2>
+      <p>CORTEX stores data locally by default. Protect data at rest using OS-level encryption and keep repositories on secure disks.</p>
+      <ul>
+        <li>Windows: BitLocker or an encrypted VHD/VHDX volume.</li>
+        <li>macOS: FileVault.</li>
+        <li>Linux: LUKS or encrypted volumes.</li>
+      </ul>
+      <p>See <code>docs/storage-security.md</code> for storage locations and configuration controls.</p>
+    </section>
+
+    <section id="observability">
+      <h2>Observability</h2>
+      <p>The Observability panels summarize token usage, cost estimates, and latency.</p>
+      <h3>Alerts</h3>
+      <p>Configure thresholds in <strong>Settings &gt; Observability Alerts</strong>:</p>
+      <ul>
+        <li>Cost alert (USD)</li>
+        <li>Token alert</li>
+        <li>Duration alert (ms)</li>
+      </ul>
+      <p>Warnings surface in the Run Explorer issue list.</p>
+    </section>
+
+    <section id="performance-benchmarks">
+      <h2>Performance Benchmarks</h2>
+      <p>CORTEX publishes end-to-end spawn latency and operational timings in the marketability demo report.</p>
+      <ul>
+        <li>Spawn latency summary: <code>docs/performance-benchmarks.md</code></li>
+        <li>Scan and index timings: <code>docs/marketability-demo-report.md</code></li>
+      </ul>
+      <p>Run <code>npm run marketability:demo</code> to refresh the report.</p>
+    </section>
+
+    <section id="advanced-workflows">
+      <h2>Advanced Workflows</h2>
+      <h3>Workflow 1: Security Audit Pipeline</h3>
+      <ol>
+        <li>Prepare Knowledge Base (OWASP guidelines in knowledge, security checklist in skills).</li>
+        <li>Spawn an audit agent: "Perform OWASP Top 10 security audit on my codebase".</li>
+        <li>Execute with Claude or Gemini.</li>
+        <li>Spawn a fix agent to address findings.</li>
+      </ol>
+
+      <h3>Workflow 2: Onboarding New Developers</h3>
+      <ol>
+        <li>Add architecture diagrams and standards to knowledge.</li>
+        <li>Create an onboarding agent template in <code>agents/onboarding/</code>.</li>
+        <li>Spawn onboarding agent for new hires.</li>
+      </ol>
+
+      <h3>Workflow 3: Code Review Automation</h3>
+      <ol>
+        <li>Add review guidelines to skills.</li>
+        <li>Spawn a pre-merge review agent.</li>
+        <li>Execute and fix issues.</li>
+      </ol>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <h3>Cannot find module 'express'</h3>
+      <p>Cause: dependencies not installed.</p>
+      <pre><code>cd server
+npm install</code></pre>
+
+      <h3>Knowledge Base shows empty</h3>
+      <p>Cause: REPOS_ROOT path is incorrect.</p>
+      <ol>
+        <li>Open <code>server/index.js</code>.</li>
+        <li>Verify the REPOS_ROOT path exists.</li>
+        <li>Restart CORTEX.</li>
+      </ol>
+
+      <h3>Port 3001 already in use</h3>
+      <p>Windows:</p>
+      <pre><code>netstat -ano | findstr :3001
+taskkill /F /PID &lt;PID&gt;</code></pre>
+      <p>Mac/Linux:</p>
+      <pre><code>lsof -i :3001
+kill -9 &lt;PID&gt;</code></pre>
+
+      <h3>Flight Plans reference wrong files</h3>
+      <p>Cause: keyword matching is too broad.</p>
+      <ul>
+        <li>Improve repository README files with specific keywords.</li>
+        <li>Manually edit the Flight Plan before execution.</li>
+        <li>Add an ignore list in <code>server/orchestrator.js</code>.</li>
+      </ul>
+
+      <h3>Browser shows "Cannot connect to server"</h3>
+      <p>Cause: backend not running.</p>
+      <pre><code>cd server
+node index.js</code></pre>
+    </section>
+
+    <section id="best-practices">
+      <h2>Best Practices</h2>
+      <ol>
+        <li>Organize repositories by domain.</li>
+        <li>Keep READMEs descriptive with keywords and purpose.</li>
+        <li>Version control your knowledge base.</li>
+        <li>Use consistent naming.</li>
+        <li>Curate regularly and remove outdated repositories.</li>
+        <li>Share successful Flight Plans as templates.</li>
+        <li>Test with small requests first to validate behavior.</li>
+        <li>Use the testing checklist in <code>TESTING.md</code>.</li>
+      </ol>
+    </section>
+
+    <section id="shortcuts">
+      <h2>Appendix: Keyboard Shortcuts</h2>
+      <div class="two-col">
+        <div><span class="badge">Ctrl + K</span> Focus Agent Factory input</div>
+        <div><span class="badge">Ctrl + Shift + L</span> Open Logs view</div>
+        <div><span class="badge">Ctrl + Shift + D</span> Return to Command Center</div>
+        <div><span class="badge">Ctrl + Shift + C</span> Copy last Flight Plan</div>
+      </div>
+    </section>
+
+    <section id="api-reference">
+      <h2>Appendix: API Reference</h2>
+      <p>CORTEX exposes a REST API on <code>http://localhost:3001</code>.</p>
+
+      <h3>GET /api/status</h3>
+      <pre><code>{
+  "status": "Online",
+  "message": "CORTEX API is running"
+}</code></pre>
+
+      <h3>GET /api/repos</h3>
+      <pre><code>{
+  "repos": [
+    {
+      "Name": "security-guidelines",
+      "Purpose": "OWASP security best practices",
+      "LastUpdate": "2026-01-31"
+    }
+  ],
+  "categories": ["Agents", "Skills", "Knowledge", "Tools"]
+}</code></pre>
+
+      <h3>Other Endpoints</h3>
+      <ul>
+        <li><code>GET /api/auth/status</code></li>
+        <li><code>GET /api/audit/export?format=csv|json</code></li>
+        <li><code>POST /api/auth/login</code></li>
+        <li><code>POST /api/auth/bootstrap</code></li>
+        <li><code>GET /api/observability/summary</code></li>
+        <li><code>GET /api/jobs</code></li>
+        <li><code>POST /api/jobs/:id/cancel</code></li>
+        <li><code>GET /api/runs</code></li>
+        <li><code>GET /api/runs/:id</code></li>
+        <li><code>GET /api/runs/:id/export?includeOutput=true</code></li>
+        <li><code>GET /api/runs/:id/plan</code></li>
+        <li><code>GET /api/vector-index/status</code></li>
+        <li><code>POST /api/vector-index/rebuild</code></li>
+        <li><code>GET /api/runs</code></li>
+        <li><code>GET /api/datasets</code></li>
+        <li><code>GET /api/datasets/:id/export</code></li>
+        <li><code>POST /api/datasets/import</code></li>
+        <li><code>GET /api/evaluations</code></li>
+        <li><code>GET /api/evaluations/compare?left=&lt;id&gt;&right=&lt;id&gt;</code></li>
+        <li><code>GET /api/agents</code></li>
+        <li><code>POST /api/spawn</code></li>
+      </ul>
+    </section>
+
+    <section id="support">
+      <h2>Support and Community</h2>
+      <ul>
+        <li><strong>GitHub Issues</strong>: Report bugs (update link as needed)</li>
+        <li><strong>Discussions</strong>: Ask questions (update link as needed)</li>
+        <li><strong>Email</strong>: support@cortex.ai</li>
+      </ul>
+    </section>
+  </main>
+  <script>
+    (function () {
+      /* Mirror the app's theme — read from the same localStorage key the app uses */
+      var THEME_KEY = 'cortex_theme';
+      var stored = localStorage.getItem(THEME_KEY) || 'dark';
+
+      function resolveTheme(preference) {
+        if (preference === 'system') {
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        return preference === 'light' ? 'light' : 'dark';
+      }
+
+      function applyTheme(preference) {
+        var resolved = resolveTheme(preference);
+        document.documentElement.setAttribute('data-theme', resolved);
+        document.body.setAttribute('data-resolved-theme', resolved);
+      }
+
+      applyTheme(stored);
+
+      /* Listen for changes from the app (e.g. user switches theme in Settings) */
+      window.addEventListener('storage', function (e) {
+        if (e.key === THEME_KEY && e.newValue) {
+          applyTheme(e.newValue);
+        }
+      });
+
+      /* If system preference, also listen for OS-level changes */
+      if (stored === 'system') {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+          applyTheme('system');
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
+

@@ -700,32 +700,71 @@ function BootstrapAdminScreen({ onBootstrap, loading, error }) {
 }
 
 // ==========================================
-const SPAWN_STEP_DEFS = [
-  {
-    key: 'analyze',
-    label: 'Analyze goal keywords',
-    detail: 'Extract intent, complexity, and routing signals.',
-    type: 'search'
-  },
-  {
-    key: 'route',
-    label: 'Select best agent',
-    detail: 'Score agents against the goal and pick the top match.',
-    type: 'route'
-  },
-  {
-    key: 'retrieve',
-    label: 'Search knowledge base',
-    detail: 'Hybrid retrieval + RRF fusion across knowledge/skills/tools.',
-    type: 'retrieve'
-  },
-  {
+const buildSpawnStepDefs = ({ onlineSkills, trainingMode }) => {
+  const steps = [
+    {
+      key: 'init',
+      label: 'Create agent profile',
+      detail: 'Normalize goal and initialize the agent run.',
+      type: 'init'
+    },
+    {
+      key: 'analyze',
+      label: 'Analyze goal keywords',
+      detail: 'Extract intent, complexity, and routing signals.',
+      type: 'search'
+    },
+    {
+      key: 'route',
+      label: 'Select best agent',
+      detail: 'Score agents against the goal and pick the top match.',
+      type: 'route'
+    },
+    {
+      key: 'retrieve',
+      label: 'Search knowledge base',
+      detail: 'Hybrid retrieval + RRF fusion across knowledge/skills/tools.',
+      type: 'retrieve'
+    }
+  ];
+
+  if (onlineSkills) {
+    steps.push(
+      {
+        key: 'external-search',
+        label: 'Search online skills',
+        detail: 'Query approved providers for matching skills.',
+        type: 'external'
+      },
+      {
+        key: 'external-persist',
+        label: 'Persist external skills',
+        detail: 'Store verified SKILL.md bundles in the skills repo.',
+        type: 'external'
+      }
+    );
+
+    if (trainingMode && trainingMode !== 'off') {
+      steps.push({
+        key: 'external-train',
+        label: 'Train agent knowledge',
+        detail: trainingMode === 'background'
+          ? 'Queue vector index rebuild in the background.'
+          : 'Rebuild the index with newly installed skills.',
+        type: 'training'
+      });
+    }
+  }
+
+  steps.push({
     key: 'compose',
     label: 'Generate flight plan',
     detail: 'Assemble directive, required reading, and decision matrix.',
     type: 'synthesize'
-  }
-];
+  });
+
+  return steps;
+};
 
 function SpawnTimeline({ steps }) {
   const [expanded, setExpanded] = useState(true);
@@ -880,12 +919,88 @@ function OrchestratorView({
   const externalSkillsSummary = externalSkillsInstalled.length > 0
     ? `Installed: ${externalSkillsInstalled.slice(0, 3).join(', ')}${externalSkillsInstalled.length > 3 ? ` +${externalSkillsInstalled.length - 3}` : ''}`
     : null;
+  const formatExternalSkillsReason = (reason) => (
+    reason ? reason.replace(/_/g, ' ') : ''
+  );
+  const updateExternalSkillSteps = useCallback((meta) => {
+    if (!meta) return;
+    const installedItems = Array.isArray(meta.installed) ? meta.installed : [];
+    const newCount = installedItems.filter((item) => item?.installed).length;
+    const alreadyCount = installedItems.filter((item) => item?.alreadyInstalled).length;
+    const totalCount = newCount + alreadyCount;
+    const pluralize = (count) => (count === 1 ? '' : 's');
+    const reason = meta.skippedReason ? formatExternalSkillsReason(meta.skippedReason) : '';
+
+    let searchDetail = 'Query approved providers for matching skills.';
+    if (meta.error) {
+      searchDetail = `Search failed: ${meta.error}`;
+    } else if (meta.skippedReason) {
+      searchDetail = `Skipped (${reason})`;
+    } else if (meta.used && totalCount === 0) {
+      searchDetail = 'No matching skills found.';
+    } else if (meta.used && totalCount > 0) {
+      searchDetail = `Matched ${totalCount} skill${pluralize(totalCount)}.`;
+    }
+
+    let persistDetail = 'Store verified SKILL.md bundles in the skills repo.';
+    if (meta.error) {
+      persistDetail = 'Persist skipped due to search error.';
+    } else if (meta.skippedReason) {
+      persistDetail = `Skipped (${reason})`;
+    } else if (newCount > 0) {
+      persistDetail = `Persisted ${newCount} new skill${pluralize(newCount)}.`;
+    } else if (alreadyCount > 0) {
+      persistDetail = `No new skills to persist (${alreadyCount} already installed).`;
+    } else {
+      persistDetail = 'No new skills to persist.';
+    }
+
+    const trainingMeta = meta.training || {};
+    const trainingMode = trainingMeta.mode || onlineSkillsTrainingMode;
+    let trainingDetail = trainingMode === 'background'
+      ? 'Queue vector index rebuild in the background.'
+      : 'Rebuild the index with newly installed skills.';
+    if (trainingMeta.error) {
+      trainingDetail = `Training failed: ${trainingMeta.error}`;
+    } else if (trainingMeta.performed) {
+      if (trainingMeta.background) {
+        trainingDetail = 'Background index rebuild launched.';
+      } else if (trainingMeta.blocking) {
+        trainingDetail = 'Index rebuild completed before response.';
+      } else {
+        trainingDetail = 'Index rebuild completed.';
+      }
+    } else if (trainingMode === 'off') {
+      trainingDetail = 'Training disabled for this run.';
+    } else if (meta.skippedReason) {
+      trainingDetail = `Skipped (${reason})`;
+    } else if (newCount === 0 && !trainingMeta.performed) {
+      trainingDetail = 'No new skills to train.';
+    }
+
+    setSpawnSteps((prev) => prev.map((step) => {
+      if (step.key === 'external-search') {
+        return { ...step, detail: searchDetail };
+      }
+      if (step.key === 'external-persist') {
+        return { ...step, detail: persistDetail };
+      }
+      if (step.key === 'external-train') {
+        return { ...step, detail: trainingDetail };
+      }
+      return step;
+    }));
+  }, [onlineSkillsTrainingMode]);
 
   useEffect(() => {
     if (onDirtyChange) {
       onDirtyChange(Boolean(goal));
     }
   }, [goal, onDirtyChange]);
+  useEffect(() => {
+    if (!latestExternalSkills || spawnSteps.length === 0) return;
+    updateExternalSkillSteps(latestExternalSkills);
+  }, [latestExternalSkills, spawnSteps.length, updateExternalSkillSteps]);
 
   useEffect(() => {
     if (!prefillGoal) return;
@@ -976,8 +1091,12 @@ function OrchestratorView({
     // Initialize timeline
     clearSpawnTimeouts();
     const startTime = Date.now();
+    const stepDefs = buildSpawnStepDefs({
+      onlineSkills,
+      trainingMode: onlineSkillsTrainingMode
+    });
     setSpawnSteps(
-      SPAWN_STEP_DEFS.map((step, index) => ({
+      stepDefs.map((step, index) => ({
         ...step,
         done: false,
         error: false,
@@ -1009,10 +1128,11 @@ function OrchestratorView({
       );
     };
 
-    [300, 600, 900].forEach((delay, idx) => {
-      const timeoutId = setTimeout(() => advanceStep(idx + 1), delay);
-      spawnTimeoutsRef.current.push(timeoutId);
-    });
+    Array.from({ length: Math.max(0, stepDefs.length - 1) }, (_, idx) => (idx + 1) * 300)
+      .forEach((delay, idx) => {
+        const timeoutId = setTimeout(() => advanceStep(idx + 1), delay);
+        spawnTimeoutsRef.current.push(timeoutId);
+      });
 
     const externalSkillsRequest = showOnlineSkillsToggle
       ? { online: onlineSkills, trainingMode: onlineSkillsTrainingMode }

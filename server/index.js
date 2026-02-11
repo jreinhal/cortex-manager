@@ -18,6 +18,7 @@ const datasetsStore = require('./datasets-store')
 const evaluationsStore = require('./evaluations-store')
 const evaluationTemplatesStore = require('./evaluation-templates-store')
 const mountRoutes = require('./routes')
+const { apiLimiter } = require('./middleware/rate-limit')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -28,6 +29,7 @@ const PORT = process.env.PORT || 3001
 
 app.use(cors())
 app.use(bodyParser.json())
+app.use('/api', apiLimiter)
 
 // ==========================================
 // Static / Manual docs

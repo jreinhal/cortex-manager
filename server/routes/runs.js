@@ -5,6 +5,7 @@ const fsp = fs.promises
 const { spawn } = require('child_process')
 const os = require('os')
 const { validate } = require('../middleware/validate')
+const { writeLimiter } = require('../middleware/rate-limit')
 const { spawnSchema } = require('../validators/spawn')
 const { createSessionSchema } = require('../validators/sessions')
 const { readJsonFileAsync, writeJsonAtomicAsync } = require('../storage')
@@ -17,6 +18,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
   // Orchestrator (spawn)
   router.post(
     '/spawn',
+    writeLimiter,
     auth.requirePermission('runs', 'create', 'editor'),
     validate(spawnSchema),
     (req, res) => {

@@ -1,6 +1,7 @@
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const fsp = fs.promises
 const { validate } = require('../middleware/validate')
 const { addRepoSchema } = require('../validators/repos')
 const { audit, normalizeRepoPath } = require('./helpers')
@@ -112,12 +113,19 @@ function createRepoRoutes({ config, auth, repoManager, externalSkills, vectorInd
     async (req, res) => {
       const { url } = req.body
       const trimmedUrl = url.trim()
+      let localPathExists = false
+      try {
+        await fsp.access(trimmedUrl)
+        localPathExists = true
+      } catch (_e) {
+        // not a local path or not accessible
+      }
       const isValidUrl =
         /^https?:\/\//i.test(trimmedUrl) ||
         /^ssh:\/\//i.test(trimmedUrl) ||
         /^git@[^:]+:.+/i.test(trimmedUrl) ||
         /^file:\/\//i.test(trimmedUrl) ||
-        fs.existsSync(trimmedUrl) ||
+        localPathExists ||
         path.isAbsolute(trimmedUrl)
       if (!isValidUrl) {
         return res.status(400).json({

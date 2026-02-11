@@ -1,5 +1,6 @@
 const path = require('path')
 const fs = require('fs')
+const fsp = fs.promises
 const { recordAudit, AUDIT_PATH } = require('../audit-log')
 const workspacesModule = require('../workspaces')
 
@@ -100,14 +101,10 @@ function formatAuditCsv(entries) {
   )
 }
 
-function readAuditEntries({ limit = 200, workspaceId = null, event = null }) {
-  if (!fs.existsSync(AUDIT_PATH)) return []
+async function readAuditEntries({ limit = 200, workspaceId = null, event = null }) {
   try {
-    const lines = fs
-      .readFileSync(AUDIT_PATH, 'utf8')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
+    const data = await fsp.readFile(AUDIT_PATH, 'utf8')
+    const lines = data.split('\n').map((line) => line.trim()).filter(Boolean)
     const entries = []
     for (let i = lines.length - 1; i >= 0; i -= 1) {
       try {
@@ -126,6 +123,7 @@ function readAuditEntries({ limit = 200, workspaceId = null, event = null }) {
     }
     return entries
   } catch (e) {
+    if (e.code === 'ENOENT') return []
     console.error('Failed to read audit log:', e.message)
     return []
   }
@@ -148,10 +146,10 @@ function parseExpectedPaths(item) {
   return []
 }
 
-function readRunOutput(run, maxChars) {
-  if (run?.outputPath && fs.existsSync(run.outputPath)) {
+async function readRunOutput(run, maxChars) {
+  if (run?.outputPath) {
     try {
-      const data = fs.readFileSync(run.outputPath, 'utf8')
+      const data = await fsp.readFile(run.outputPath, 'utf8')
       return data.length > maxChars ? data.slice(0, maxChars) : data
     } catch (_e) {
       // fall through to preview

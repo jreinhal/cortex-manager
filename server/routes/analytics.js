@@ -9,10 +9,10 @@ function createAnalyticsRoutes({ auth }) {
   router.get(
     '/audit',
     auth.requirePermission('audit', 'read', 'viewer'),
-    (req, res) => {
+    async (req, res) => {
       const limit = Number(req.query.limit) || 200
       const event = req.query.event || null
-      const entries = readAuditEntries({
+      const entries = await readAuditEntries({
         limit,
         workspaceId: req.workspace?.id || null,
         event,
@@ -24,11 +24,11 @@ function createAnalyticsRoutes({ auth }) {
   router.get(
     '/audit/export',
     auth.requirePermission('audit', 'export', 'viewer'),
-    (req, res) => {
+    async (req, res) => {
       const format = (req.query.format || 'json').toString().toLowerCase()
       const limit = Math.min(Number(req.query.limit) || 1000, 5000)
       const event = req.query.event || null
-      const entries = readAuditEntries({
+      const entries = await readAuditEntries({
         limit,
         workspaceId: req.workspace?.id || null,
         event,

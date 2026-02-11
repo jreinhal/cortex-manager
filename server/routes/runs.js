@@ -1,12 +1,13 @@
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const fsp = fs.promises
 const { spawn } = require('child_process')
 const os = require('os')
 const { validate } = require('../middleware/validate')
 const { spawnSchema } = require('../validators/spawn')
 const { createSessionSchema } = require('../validators/sessions')
-const { readJsonFile, writeJsonAtomic } = require('../storage')
+const { readJsonFileAsync, writeJsonAtomicAsync } = require('../storage')
 const { audit, matchesWorkspace, resolveRunOutputPath } = require('./helpers')
 
 function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
@@ -117,21 +118,20 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
   // Sessions
   const SESSIONS_FILE = path.join(__dirname, '..', '..', 'sessions.json')
 
-  function loadSessions() {
-    if (!fs.existsSync(SESSIONS_FILE)) return []
-    const data = readJsonFile(SESSIONS_FILE, [])
+  async function loadSessions() {
+    const data = await readJsonFileAsync(SESSIONS_FILE, [])
     return Array.isArray(data) ? data : []
   }
 
-  function saveSessions(sessions) {
-    writeJsonAtomic(SESSIONS_FILE, sessions)
+  async function saveSessions(sessions) {
+    await writeJsonAtomicAsync(SESSIONS_FILE, sessions)
   }
 
   router.get(
     '/sessions',
     auth.requirePermission('sessions', 'read', 'viewer'),
-    (req, res) => {
-      const sessions = loadSessions()
+    async (req, res) => {
+      const sessions = await loadSessions()
       const workspaceId = req.workspace?.id || null
       const filtered = sessions.filter((session) => matchesWorkspace(session, workspaceId))
       res.json(filtered.slice(-20).reverse())
@@ -142,10 +142,10 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
     '/sessions',
     auth.requirePermission('sessions', 'create', 'editor'),
     validate(createSessionSchema),
-    (req, res) => {
+    async (req, res) => {
       const { goal, agent, resources, output } = req.body
 
-      const sessions = loadSessions()
+      const sessions = await loadSessions()
       const session = {
         id: `session-${Date.now()}`,
         timestamp: new Date().toISOString(),
@@ -159,7 +159,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
       sessions.push(session)
 
       const trimmed = sessions.slice(-50)
-      saveSessions(trimmed)
+      await saveSessions(trimmed)
       audit('sessions.create', { id: session.id }, req)
 
       res.json({ success: true, session })
@@ -199,7 +199,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
   router.get(
     '/runs/:id/export',
     auth.requirePermission('runs', 'read', 'viewer'),
-    (req, res) => {
+    async (req, res) => {
       const run = runsStore.getRun(req.params.id)
       if (!run) {
         return res.status(404).json({ error: 'Run not found' })
@@ -212,8 +212,12 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
       let output = null
       if (includeOutput) {
         const resolved = resolveRunOutputPath(run, req.workspace)
-        if (resolved && fs.existsSync(resolved)) {
-          output = fs.readFileSync(resolved, 'utf8')
+        if (resolved) {
+          try {
+            output = await fsp.readFile(resolved, 'utf8')
+          } catch (_e) {
+            // file missing or unreadable
+          }
         }
       }
 
@@ -226,7 +230,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
   router.get(
     '/runs/:id/plan',
     auth.requirePermission('runs', 'read', 'viewer'),
-    (req, res) => {
+    async (req, res) => {
       const run = runsStore.getRun(req.params.id)
       if (!run) {
         return res.status(404).json({ error: 'Run not found' })
@@ -236,14 +240,19 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
       }
 
       const resolved = resolveRunOutputPath(run, req.workspace)
-      if (!resolved || !fs.existsSync(resolved)) {
+      if (!resolved) {
         return res.status(404).json({ error: 'Flight plan not found' })
       }
 
-      audit('runs.plan.download', { id: run.id, file: path.basename(resolved) }, req)
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
-      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(resolved)}"`)
-      res.send(fs.readFileSync(resolved, 'utf8'))
+      try {
+        const content = await fsp.readFile(resolved, 'utf8')
+        audit('runs.plan.download', { id: run.id, file: path.basename(resolved) }, req)
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(resolved)}"`)
+        res.send(content)
+      } catch (_e) {
+        return res.status(404).json({ error: 'Flight plan not found' })
+      }
     }
   )
 

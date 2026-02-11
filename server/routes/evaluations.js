@@ -431,7 +431,7 @@ function createEvaluationRoutes({
       }
 
       const maxChars = evaluationConfig.maxOutputChars ?? 120000
-      const output = readRunOutput(run, maxChars)
+      const output = await readRunOutput(run, maxChars)
       const llmEnabled = evaluationConfig.llmGraderEnabled !== false && llmConfig.enabled === true
       const maxLlmItems = evaluationConfig.llmMaxItems ?? 12
       let llmUsedCount = 0

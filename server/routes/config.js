@@ -1,6 +1,7 @@
 const express = require('express')
 const path = require('path')
 const fs = require('fs')
+const fsp = fs.promises
 const { validate } = require('../middleware/validate')
 const { configUpdateSchema } = require('../validators/config')
 const { setupSchema, validatePathSchema, llmPingSchema } = require('../validators/setup')
@@ -41,14 +42,19 @@ function createConfigRoutes({ config, auth }) {
   router.get(
     '/checklist',
     auth.requirePermission('system', 'read', 'viewer'),
-    (req, res) => {
+    async (req, res) => {
       const checklistPath = path.resolve(__dirname, '..', '..', 'TESTING.md')
-      if (!fs.existsSync(checklistPath)) {
-        return res.status(404).json({ error: 'Checklist not found.' })
+      try {
+        const content = await fsp.readFile(checklistPath, 'utf8')
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+        res.setHeader('Content-Disposition', 'inline; filename="TESTING.md"')
+        return res.send(content)
+      } catch (e) {
+        if (e.code === 'ENOENT') {
+          return res.status(404).json({ error: 'Checklist not found.' })
+        }
+        return res.status(500).json({ error: 'Failed to read checklist' })
       }
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
-      res.setHeader('Content-Disposition', 'inline; filename="TESTING.md"')
-      return res.send(fs.readFileSync(checklistPath, 'utf8'))
     }
   )
 
@@ -245,7 +251,7 @@ function createConfigRoutes({ config, auth }) {
   router.get(
     '/browse',
     auth.requirePermission('system', 'read', 'viewer'),
-    (req, res) => {
+    async (req, res) => {
       const requestedPath = req.query.path || ''
 
       let targetPath
@@ -256,7 +262,7 @@ function createConfigRoutes({ config, auth }) {
           for (const letter of ['C', 'D', 'E', 'F']) {
             const drivePath = `${letter}:\\`
             try {
-              fs.accessSync(drivePath, fs.constants.R_OK)
+              await fsp.access(drivePath, fs.constants.R_OK)
               drives.push({ name: `${letter}:`, path: drivePath, isDirectory: true })
             } catch (_e) {
               // Drive doesn't exist or not accessible
@@ -277,7 +283,7 @@ function createConfigRoutes({ config, auth }) {
       targetPath = path.normalize(targetPath)
 
       try {
-        fs.accessSync(targetPath, fs.constants.R_OK)
+        await fsp.access(targetPath, fs.constants.R_OK)
       } catch (_e) {
         return res.status(400).json({
           success: false,
@@ -285,16 +291,23 @@ function createConfigRoutes({ config, auth }) {
         })
       }
 
-      const stat = fs.statSync(targetPath)
-      if (!stat.isDirectory()) {
+      try {
+        const stat = await fsp.stat(targetPath)
+        if (!stat.isDirectory()) {
+          return res.status(400).json({
+            success: false,
+            error: 'Path is not a directory',
+          })
+        }
+      } catch (_e) {
         return res.status(400).json({
           success: false,
-          error: 'Path is not a directory',
+          error: 'Path does not exist or is not accessible',
         })
       }
 
       try {
-        const entries = fs.readdirSync(targetPath, { withFileTypes: true })
+        const entries = await fsp.readdir(targetPath, { withFileTypes: true })
         const items = entries
           .filter((entry) => {
             if (!entry.isDirectory()) return false

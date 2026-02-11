@@ -27,6 +27,19 @@ const { estimateTokens, estimateCost } = require('./token-estimator');
 const workspaces = require('./workspaces');
 const { analyzeGoal } = require('./goal-analyzer');
 const { findResources } = require('./resource-matcher');
+const { validate } = require('./middleware/validate');
+const { bootstrapSchema, loginSchema } = require('./validators/auth');
+const { configUpdateSchema } = require('./validators/config');
+const { setupSchema, validatePathSchema, llmPingSchema } = require('./validators/setup');
+const { addRepoSchema } = require('./validators/repos');
+const { spawnSchema } = require('./validators/spawn');
+const { createWorkspaceSchema, updateWorkspaceSchema } = require('./validators/workspaces');
+const { createUserSchema, updateUserSchema } = require('./validators/users');
+const { createJobSchema } = require('./validators/jobs');
+const { createDatasetSchema, updateDatasetSchema, addDatasetItemSchema } = require('./validators/datasets');
+const { createEvaluationSchema, createEvalTemplateSchema, updateEvalTemplateSchema } = require('./validators/evaluations');
+const { createPromptSchema, updatePromptSchema } = require('./validators/prompts');
+const { createSessionSchema } = require('./validators/sessions');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -490,7 +503,7 @@ app.get('/api/checklist', auth.requirePermission('system', 'read', 'viewer'), (r
 });
 
 // Update configuration
-app.post('/api/config', auth.requirePermission('config', 'update', 'admin'), (req, res) => {
+app.post('/api/config', auth.requirePermission('config', 'update', 'admin'), validate(configUpdateSchema), (req, res) => {
   const updates = req.body || {};
   if (updates.auth && Object.prototype.hasOwnProperty.call(updates.auth, 'secret')) {
     delete updates.auth.secret;
@@ -560,7 +573,7 @@ app.get('/api/auth/status', (req, res) => {
   });
 });
 
-app.post('/api/auth/bootstrap', (req, res) => {
+app.post('/api/auth/bootstrap', validate(bootstrapSchema), (req, res) => {
   const currentConfig = config.getConfig();
   if (currentConfig.auth?.enabled !== true) {
     return res.status(400).json({ success: false, error: 'Auth is disabled' });
@@ -572,10 +585,7 @@ app.post('/api/auth/bootstrap', (req, res) => {
     return res.status(400).json({ success: false, error: 'Users already exist' });
   }
 
-  const { username, password, workspaceId } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ success: false, error: 'Username and password are required' });
-  }
+  const { username, password, workspaceId } = req.body;
 
   const user = authStore.createUser({
     username,
@@ -592,15 +602,12 @@ app.post('/api/auth/bootstrap', (req, res) => {
   res.json({ success: true, token, user });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', validate(loginSchema), (req, res) => {
   const currentConfig = config.getConfig();
   if (currentConfig.auth?.enabled !== true) {
     return res.status(400).json({ success: false, error: 'Auth is disabled' });
   }
-  const { username, password } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ success: false, error: 'Username and password are required' });
-  }
+  const { username, password } = req.body;
   const user = authStore.verifyLogin(username, password);
   if (!user) {
     return res.status(401).json({ success: false, error: 'Invalid credentials' });
@@ -639,7 +646,7 @@ app.get('/api/workspaces/active', auth.requirePermission('workspaces', 'read', '
   res.json({ active: current, workspaces: list });
 });
 
-app.post('/api/workspaces', auth.requirePermission('workspaces', 'create', 'admin'), (req, res) => {
+app.post('/api/workspaces', auth.requirePermission('workspaces', 'create', 'admin'), validate(createWorkspaceSchema), (req, res) => {
   const { id, name, reposRoot, outputDir, createStructure } = req.body || {};
   if (!reposRoot) {
     return res.status(400).json({ success: false, error: 'reposRoot is required' });
@@ -655,7 +662,7 @@ app.post('/api/workspaces', auth.requirePermission('workspaces', 'create', 'admi
   res.json({ success: true, workspace });
 });
 
-app.put('/api/workspaces/:id', auth.requirePermission('workspaces', 'update', 'admin'), (req, res) => {
+app.put('/api/workspaces/:id', auth.requirePermission('workspaces', 'update', 'admin'), validate(updateWorkspaceSchema), (req, res) => {
   const { id } = req.params;
   const { name, reposRoot, outputDir, createStructure } = req.body || {};
   const workspace = workspaces.upsertWorkspace({
@@ -704,15 +711,12 @@ app.get('/api/users', auth.requirePermission('users', 'read', 'admin'), (req, re
   res.json(authStore.listUsers());
 });
 
-app.post('/api/users', auth.requirePermission('users', 'create', 'admin'), (req, res) => {
-  const { username, password, role, workspaceId } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ success: false, error: 'Username and password are required' });
-  }
+app.post('/api/users', auth.requirePermission('users', 'create', 'admin'), validate(createUserSchema), (req, res) => {
+  const { username, password, role, workspaceId } = req.body;
   const user = authStore.createUser({
     username,
     password,
-    role: role || 'viewer',
+    role,
     workspaceId: workspaceId || null
   });
   if (!user) {
@@ -722,15 +726,9 @@ app.post('/api/users', auth.requirePermission('users', 'create', 'admin'), (req,
   res.json({ success: true, user });
 });
 
-app.put('/api/users/:id', auth.requirePermission('users', 'update', 'admin'), (req, res) => {
+app.put('/api/users/:id', auth.requirePermission('users', 'update', 'admin'), validate(updateUserSchema), (req, res) => {
   const { id } = req.params;
-  const updates = req.body || {};
-
-  if (updates.role === 'admin') {
-    // ok
-  } else if (updates.role && !['viewer', 'editor', 'admin'].includes(updates.role)) {
-    return res.status(400).json({ success: false, error: 'Invalid role' });
-  }
+  const updates = req.body;
 
   if (updates.disabled === true) {
     const target = authStore.findById(id);
@@ -840,12 +838,8 @@ app.delete('/api/scim/users/:id', requireScimToken, (req, res) => {
 });
 
 // Complete first-run setup
-app.post('/api/setup', auth.requirePermission('config', 'update', 'admin'), (req, res) => {
+app.post('/api/setup', auth.requirePermission('config', 'update', 'admin'), validate(setupSchema), (req, res) => {
   const { reposRoot, createStructure } = req.body;
-
-  if (!reposRoot) {
-    return res.status(400).json({ success: false, error: 'reposRoot is required' });
-  }
 
   // Repo root validation is advisory only (do not block setup)
   const validation = config.validateReposRoot(reposRoot);
@@ -885,19 +879,14 @@ app.post('/api/setup', auth.requirePermission('config', 'update', 'admin'), (req
 });
 
 // Validate a path
-app.post('/api/validate-path', auth.requirePermission('system', 'read', 'viewer'), (req, res) => {
+app.post('/api/validate-path', auth.requirePermission('system', 'read', 'viewer'), validate(validatePathSchema), (req, res) => {
   const { path: pathToValidate } = req.body;
-
-  if (!pathToValidate) {
-    return res.status(400).json({ success: false, error: 'Path is required' });
-  }
-
   const validation = config.validateReposRoot(pathToValidate);
   res.json(validation);
 });
 
 // LLM connectivity check (advisory)
-app.post('/api/llm/ping', auth.requirePermission('llm', 'test', 'viewer'), async (req, res) => {
+app.post('/api/llm/ping', auth.requirePermission('llm', 'test', 'viewer'), validate(llmPingSchema), async (req, res) => {
   const { endpoint, model, provider } = req.body || {};
   const llmConfig = config.getConfig().llm || {};
   const target = endpoint || llmConfig.endpoint;
@@ -1154,12 +1143,8 @@ app.post('/api/scan', auth.requirePermission('repos', 'scan', 'editor'), (req, r
 });
 
 // Clone a repository (cross-platform Node.js)
-app.post('/api/add', auth.requirePermission('repos', 'create', 'editor'), async (req, res) => {
+app.post('/api/add', auth.requirePermission('repos', 'create', 'editor'), validate(addRepoSchema), async (req, res) => {
   const { url } = req.body;
-  if (!url) {
-    return res.status(400).json({ error: 'URL required' });
-  }
-
   const trimmedUrl = url.trim();
   const isValidUrl =
     /^https?:\/\//i.test(trimmedUrl) ||
@@ -1290,17 +1275,10 @@ app.post('/api/repos/:name/update', auth.requirePermission('repos', 'update', 'e
 // Orchestrator API
 // ==========================================
 
-app.post('/api/spawn', auth.requirePermission('runs', 'create', 'editor'), (req, res) => {
+app.post('/api/spawn', auth.requirePermission('runs', 'create', 'editor'), validate(spawnSchema), (req, res) => {
   const { goal, format, async: asyncMode, externalSkills: externalSkillsRequest } = req.body;
-  if (!goal) {
-    return res.status(400).json({ error: 'Goal required' });
-  }
-
   const orchestratorPath = path.join(__dirname, 'orchestrator.js');
-  const allowedFormats = new Set(['universal', 'chatgpt', 'claude', 'gemini']);
-  const normalizedFormat = allowedFormats.has((format || '').toLowerCase())
-    ? format.toLowerCase()
-    : 'universal';
+  const normalizedFormat = format;
 
   console.log(`[ORCHESTRATOR] Spawning: ${goal} (format: ${normalizedFormat})`);
   audit('spawn.start', { format: normalizedFormat, goal }, req);
@@ -1453,7 +1431,7 @@ app.get('/api/sessions', auth.requirePermission('sessions', 'read', 'viewer'), (
   res.json(filtered.slice(-20).reverse()); // Last 20, newest first
 });
 
-app.post('/api/sessions', auth.requirePermission('sessions', 'create', 'editor'), (req, res) => {
+app.post('/api/sessions', auth.requirePermission('sessions', 'create', 'editor'), validate(createSessionSchema), (req, res) => {
   const { goal, agent, resources, output } = req.body;
 
   const sessions = loadSessions();
@@ -1594,11 +1572,8 @@ app.post('/api/jobs/:id/cancel', auth.requirePermission('jobs', 'update', 'edito
   res.json({ success: true, job });
 });
 
-app.post('/api/jobs', auth.requirePermission('jobs', 'create', 'editor'), (req, res) => {
-  const { type, payload } = req.body || {};
-  if (!type) {
-    return res.status(400).json({ success: false, error: 'Job type required' });
-  }
+app.post('/api/jobs', auth.requirePermission('jobs', 'create', 'editor'), validate(createJobSchema), (req, res) => {
+  const { type, payload } = req.body;
   const job = jobQueue.enqueueJob({
     type,
     payload: {
@@ -1699,15 +1674,12 @@ app.get('/api/datasets/:id/export', auth.requirePermission('datasets', 'export',
   res.json({ dataset });
 });
 
-app.post('/api/datasets', auth.requirePermission('datasets', 'create', 'editor'), (req, res) => {
-  const { name, description, benchmarkType } = req.body || {};
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'Dataset name is required' });
-  }
+app.post('/api/datasets', auth.requirePermission('datasets', 'create', 'editor'), validate(createDatasetSchema), (req, res) => {
+  const { name, description, benchmarkType } = req.body;
   const dataset = datasetsStore.createDataset({
     name,
     description,
-    benchmarkType: benchmarkType || 'response',
+    benchmarkType,
     workspaceId: req.workspace?.id || null
   });
   audit('datasets.create', { id: dataset.id, name: dataset.name }, req);
@@ -1728,7 +1700,7 @@ app.post('/api/datasets/import', auth.requirePermission('datasets', 'import', 'e
   res.json({ success: true, dataset });
 });
 
-app.put('/api/datasets/:id', auth.requirePermission('datasets', 'update', 'editor'), (req, res) => {
+app.put('/api/datasets/:id', auth.requirePermission('datasets', 'update', 'editor'), validate(updateDatasetSchema), (req, res) => {
   const { name, description, benchmarkType } = req.body || {};
   const existing = datasetsStore.getDataset(req.params.id);
   if (!existing || !matchesWorkspace(existing, req.workspace?.id || null)) {
@@ -1755,11 +1727,8 @@ app.delete('/api/datasets/:id', auth.requirePermission('datasets', 'delete', 'ed
   res.json({ success: true });
 });
 
-app.post('/api/datasets/:id/items', auth.requirePermission('datasets', 'update', 'editor'), (req, res) => {
-  const { input, expected, tags, weight, expectedType, rubric, expectedPaths } = req.body || {};
-  if (!input) {
-    return res.status(400).json({ success: false, error: 'Item input is required' });
-  }
+app.post('/api/datasets/:id/items', auth.requirePermission('datasets', 'update', 'editor'), validate(addDatasetItemSchema), (req, res) => {
+  const { input, expected, tags, weight, expectedType, rubric, expectedPaths } = req.body;
   const dataset = datasetsStore.getDataset(req.params.id);
   if (!dataset || !matchesWorkspace(dataset, req.workspace?.id || null)) {
     return res.status(404).json({ success: false, error: 'Dataset not found' });
@@ -1807,17 +1776,14 @@ app.post('/api/evaluation-templates/import', auth.requirePermission('evaluation_
   res.json({ success: true, templates: created });
 });
 
-app.post('/api/evaluation-templates', auth.requirePermission('evaluation_templates', 'create', 'editor'), (req, res) => {
-  const { name, description, rubric, expectedType } = req.body || {};
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'Template name is required' });
-  }
+app.post('/api/evaluation-templates', auth.requirePermission('evaluation_templates', 'create', 'editor'), validate(createEvalTemplateSchema), (req, res) => {
+  const { name, description, rubric, expectedType } = req.body;
   const template = evaluationTemplatesStore.createTemplate({ name, description, rubric, expectedType });
   audit('evaluationTemplates.create', { id: template.id, name: template.name }, req);
   res.json({ success: true, template });
 });
 
-app.put('/api/evaluation-templates/:id', auth.requirePermission('evaluation_templates', 'update', 'editor'), (req, res) => {
+app.put('/api/evaluation-templates/:id', auth.requirePermission('evaluation_templates', 'update', 'editor'), validate(updateEvalTemplateSchema), (req, res) => {
   const updated = evaluationTemplatesStore.updateTemplate(req.params.id, req.body || {});
   if (!updated) {
     return res.status(404).json({ success: false, error: 'Template not found' });
@@ -1835,12 +1801,8 @@ app.delete('/api/evaluation-templates/:id', auth.requirePermission('evaluation_t
   res.json({ success: true });
 });
 
-app.post('/api/evaluations', auth.requirePermission('evaluations', 'create', 'editor'), async (req, res) => {
-  const { datasetId, runId, name } = req.body || {};
-  if (!datasetId) {
-    return res.status(400).json({ success: false, error: 'datasetId is required' });
-  }
-
+app.post('/api/evaluations', auth.requirePermission('evaluations', 'create', 'editor'), validate(createEvaluationSchema), async (req, res) => {
+  const { datasetId, runId, name } = req.body;
   const dataset = datasetsStore.getDataset(datasetId);
   const run = runId ? runsStore.getRun(runId) : null;
   if (!dataset || !matchesWorkspace(dataset, req.workspace?.id || null)) {
@@ -2035,20 +1997,15 @@ app.get('/api/prompts', auth.requirePermission('prompts', 'read', 'viewer'), (re
 });
 
 // Save a new prompt
-app.post('/api/prompts', auth.requirePermission('prompts', 'create', 'editor'), (req, res) => {
+app.post('/api/prompts', auth.requirePermission('prompts', 'create', 'editor'), validate(createPromptSchema), (req, res) => {
   const { title, query } = req.body;
-
-  if (!query) {
-    return res.status(400).json({ success: false, error: 'Query is required' });
-  }
-
   const prompt = config.savePrompt(title, query, req.workspace?.id || null);
   audit('prompts.save', { id: prompt.id, title: prompt.title }, req);
   res.json({ success: true, prompt });
 });
 
 // Update a prompt
-app.put('/api/prompts/:id', auth.requirePermission('prompts', 'update', 'editor'), (req, res) => {
+app.put('/api/prompts/:id', auth.requirePermission('prompts', 'update', 'editor'), validate(updatePromptSchema), (req, res) => {
   const { id } = req.params;
   const { title, query } = req.body;
 

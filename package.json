@@ -27,7 +27,8 @@
     "concurrently": "^9.2.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "string-similarity": "^4.0.4"
+    "string-similarity": "^4.0.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

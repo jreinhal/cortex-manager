@@ -1,81 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useLocation, useNavigate, Link } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import {
   Terminal, Database, Cpu, Wrench,
   BarChart3, RefreshCw, CheckCircle2,
-  ChevronRight, ChevronDown, GitBranch, Folder,
-  Settings, FolderOpen, Check, X, Clock,
-  History, HardDrive,
-  ChevronUp, FolderInput, Star, Trash2,
+  ChevronRight, ChevronDown, Folder,
+  Settings, FolderOpen, Check, Clock,
+  History, Star, Trash2,
   LayoutDashboard, Activity, FlaskConical, Library, BookOpen
 } from 'lucide-react'
-import { clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
 import brainIcon from './assets/brain.png'
-import { AuditView } from './views/AuditView';
-import { LogsView } from './views/LogsView';
-import { SettingsPanel } from './views/SettingsPanel';
-import { LibraryView } from './views/LibraryView';
-import { VIEW_KEYS, VIEW_PATHS, resolveViewFromPath, resolveViewFromQuery } from './router';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
-const AUTH_TOKEN_KEY = 'cortex_token';
-const WORKSPACE_KEY = 'cortex_workspace_id';
-const THEME_KEY = 'cortex_theme';
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
-const MANUAL_URL = (() => {
-  const base = API_BASE.replace(/\/api\/?$/, '');
-  return `${base}/manual/index.html`;
-})();
-
-function apiFetch(path, options = {}) {
-  const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
-  const workspaceId = window.localStorage.getItem(WORKSPACE_KEY);
-  const headers = {
-    ...(options.headers || {})
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  if (workspaceId) {
-    headers['x-workspace-id'] = workspaceId;
-  }
-  const url = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
-  return fetch(url, { ...options, headers }).then((res) => {
-    if (res.status === 401) {
-      window.localStorage.removeItem(AUTH_TOKEN_KEY);
-      window.dispatchEvent(new CustomEvent('auth-expired'));
-    }
-    return res;
-  });
-}
-
-// --- Utils ---
-function cn(...inputs) {
-  return twMerge(clsx(inputs));
-}
-
-function formatBytes(bytes) {
-  if (bytes === null || bytes === undefined) return '0 B';
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-  const precision = i >= 2 ? 1 : 0;
-  return `${value.toFixed(precision)} ${sizes[i]}`;
-}
-
-function formatDuration(ms) {
-  if (ms === null || ms === undefined) return '—';
-  if (ms < 1000) return `${ms} ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const rem = Math.round(seconds % 60);
-  return `${minutes}m ${rem}s`;
-}
+import { cn, formatBytes, formatDuration } from './lib/utils'
+import { SPRING_SMOOTH, SPRING_FAST, API_BASE, AUTH_TOKEN_KEY, WORKSPACE_KEY, THEME_KEY, APP_VERSION, MANUAL_URL, FORMAT_OPTIONS, DEFAULT_FORMAT } from './lib/constants'
+import { apiFetch } from './lib/api'
+import { NavItem } from './components/NavItem'
+import { EmptyState } from './components/EmptyState'
+import { Sparkline } from './components/Sparkline'
+import { TrendCard } from './components/TrendCard'
+import { DirectoryBrowser } from './components/DirectoryBrowser'
+import { ChecklistModal } from './components/ChecklistModal'
+import { SpawnTimeline } from './components/SpawnTimeline'
+import { RepoTable } from './components/RepoTable'
+import { AuditView } from './views/AuditView'
+import { LogsView } from './views/LogsView'
+import { SettingsPanel } from './views/SettingsPanel'
+import { LibraryView } from './views/LibraryView'
+import { VIEW_KEYS, VIEW_PATHS, resolveViewFromPath, resolveViewFromQuery } from './router'
 
 // --- Configuration ---
 const CATEGORY_CONFIG = {
@@ -136,217 +86,9 @@ const DEFAULT_RBAC_ROLES = {
     '*': ['*']
   }
 };
-const SPRING_SMOOTH = { type: 'tween', duration: 0.2, ease: [0.2, 0.7, 0.2, 1] };
-const SPRING_FAST = { type: 'tween', duration: 0.16, ease: [0.2, 0.7, 0.2, 1] };
-const FORMAT_OPTIONS = [
-  { value: 'universal', label: 'Universal', accent: 'bg-cyan-400/80' },
-  { value: 'chatgpt', label: 'ChatGPT', accent: 'bg-sky-400/80' },
-  { value: 'claude', label: 'Claude', accent: 'bg-amber-400/80' },
-  { value: 'gemini', label: 'Gemini', accent: 'bg-violet-400/80' }
-];
-const DEFAULT_FORMAT = FORMAT_OPTIONS[0].value;
-
 // ==========================================
 // Setup Wizard Component
 // ==========================================
-// Directory Browser Component
-function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
-  const [currentPath, setCurrentPath] = useState('');
-  const [items, setItems] = useState([]);
-  const [parentPath, setParentPath] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const fetchDirectory = async (pathToFetch = '', fallbackToRoot = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const url = pathToFetch
-        ? `${API_BASE}/browse?path=${encodeURIComponent(pathToFetch)}`
-        : `${API_BASE}/browse`;
-      const res = await apiFetch(url);
-      const data = await res.json();
-      if (data.error) {
-        // If path doesn't exist and we haven't tried root yet, fall back to root
-        if (fallbackToRoot === false && pathToFetch) {
-          return fetchDirectory('', true);
-        }
-        setError(data.error);
-      } else {
-        setCurrentPath(data.path);
-        setItems(data.items || []);
-        setParentPath(data.parent);
-      }
-    } catch (e) {
-      setError('Failed to browse directory. Check permissions or try a different path.');
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      // Start from initialPath if provided, will fallback to root if path doesn't exist
-      fetchDirectory(initialPath || '');
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="directory-browser-title"
-        className="glass-panel rounded-2xl w-full max-w-lg max-h-[70vh] flex flex-col shadow-2xl overscroll-contain"
-      >
-        {/* Header */}
-        <div className="p-4 border-b border-white/5 flex items-center justify-between">
-          <h3 id="directory-browser-title" className="font-bold text-white flex items-center gap-2">
-            <FolderInput size={20} className="text-cyan-400" aria-hidden="true" />
-            Select Directory
-          </h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close">
-            <X size={20} aria-hidden="true" />
-          </button>
-        </div>
-
-        {/* Current Path */}
-        <div className="px-4 py-2 bg-slate-900/30 border-b border-white/5">
-          <p className="text-xs text-slate-400 font-mono truncate">
-            {currentPath || 'Select a drive'}
-          </p>
-        </div>
-
-        {/* Navigation */}
-        {parentPath !== null && (
-          <button
-            type="button"
-            onClick={() => fetchDirectory(parentPath)}
-            className="flex items-center gap-2 px-4 py-3 hover:bg-white/5 text-slate-300 border-b border-white/5"
-            aria-label="Go to parent directory"
-          >
-            <ChevronUp size={16} aria-hidden="true" />
-            <span>Parent</span>
-          </button>
-        )}
-
-        {/* Directory List */}
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-              <RefreshCw size={24} className="animate-spin text-cyan-400" aria-hidden="true" />
-              <span className="sr-only">Loading directories…</span>
-            </div>
-          ) : error ? (
-            <div className="p-4 text-red-400 text-sm" role="alert">{error}</div>
-          ) : items.length === 0 ? (
-            <div className="p-4 text-slate-500 text-sm text-center">No subdirectories</div>
-          ) : (
-            items.map((item) => (
-                <button
-                  key={item.path}
-                  onClick={() => fetchDirectory(item.path)}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-slate-300 w-full text-left border-b border-white/5 min-w-0"
-                >
-                  {item.name.includes(':') ? (
-                    <HardDrive size={18} className="text-cyan-400" aria-hidden="true" />
-                  ) : (
-                    <Folder size={18} className="text-yellow-400" aria-hidden="true" />
-                  )}
-                  <span className="font-mono text-sm truncate">{item.name}</span>
-                </button>
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-white/5 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-ui"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              onSelect(currentPath);
-              onClose();
-            }}
-            disabled={!currentPath}
-            className="flex-1 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold transition-ui"
-          >
-            Select This Folder
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function ChecklistModal({ isOpen, onClose, content, loading, error, onRefresh, onCopy }) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="checklist-title"
-        className="glass-panel rounded-2xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl"
-      >
-        <div className="p-4 border-b border-white/5 flex items-center justify-between">
-          <h3 id="checklist-title" className="font-bold text-white flex items-center gap-2">
-            Quickstart Checklist
-          </h3>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onRefresh}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-slate-200 hover:text-white transition-ui"
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={onCopy}
-              disabled={!content || loading}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-slate-200 hover:text-white transition-ui disabled:opacity-40"
-            >
-              Copy
-            </button>
-            <button type="button" onClick={onClose} className="text-slate-400 hover:text-white" aria-label="Close">
-              <X size={18} aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto p-4">
-          {loading && (
-            <div className="flex items-center gap-3 text-cyan-400 text-sm" role="status" aria-live="polite">
-              <RefreshCw size={16} className="animate-spin" aria-hidden="true" />
-              Loading checklist…
-            </div>
-          )}
-          {!loading && error && (
-            <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2" role="alert">
-              {error}
-            </div>
-          )}
-          {!loading && !error && (
-            <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
-              {content || 'Checklist is empty.'}
-            </pre>
-          )}
-        </div>
-      </motion.div>
-    </div>
-  );
-}
 
 function SetupWizard({ onComplete, defaultPath }) {
   const [reposRoot, setReposRoot] = useState(defaultPath || '');
@@ -766,90 +508,6 @@ const buildSpawnStepDefs = ({ onlineSkills, trainingMode }) => {
 
   return steps;
 };
-
-function SpawnTimeline({ steps }) {
-  const [expanded, setExpanded] = useState(true);
-  const totalSteps = steps.length;
-  const doneCount = steps.filter(step => step.done).length;
-  const hasError = steps.some(step => step.error);
-  const isComplete = totalSteps > 0 && doneCount === totalSteps && !hasError;
-  const currentStep = steps.find(step => !step.done && !step.error);
-  const rawProgress = totalSteps > 0 ? Math.round((doneCount / totalSteps) * 100) : 0;
-  const displayProgress = isComplete ? 100 : Math.max(8, rawProgress);
-  const totalDuration = steps.reduce((sum, step) => sum + (step.durationMs || 0), 0);
-  const hasTiming = steps.some(step => step.durationMs !== null && step.durationMs !== undefined);
-
-  useEffect(() => {
-    if (steps.some(step => !step.done)) {
-      setExpanded(true);
-    }
-  }, [steps]);
-
-  return (
-    <div className="glassbox-accordion" role="status" aria-live="polite" data-testid="spawn-steps">
-      <button
-        type="button"
-        className={cn("glassbox-toggle", expanded && "expanded")}
-        onClick={() => setExpanded((open) => !open)}
-      >
-        <ChevronDown size={14} aria-hidden="true" />
-        <span className="font-semibold">View Generation Chain ({totalSteps} steps)</span>
-        <span className="glassbox-toggle-meta">{doneCount}/{totalSteps} · {displayProgress}%</span>
-        {hasTiming && <span className="glassbox-total-duration">{totalDuration}ms</span>}
-      </button>
-      <div className={cn("glassbox-content", expanded && "visible")}>
-        <div className="space-y-2">
-          <div
-            className="relative h-2 w-full rounded-full bg-slate-800/80 overflow-hidden border border-slate-700/50"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={displayProgress}
-          >
-            <div
-              className={cn(
-                "h-full rounded-full transition-all duration-700",
-                isComplete
-                  ? "bg-emerald-400"
-                  : hasError
-                    ? "bg-red-400"
-                    : "bg-cyan-400 animate-pulse"
-              )}
-              style={{ width: `${displayProgress}%` }}
-            />
-          </div>
-          {!isComplete && !hasError && (
-            <div className="text-[11px] text-slate-500">
-              {currentStep ? `Now: ${currentStep.label || currentStep.text}` : 'Working…'} This can take a few minutes for large prompts.
-            </div>
-          )}
-          {hasError && (
-            <div className="text-[11px] text-red-400">An error occurred. Check System Logs.</div>
-          )}
-        </div>
-
-        <div className="mt-4 space-y-2">
-          {steps.map((step, i) => (
-            <div key={step.key || i} className="glassbox-step">
-              <div className={cn("glassbox-step-icon", step.type || '')}>
-                {i + 1}
-              </div>
-              <div className="glassbox-step-content">
-                <div className="glassbox-step-label">
-                  {step.label || step.text}
-                  {step.durationMs !== null && step.durationMs !== undefined && (
-                    <span className="glassbox-step-duration">{Math.max(0, Math.round(step.durationMs))}ms</span>
-                  )}
-                </div>
-                {step.detail && <div className="glassbox-step-detail">{step.detail}</div>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ==========================================
 // Main Components
@@ -1654,74 +1312,6 @@ function OrchestratorView({
         )}
       </AnimatePresence>
     </motion.div>
-  );
-}
-
-function EmptyState({ title, subtitle }) {
-  return (
-    <div className="text-center text-slate-500 py-10 border border-dashed border-slate-800 rounded-3xl">
-      <div className="text-sm font-semibold text-slate-400">{title}</div>
-      {subtitle && <div className="text-xs text-slate-500 mt-1">{subtitle}</div>}
-    </div>
-  );
-}
-
-function buildSparklinePath(values, width, height) {
-  if (!Array.isArray(values) || values.length === 0) return '';
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const step = values.length > 1 ? width / (values.length - 1) : width;
-  return values
-    .map((value, index) => {
-      const x = step * index;
-      const y = height - ((value - min) / range) * height;
-      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-}
-
-function Sparkline({ values, stroke = '#38bdf8' }) {
-  const width = 120;
-  const height = 36;
-  const path = buildSparklinePath(values, width, height);
-  if (!path) {
-    return <div className="text-[10px] text-slate-500">No data</div>;
-  }
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      <path d={path} fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrendCard({ label, trend, accent }) {
-  const hasData = trend.count > 0;
-  const delta = trend.delta ?? 0;
-  return (
-    <div className="p-4 rounded-2xl border border-slate-800/70 bg-slate-900/40">
-      <div className="flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold">{label}</div>
-        <span className="tag-inline tag-inline-muted text-[10px]">{trend.count} runs</span>
-      </div>
-      {hasData ? (
-        <div className="mt-3 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-2xl font-semibold text-slate-100 tabular-nums">{trend.latest}</div>
-            <div className={cn(
-              "text-[11px] font-semibold",
-              delta >= 0 ? "text-emerald-300" : "text-red-300"
-            )}>
-              {delta >= 0 ? '+' : ''}{delta.toFixed(1)} since last
-            </div>
-            <div className="text-[11px] text-slate-500">Avg {trend.avg.toFixed(1)}</div>
-          </div>
-          <Sparkline values={trend.values} stroke={accent} />
-        </div>
-      ) : (
-        <div className="mt-3 text-xs text-slate-500">No evaluations captured yet.</div>
-      )}
-    </div>
   );
 }
 
@@ -3222,133 +2812,6 @@ function EvaluationsView({
   );
 }
 
-function RepoRow({ repo, delay }) {
-  const getIcon = (purpose) => {
-    const p = purpose?.toLowerCase() || '';
-    if (p.includes("agent")) return Cpu;
-    if (p.includes("skill")) return Terminal;
-    if (p.includes("knowledge")) return Database;
-    if (p.includes("tool")) return Wrench;
-    if (p.includes("benchmark")) return BarChart3;
-    return Folder;
-  }
-
-  const getPurposeColor = (purpose) => {
-    const p = purpose?.toLowerCase() || '';
-    if (p.includes("agent")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
-    if (p.includes("skill")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
-    if (p.includes("knowledge")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
-    if (p.includes("tool")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
-    if (p.includes("benchmark")) return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
-    return { text: "text-slate-300", bg: "bg-white/5", badge: "text-slate-200 border-white/10 bg-white/5" };
-  }
-
-  const Icon = getIcon(repo.Purpose);
-  const color = getPurposeColor(repo.Purpose);
-
-  return (
-    <motion.tr
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ ...SPRING_FAST, delay }}
-      className="border-b border-white/5 hover:bg-white/[0.03] group"
-    >
-      <td className="py-2.5 pl-5 pr-4">
-        <div className="flex items-center gap-3.5">
-          <div className={cn("p-1.5 rounded-xl transition-ui group-hover:scale-105", color.bg)}>
-            <Icon size={16} className={color.text} aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <div className="font-medium text-slate-200 group-hover:text-slate-100 text-sm">{repo.Name}</div>
-            <div className="text-[10px] text-slate-500 font-mono truncate max-w-[220px] mt-0.5 opacity-70">{repo.Path}</div>
-          </div>
-        </div>
-      </td>
-      <td className="py-2.5 px-4">
-        <div className="tag-inline tag-inline-muted font-mono text-[10px]">
-          <GitBranch size={12} aria-hidden="true" />
-          {repo.Branch}
-        </div>
-      </td>
-      <td className="py-2.5 px-4">
-        <span className={cn("tag-inline", color.badge)}>
-          {repo.Purpose}
-        </span>
-      </td>
-    </motion.tr>
-  )
-}
-
-function RepoTable({ repos }) {
-  return (
-    <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl shadow-black/30" data-testid="repos-table">
-      <div className="px-6 py-3 border-b border-white/5 flex justify-between items-center bg-slate-900/20">
-        <h3 className="font-semibold text-slate-200 flex items-center gap-2 text-sm">
-          <Database size={16} className="text-slate-500" aria-hidden="true" />
-          Tracked Resources
-        </h3>
-        <span className="tag-inline tag-inline-muted font-mono tabular-nums">{repos.length} Items</span>
-      </div>
-      <div
-        className="overflow-x-auto"
-        style={{ contentVisibility: 'auto', containIntrinsicSize: '600px' }}
-      >
-        <table className="w-full text-left border-collapse text-sm tabular-nums density-table">
-          <thead className="table-head text-slate-400 text-[10px] font-medium tracking-[0.14em] border-b border-white/5">
-            <tr>
-              <th className="py-2.5 pl-5 pr-4">Name / Path</th>
-              <th className="py-2.5 px-4">Branch</th>
-              <th className="py-2.5 px-4">Type</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            <AnimatePresence>
-              {repos.map((repo, i) => (
-                <RepoRow key={repo.Name + i} repo={repo} delay={i * 0.05} />
-              ))}
-            </AnimatePresence>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function NavItem({ icon: Icon, label, active, badge, to, onBeforeNavigate, testId }) {
-  const handleClick = (event) => {
-    if (!onBeforeNavigate) return;
-    const allowed = onBeforeNavigate();
-    if (allowed === false) {
-      event.preventDefault();
-    }
-  };
-
-  return (
-    <Link
-      to={to}
-      onClick={handleClick}
-      aria-current={active ? 'page' : undefined}
-      data-testid={testId}
-      className={cn(
-        "nav-pill w-full flex items-center gap-3 px-4 py-2.5 rounded-full transition-ui text-[11px] font-semibold group no-underline",
-        active
-          ? "nav-pill-active text-slate-100"
-          : "text-slate-400 hover:text-slate-200"
-      )}
-    >
-      <Icon size={20} className={cn("", active ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300")} aria-hidden="true" />
-      <span className="font-display uppercase tracking-[0.26em] text-[11px] leading-none">{label}</span>
-
-      {badge && (
-        <span className={cn("ml-auto tag-chip tag-chip-muted tabular-nums", active ? "text-slate-100" : "text-slate-300")}>
-          {badge}
-        </span>
-      )}
-      {!active && !badge && <ChevronRight size={14} className="ml-auto opacity-0 group-hover:opacity-50 -translate-x-2 group-hover:translate-x-0 transition-ui" aria-hidden="true" />}
-    </Link>
-  )
-}
-
 // ==========================================
 // Main App
 // ==========================================
@@ -4795,7 +4258,6 @@ function App() {
               tools={tools}
               onDeletePrompt={deletePrompt}
               onUsePrompt={handleLibraryUsePrompt}
-              EmptyState={EmptyState}
               transition={SPRING_SMOOTH}
             />
           )}
@@ -4944,7 +4406,6 @@ function App() {
             <AuditView
               auditLogs={auditLogs}
               apiFetch={apiFetch}
-              EmptyState={EmptyState}
               transition={SPRING_SMOOTH}
             />
           )}

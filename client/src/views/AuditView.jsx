@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { EmptyState } from '../components/EmptyState';
 
-export function AuditView({ auditLogs, apiFetch, EmptyState, transition }) {
+export function AuditView({ auditLogs, apiFetch, transition }) {
   const [query, setQuery] = useState('');
   const [eventFilter, setEventFilter] = useState('all');
   const [exporting, setExporting] = useState('');

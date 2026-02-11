@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { EmptyState } from '../components/EmptyState';
 
 export function LibraryView({
   savedPrompts,
@@ -6,7 +7,6 @@ export function LibraryView({
   tools,
   onDeletePrompt,
   onUsePrompt,
-  EmptyState,
   transition
 }) {
   const handleDeletePrompt = (prompt) => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import {
   Terminal, Database, Cpu, Wrench,
@@ -16,6 +17,7 @@ import { AuditView } from './views/AuditView';
 import { LogsView } from './views/LogsView';
 import { SettingsPanel } from './views/SettingsPanel';
 import { LibraryView } from './views/LibraryView';
+import { VIEW_KEYS, VIEW_PATHS, resolveViewFromPath, resolveViewFromQuery } from './router';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 const AUTH_TOKEN_KEY = 'cortex_token';
@@ -134,7 +136,6 @@ const DEFAULT_RBAC_ROLES = {
     '*': ['*']
   }
 };
-const VIEW_KEYS = ['home', 'agents', 'runs', 'jobs', 'evaluations', 'library', 'knowledge', 'audit', 'logs', 'settings'];
 const SPRING_SMOOTH = { type: 'tween', duration: 0.2, ease: [0.2, 0.7, 0.2, 1] };
 const SPRING_FAST = { type: 'tween', duration: 0.16, ease: [0.2, 0.7, 0.2, 1] };
 const FORMAT_OPTIONS = [
@@ -3313,19 +3314,18 @@ function RepoTable({ repos }) {
   )
 }
 
-function NavItem({ icon: Icon, label, active, badge, href, onClick, testId }) {
+function NavItem({ icon: Icon, label, active, badge, to, onBeforeNavigate, testId }) {
   const handleClick = (event) => {
-    if (!onClick) return;
-    if (event.defaultPrevented) return;
-    if (event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    onClick();
+    if (!onBeforeNavigate) return;
+    const allowed = onBeforeNavigate();
+    if (allowed === false) {
+      event.preventDefault();
+    }
   };
 
   return (
-    <a
-      href={href}
+    <Link
+      to={to}
       onClick={handleClick}
       aria-current={active ? 'page' : undefined}
       data-testid={testId}
@@ -3345,7 +3345,7 @@ function NavItem({ icon: Icon, label, active, badge, href, onClick, testId }) {
         </span>
       )}
       {!active && !badge && <ChevronRight size={14} className="ml-auto opacity-0 group-hover:opacity-50 -translate-x-2 group-hover:translate-x-0 transition-ui" aria-hidden="true" />}
-    </a>
+    </Link>
   )
 }
 
@@ -3367,16 +3367,9 @@ function App() {
   const repoNoticeTimeoutRef = useRef(null);
   const [logs, setLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [view, setView] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlView = params.get('view');
-    const normalized = urlView === 'dashboard'
-      ? 'home'
-      : urlView === 'repos' || urlView === 'repositories'
-        ? 'knowledge'
-        : urlView;
-    return (normalized && VIEW_KEYS.includes(normalized)) ? normalized : 'home';
-  });
+  const location = useLocation();
+  const navigate = useNavigate();
+  const view = resolveViewFromPath(location.pathname);
   const [spawnResult, setSpawnResult] = useState('');
   const [dirtyGoal, setDirtyGoal] = useState(false);
   const [runs, setRuns] = useState([]);
@@ -3480,13 +3473,12 @@ function App() {
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('view') !== view) {
-      params.set('view', view);
-      const nextUrl = `${window.location.pathname}?${params.toString()}`;
-      window.history.replaceState({}, '', nextUrl);
+    const params = new URLSearchParams(location.search);
+    const legacyView = resolveViewFromQuery(params.get('view'));
+    if (legacyView) {
+      navigate(VIEW_PATHS[legacyView], { replace: true });
     }
-  }, [view]);
+  }, [location.search, navigate]);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -4494,15 +4486,20 @@ function App() {
   const mainPadding = view === 'agents'
     ? 'pl-4 pr-6 pt-4 pb-8'
     : 'pl-4 pr-6 py-8';
-  const handleViewChange = (nextView) => {
-    if (nextView === view) return;
+  const confirmNavigation = useCallback(() => {
     if (dirtyGoal && view === 'agents') {
       const confirmLeave = window.confirm('You have an unsent goal. Leave this page?');
-      if (!confirmLeave) return;
+      if (!confirmLeave) return false;
       setDirtyGoal(false);
     }
-    setView(nextView);
-  };
+    return true;
+  }, [dirtyGoal, view]);
+
+  const handleViewChange = useCallback((nextView) => {
+    if (nextView === view) return;
+    if (!confirmNavigation()) return;
+    navigate(VIEW_PATHS[nextView] || '/');
+  }, [view, confirmNavigation, navigate]);
 
   const handleAgentUsePrompt = (query) => {
     setPrefillGoal(query);
@@ -4563,16 +4560,16 @@ function App() {
               icon={LayoutDashboard}
               label="Command Center"
               active={view === 'home'}
-              href="?view=home"
-              onClick={() => handleViewChange('home')}
+              to="/"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-home"
             />
             <NavItem
               icon={Cpu}
               label="Agent Factory"
               active={view === 'agents'}
-              href="?view=agents"
-              onClick={() => handleViewChange('agents')}
+              to="/agents"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-agents"
             />
             <NavItem
@@ -4580,8 +4577,8 @@ function App() {
               label="Runs"
               badge={runs.length}
               active={view === 'runs'}
-              href="?view=runs"
-              onClick={() => handleViewChange('runs')}
+              to="/runs"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-runs"
             />
             <NavItem
@@ -4589,8 +4586,8 @@ function App() {
               label="Jobs"
               badge={jobs.length}
               active={view === 'jobs'}
-              href="?view=jobs"
-              onClick={() => handleViewChange('jobs')}
+              to="/jobs"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-jobs"
             />
             <NavItem
@@ -4598,8 +4595,8 @@ function App() {
               label="Evaluations"
               badge={datasets.length + evaluations.length}
               active={view === 'evaluations'}
-              href="?view=evaluations"
-              onClick={() => handleViewChange('evaluations')}
+              to="/evaluations"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-evaluations"
             />
             <NavItem
@@ -4607,8 +4604,8 @@ function App() {
               label="Library"
               badge={savedPrompts.length}
               active={view === 'library'}
-              href="?view=library"
-              onClick={() => handleViewChange('library')}
+              to="/library"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-library"
             />
             <NavItem
@@ -4616,32 +4613,32 @@ function App() {
               label="Knowledge Base"
               badge={repos.length}
               active={view === 'knowledge'}
-              href="?view=knowledge"
-              onClick={() => handleViewChange('knowledge')}
+              to="/knowledge"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-knowledge"
             />
             <NavItem
               icon={Terminal}
               label="System Logs"
               active={view === 'logs'}
-              href="?view=logs"
-              onClick={() => handleViewChange('logs')}
+              to="/logs"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-logs"
             />
             <NavItem
               icon={History}
               label="Audit Trail"
               active={view === 'audit'}
-              href="?view=audit"
-              onClick={() => handleViewChange('audit')}
+              to="/audit"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-audit"
             />
             <NavItem
               icon={Settings}
               label="Settings"
               active={view === 'settings'}
-              href="?view=settings"
-              onClick={() => handleViewChange('settings')}
+              to="/settings"
+              onBeforeNavigate={confirmNavigation}
               testId="nav-settings"
             />
           </div>

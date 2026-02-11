@@ -130,14 +130,20 @@ console.log(`  First Run: ${config.isFirstRun()}`)
 console.log('========================================\n')
 logEvent('CORTEX backend started')
 
-app.listen(PORT, () => {
-  console.log(`\n  CORTEX Backend running on http://localhost:${PORT}`)
-  console.log(`  API endpoints available at http://localhost:${PORT}/api\n`)
+// Export app for integration testing (supertest)
+module.exports = app
 
-  if (config.isFirstRun()) {
-    console.log('  First run detected - setup wizard will appear in UI\n')
-  }
-})
+// Only start the server when run directly (not when required by tests)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`\n  CORTEX Backend running on http://localhost:${PORT}`)
+    console.log(`  API endpoints available at http://localhost:${PORT}/api\n`)
 
-jobQueue.processQueue()
-jobQueue.ensureWorkerPool()
+    if (config.isFirstRun()) {
+      console.log('  First run detected - setup wizard will appear in UI\n')
+    }
+  })
+
+  jobQueue.processQueue()
+  jobQueue.ensureWorkerPool()
+}

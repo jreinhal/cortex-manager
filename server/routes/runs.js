@@ -117,6 +117,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
 
   // Sessions
   const SESSIONS_FILE = path.join(__dirname, '..', '..', 'sessions.json')
+  let sessionsMutex = Promise.resolve()
 
   async function loadSessions() {
     const data = await readJsonFileAsync(SESSIONS_FILE, [])
@@ -145,24 +146,31 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
     async (req, res) => {
       const { goal, agent, resources, output } = req.body
 
-      const sessions = await loadSessions()
-      const session = {
-        id: `session-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        workspaceId: req.workspace?.id || null,
-        goal,
-        agent,
-        resources,
-        outputPreview: output ? output.substring(0, 500) : null,
-      }
+      const prev = sessionsMutex
+      sessionsMutex = prev.then(async () => {
+        const sessions = await loadSessions()
+        const session = {
+          id: `session-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          workspaceId: req.workspace?.id || null,
+          goal,
+          agent,
+          resources,
+          outputPreview: output ? output.substring(0, 500) : null,
+        }
 
-      sessions.push(session)
+        sessions.push(session)
 
-      const trimmed = sessions.slice(-50)
-      await saveSessions(trimmed)
-      audit('sessions.create', { id: session.id }, req)
+        const trimmed = sessions.slice(-50)
+        await saveSessions(trimmed)
+        audit('sessions.create', { id: session.id }, req)
 
-      res.json({ success: true, session })
+        res.json({ success: true, session })
+      }).catch((err) => {
+        console.error('[SESSIONS] Save error:', err)
+        res.status(500).json({ success: false, error: 'Failed to save session' })
+      })
+      await sessionsMutex
     }
   )
 
@@ -215,8 +223,10 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
         if (resolved) {
           try {
             output = await fsp.readFile(resolved, 'utf8')
-          } catch (_e) {
-            // file missing or unreadable
+          } catch (e) {
+            if (e.code !== 'ENOENT') {
+              return res.status(500).json({ error: 'Failed to read run output' })
+            }
           }
         }
       }

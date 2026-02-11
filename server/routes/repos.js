@@ -113,20 +113,21 @@ function createRepoRoutes({ config, auth, repoManager, externalSkills, vectorInd
     async (req, res) => {
       const { url } = req.body
       const trimmedUrl = url.trim()
-      let localPathExists = false
-      try {
-        await fsp.access(trimmedUrl)
-        localPathExists = true
-      } catch (_e) {
-        // not a local path or not accessible
-      }
-      const isValidUrl =
+      const hasScheme =
         /^https?:\/\//i.test(trimmedUrl) ||
         /^ssh:\/\//i.test(trimmedUrl) ||
         /^git@[^:]+:.+/i.test(trimmedUrl) ||
-        /^file:\/\//i.test(trimmedUrl) ||
-        localPathExists ||
-        path.isAbsolute(trimmedUrl)
+        /^file:\/\//i.test(trimmedUrl)
+      let localPathExists = false
+      if (!hasScheme) {
+        try {
+          await fsp.access(trimmedUrl)
+          localPathExists = true
+        } catch (_e) {
+          // not a local path or not accessible
+        }
+      }
+      const isValidUrl = hasScheme || localPathExists || path.isAbsolute(trimmedUrl)
       if (!isValidUrl) {
         return res.status(400).json({
           success: false,

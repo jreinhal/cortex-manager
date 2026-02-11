@@ -1,6 +1,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+const crypto = require('crypto');
 
 function ensureDir(filePath) {
   const dir = path.dirname(filePath);
@@ -50,14 +51,16 @@ function writeJsonAtomic(filePath, data) {
 }
 
 async function writeJsonAtomicAsync(filePath, data) {
+  const suffix = `${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  const tmpPath = `${filePath}.${suffix}`;
   try {
     await ensureDirAsync(filePath);
-    const tmpPath = `${filePath}.${process.pid}.tmp`;
     await fsp.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf8');
     await fsp.rename(tmpPath, filePath);
     return true;
   } catch (error) {
     console.error(`Error writing ${filePath}:`, error.message);
+    try { await fsp.unlink(tmpPath); } catch (_e) { /* already gone */ }
     return false;
   }
 }

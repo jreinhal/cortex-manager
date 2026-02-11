@@ -8,6 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/__tests__/**/*.test.{js,jsx}'],
     exclude: ['node_modules'],
+    setupFiles: ['src/__tests__/setup.js'],
     testTimeout: 10000,
   },
 })

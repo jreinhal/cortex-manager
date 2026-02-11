@@ -1,5 +1,6 @@
 const express = require('express')
 const { validate } = require('../middleware/validate')
+const { authLimiter } = require('../middleware/rate-limit')
 const { bootstrapSchema, loginSchema } = require('../validators/auth')
 const { audit } = require('./helpers')
 
@@ -32,7 +33,7 @@ function createAuthRoutes({ config, auth, authStore }) {
     })
   })
 
-  router.post('/auth/bootstrap', validate(bootstrapSchema), (req, res) => {
+  router.post('/auth/bootstrap', authLimiter, validate(bootstrapSchema), (req, res) => {
     const currentConfig = config.getConfig()
     if (currentConfig.auth?.enabled !== true) {
       return res.status(400).json({ success: false, error: 'Auth is disabled' })
@@ -61,7 +62,7 @@ function createAuthRoutes({ config, auth, authStore }) {
     res.json({ success: true, token, user })
   })
 
-  router.post('/auth/login', validate(loginSchema), (req, res) => {
+  router.post('/auth/login', authLimiter, validate(loginSchema), (req, res) => {
     const currentConfig = config.getConfig()
     if (currentConfig.auth?.enabled !== true) {
       return res.status(400).json({ success: false, error: 'Auth is disabled' })

@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const fsp = fs.promises
 const { validate } = require('../middleware/validate')
+const { writeLimiter } = require('../middleware/rate-limit')
 const { addRepoSchema } = require('../validators/repos')
 const { audit, normalizeRepoPath } = require('./helpers')
 
@@ -86,6 +87,7 @@ function createRepoRoutes({ config, auth, repoManager, externalSkills, vectorInd
 
   router.post(
     '/scan',
+    writeLimiter,
     auth.requirePermission('repos', 'scan', 'editor'),
     (req, res) => {
       try {
@@ -108,6 +110,7 @@ function createRepoRoutes({ config, auth, repoManager, externalSkills, vectorInd
 
   router.post(
     '/add',
+    writeLimiter,
     auth.requirePermission('repos', 'create', 'editor'),
     validate(addRepoSchema),
     async (req, res) => {
@@ -222,6 +225,7 @@ function createRepoRoutes({ config, auth, repoManager, externalSkills, vectorInd
 
   router.post(
     '/vector-index/rebuild',
+    writeLimiter,
     auth.requirePermission('vector_index', 'rebuild', 'editor'),
     async (req, res) => {
       const queueEnabled = config.getConfig().queue?.enabled === true

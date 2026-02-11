@@ -148,15 +148,16 @@ function parseExpectedPaths(item) {
   return []
 }
 
-function readRunOutput(run, maxChars = 120000) {
-  if (!run?.outputPath) return ''
-  try {
-    if (!fs.existsSync(run.outputPath)) return ''
-    const content = fs.readFileSync(run.outputPath, 'utf8')
-    return content.length > maxChars ? content.slice(0, maxChars) : content
-  } catch {
-    return run?.outputPreview || ''
+function readRunOutput(run, maxChars) {
+  if (run?.outputPath && fs.existsSync(run.outputPath)) {
+    try {
+      const data = fs.readFileSync(run.outputPath, 'utf8')
+      return data.length > maxChars ? data.slice(0, maxChars) : data
+    } catch (_e) {
+      // fall through to preview
+    }
   }
+  return run?.outputPreview || ''
 }
 
 function computeEvaluationMetrics(run, dataset) {
@@ -187,43 +188,60 @@ function computeTokenOverlap(expected, actual) {
   return matches / expectedTokens.length
 }
 
-function matchExpected(run, item, output) {
-  const expectedType = item.expectedType || 'keyword'
-  const expected = (item.expected || '').trim()
-  if (!expected) return { score: 0, status: 'needs-review', method: expectedType, notes: null }
-  const searchText = normalizeText(`${run?.goal || ''}\n${output}`)
+function matchExpected(output, item) {
+  const expected = item.expected || ''
+  const expectedType = item.expectedType || ''
+  if (!expected) return { matched: false, method: 'none' }
 
-  if (expectedType === 'exact') {
-    const match = searchText.includes(normalizeText(expected))
-    return { score: match ? 1 : 0, status: match ? 'pass' : 'fail', method: 'exact', notes: null }
+  const expectedText = expected.trim()
+  const isRegex = expectedType === 'regex' || expectedText.toLowerCase().startsWith('regex:')
+  if (isRegex) {
+    const pattern = expectedText.toLowerCase().startsWith('regex:')
+      ? expectedText.slice('regex:'.length).trim()
+      : expectedText
+    try {
+      const regex = new RegExp(pattern, 'i')
+      return { matched: regex.test(output), method: 'regex' }
+    } catch (_e) {
+      return { matched: false, method: 'regex-invalid' }
+    }
   }
 
-  const keywords = expected
-    .split(',')
-    .map((k) => k.trim().toLowerCase())
-    .filter(Boolean)
-  if (keywords.length === 0) return { score: 0, status: 'needs-review', method: 'keyword', notes: null }
-  let matched = 0
-  for (const kw of keywords) {
-    if (searchText.includes(kw)) matched += 1
-  }
-  const ratio = matched / keywords.length
-  const status = ratio >= 0.75 ? 'pass' : ratio >= 0.5 ? 'warn' : 'fail'
-  return { score: ratio, status, method: 'keyword', notes: `${matched}/${keywords.length} keywords matched` }
+  const normalizedOutput = normalizeText(output)
+  const normalizedExpected = normalizeText(expectedText)
+  return { matched: normalizedOutput.includes(normalizedExpected), method: 'contains' }
 }
 
 function scoreDatasetItem(run, item, output) {
-  const result = matchExpected(run, item, output)
+  const weight = Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1
+  if (!item.expected) {
+    const overlap = computeTokenOverlap(run.goal, item.input)
+    const heuristic = Math.min(1, Math.max(0, overlap * 0.8))
+    return {
+      id: item.id,
+      input: item.input,
+      expected: item.expected,
+      expectedType: item.expectedType || null,
+      weight,
+      score: heuristic,
+      status: 'needs-review',
+      method: 'heuristic',
+      notes: 'No expected string provided; scored via token overlap.',
+    }
+  }
+
+  const match = matchExpected(output, item)
   return {
     id: item.id,
     input: item.input,
     expected: item.expected,
-    expectedType: item.expectedType || 'keyword',
-    weight: Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1,
-    score: result.score,
-    status: result.status,
-    method: result.method,
-    notes: result.notes,
+    expectedType: item.expectedType || null,
+    rubric: item.rubric || null,
+    weight,
+    score: match.matched ? 1 : 0,
+    status: match.matched ? 'pass' : 'fail',
+    method: match.method,
+    notes: match.method === 'regex-invalid' ? 'Invalid regex pattern.' : null,
   }
 }
 
@@ -244,7 +262,7 @@ function summarizeEvaluation(items, opts = {}) {
   }
   const passRate = totalWeight > 0 ? totalWeightedScore / totalWeight : 0
   const score = Math.round(passRate * 100)
-  let status = 'needs-review'
+  let status
   if (passRate >= passThreshold) status = 'pass'
   else if (passRate >= warnThreshold) status = 'warn'
   else status = 'fail'

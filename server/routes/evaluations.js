@@ -72,21 +72,28 @@ function createEvaluationRoutes({
           const relativePath = normalizePathValue(
             resource.relativePath || path.relative(reposRoot, resource.filePath || '')
           )
-          const hit = expectedPaths.some((ep) => relativePath.includes(ep) || ep.includes(relativePath))
-          return { rank: idx + 1, path: relativePath, score: resource.score, hit }
+          return {
+            rank: idx + 1,
+            filePath: resource.filePath,
+            relativePath,
+            score: resource.score,
+          }
         })
 
-      const hits = flattened.filter((m) => m.hit).length
-      const precision = flattened.length > 0 ? hits / flattened.length : 0
-      const recall = expectedPaths.length > 0 ? hits / expectedPaths.length : 0
-      const firstHitRank = flattened.findIndex((m) => m.hit)
-      const mrr = firstHitRank >= 0 ? 1 / (firstHitRank + 1) : 0
+      const matches = flattened.filter((result) =>
+        expectedPaths.some((expected) => result.relativePath.endsWith(expected) || result.relativePath.includes(expected))
+      )
+      const hitCount = matches.length
+      const precision = topK > 0 ? hitCount / topK : 0
+      const recall = expectedPaths.length > 0 ? hitCount / expectedPaths.length : 0
+      const firstHitRank = matches.length > 0 ? matches[0].rank : null
+      const mrr = firstHitRank ? 1 / firstHitRank : 0
 
       items.push({
         id: item.id,
         input: item.input,
         expectedPaths,
-        status: recall >= 0.5 ? 'pass' : recall > 0 ? 'warn' : 'fail',
+        status: hitCount > 0 ? 'pass' : 'fail',
         precision,
         recall,
         mrr,
@@ -97,15 +104,18 @@ function createEvaluationRoutes({
     }
 
     const scoredCount = scoring.length
-    const avg = (arr) => (arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0)
+    const avg = (key) =>
+      scoredCount > 0 ? scoring.reduce((sum, entry) => sum + entry[key], 0) / scoredCount : 0
     return {
       items,
       metrics: {
-        itemCount: items.length,
+        topK,
+        itemCount: dataset.items?.length || 0,
         scoredCount,
-        precisionAtK: avg(scoring.map((s) => s.precision)),
-        recallAtK: avg(scoring.map((s) => s.recall)),
-        mrrAtK: avg(scoring.map((s) => s.mrr)),
+        precisionAtK: avg('precision'),
+        recallAtK: avg('recall'),
+        mrr: avg('mrr'),
+        score: Math.round(avg('recall') * 100),
       },
     }
   }

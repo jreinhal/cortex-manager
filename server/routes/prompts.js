@@ -152,7 +152,7 @@ function createPromptRoutes({ config, auth }) {
         .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
         .forEach((dir) => {
           const toolPath = path.join(toolsDir, dir.name)
-          let metadata = { name: dir.name, description: 'No description' }
+          let metadata = { name: dir.name, description: '' }
 
           const pkgPath = path.join(toolPath, 'package.json')
           if (fs.existsSync(pkgPath)) {
@@ -160,7 +160,7 @@ function createPromptRoutes({ config, auth }) {
               const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
               metadata = {
                 name: pkg.name || dir.name,
-                description: pkg.description || 'No description',
+                description: pkg.description || '',
                 version: pkg.version,
                 type: 'npm',
               }
@@ -184,6 +184,7 @@ function createPromptRoutes({ config, auth }) {
             id: dir.name,
             path: toolPath,
             ...metadata,
+            description: metadata.description || 'No description',
           })
         })
 

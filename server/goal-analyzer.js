@@ -243,6 +243,59 @@ function textIncludesTerm(text, term) {
   return text.includes(term);
 }
 
+function normalizeStackProfile(stackProfile) {
+  const profile = stackProfile && typeof stackProfile === 'object' ? stackProfile : {};
+  const include = profile.include || {};
+  const normalizeList = (value) => (
+    Array.isArray(value)
+      ? value.map((item) => item.toString().trim().toLowerCase()).filter(Boolean)
+      : []
+  );
+
+  return {
+    enabled: profile.enabled === true,
+    mode: profile.mode === 'strict' ? 'strict' : 'soft',
+    include: {
+      languages: normalizeList(include.languages),
+      frameworks: normalizeList(include.frameworks),
+      tools: normalizeList(include.tools),
+      platforms: normalizeList(include.platforms),
+      tags: normalizeList(include.tags)
+    },
+    exclude: normalizeList(profile.exclude)
+  };
+}
+
+function applyStackProfile(techStack, stackProfile) {
+  if (!stackProfile.enabled) return { techStack, tokens: [] };
+
+  const tokens = [
+    ...(stackProfile.include.languages || []),
+    ...(stackProfile.include.frameworks || []),
+    ...(stackProfile.include.tools || []),
+    ...(stackProfile.include.platforms || []),
+    ...(stackProfile.include.tags || [])
+  ];
+
+  const inferred = new Set(techStack.inferred || []);
+  tokens.forEach((token) => {
+    if (!token) return;
+    if (techStack.languages.includes(token)) return;
+    if (techStack.frameworks.includes(token)) return;
+    if (techStack.tools.includes(token)) return;
+    if (techStack.platforms.includes(token)) return;
+    inferred.add(token);
+  });
+
+  return {
+    techStack: {
+      ...techStack,
+      inferred: Array.from(inferred)
+    },
+    tokens
+  };
+}
+
 /**
  * Classify the primary intent of the goal
  */
@@ -637,7 +690,10 @@ function analyzeGoal(goalText, options = {}) {
   const uncertaintyConfig = { ...DEFAULT_UNCERTAINTY_CONFIG, ...(decisionConfig.uncertainty || {}) };
 
   const intent = classifyIntent(normalizedGoal);
-  const techStack = detectTechStack(normalizedGoal);
+  const stackProfile = normalizeStackProfile(options.stackProfile);
+  const baseTechStack = detectTechStack(normalizedGoal);
+  const stackApplied = applyStackProfile(baseTechStack, stackProfile);
+  const techStack = stackApplied.techStack;
   const actions = analyzeActions(normalizedGoal);
   const complexity = assessComplexity(normalizedGoal, intent, techStack);
   const capabilities = mapCapabilities(normalizedGoal, intent, techStack);
@@ -656,6 +712,13 @@ function analyzeGoal(goalText, options = {}) {
   return {
     intent,
     techStack,
+    stackProfile: {
+      enabled: stackProfile.enabled,
+      mode: stackProfile.mode,
+      include: stackProfile.include,
+      exclude: stackProfile.exclude,
+      tokens: stackApplied.tokens
+    },
     actions,
     complexity,
     capabilities,

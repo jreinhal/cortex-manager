@@ -224,6 +224,59 @@
       "allowRemote": false
     }
   },
+  "externalSkills": {
+    "enabled": false,
+    "allowRemote": false,
+    "mode": "off",
+    "maxSkills": 4,
+    "installConcurrency": 2,
+    "queryAssist": {
+      "mode": "fallback",
+      "maxQueries": 3,
+      "timeoutMs": 4000
+    },
+    "training": {
+      "mode": "blocking"
+    },
+    "providers": [
+      {
+        "id": "clawhub",
+        "type": "clawhub_v1",
+        "enabled": false,
+        "registryBase": "https://auth.clawdhub.com/api/v1",
+        "providerDirName": "_clawhub",
+        "maxSkills": 2,
+        "minScore": 0.35,
+        "timeoutMs": 8000,
+        "maxZipBytes": 15728640,
+        "overwrite": true
+      }
+    ]
+  },
+  "stackProfile": {
+    "enabled": false,
+    "mode": "soft",
+    "include": {
+      "languages": [],
+      "frameworks": [],
+      "tools": [],
+      "platforms": [],
+      "tags": []
+    },
+    "exclude": []
+  },
+  "clawhub": {
+    "enabled": false,
+    "allowRemote": false,
+    "mode": "off",
+    "registryBase": "https://auth.clawdhub.com/api/v1",
+    "providerDirName": "_clawhub",
+    "maxSkills": 2,
+    "minScore": 0.35,
+    "timeoutMs": 8000,
+    "maxZipBytes": 15728640,
+    "overwrite": true
+  },
   "observability": {
     "alertCost": 5,
     "alertDurationMs": 30000,

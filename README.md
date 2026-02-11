@@ -99,6 +99,11 @@ Organize your AI knowledge base into structured categories:
 - **Knowledge**: Documentation, best practices, research papers
 - **Tools**: Utility scripts and automation helpers
 
+### 🌐 **External Skills (Online Providers)**
+- Optional per-spawn online skill search
+- Downloaded skills persist under `reference-repos/skills`
+- Training can run blocking or background after new skills arrive
+
 ### 🧭 **Workspaces & Multi‑Tenant Control**
 - Create multiple workspaces with isolated repos and outputs.
 - Workspace-scoped analytics, runs, evaluations, and audit trails.
@@ -247,6 +252,11 @@ cortex/
    - Frontend: [http://localhost:5173](http://localhost:5173)
    - Backend API: [http://localhost:3001](http://localhost:3001)
 
+## 📘 User Manual
+
+- **HTML Manual (local)**: [http://localhost:3001/manual/index.html](http://localhost:3001/manual/index.html)
+- **Source**: `docs/user-manual/index.html`
+
 ### Configuration Options
 
 CORTEX can be configured via:
@@ -261,6 +271,17 @@ CORTEX can be configured via:
    ```
 4. **config.json** - Manual editing (see `config.example.json`)
 5. **Saved prompts** - Stored in `saved_prompts.json` (separate from config to avoid accidental loss)
+
+## Documentation
+
+- LLM endpoint setup: `docs/llm-endpoints-setup.md`
+- Evaluation methodology: `docs/evaluation-methodology.md`
+- Performance benchmarks: `docs/performance-benchmarks.md`
+- Storage security and encryption at rest: `docs/storage-security.md`
+- Personas and jobs-to-be-done: `docs/personas.md`
+- Pricing and support: `docs/pricing-and-support.md`
+- Reference implementations: `docs/reference-implementations.md`
+- Marketability readiness checklist: `docs/marketability-readiness.md`
 
 ---
 
@@ -278,7 +299,8 @@ CORTEX can be configured via:
    ```
 
 3. **Watch the Status Timeline**
-   - See real-time progress: analyzing keywords, selecting agent, searching resources
+   - See real-time progress: agent creation, keyword analysis, resource search
+   - When enabled, the timeline includes online skill search, persistence, and training
 
 4. **Generate Flight Plan**
    - Click the **Send button** (circular icon)
@@ -386,7 +408,7 @@ See `docs/decision-matrix.md` for the full spec and gating rules.
 | `LLM_ENABLED` | Enable optional reranker | `1` |
 | `LLM_ENDPOINT` | OpenAI‑compatible or Ollama endpoint | `http://localhost:8080/v1/chat/completions` |
 | `LLM_MODEL` | Local model name | `qwen2.5-14b-instruct-q4` |
-| `LLM_MODEL_DIR` | Model directory (Windows default) | `D:\\Models\\qwen2.5-14b-instruct-q4` |
+| `LLM_MODEL_DIR` | Model directory (Windows default) | `C:\\Models\\qwen2.5-14b-instruct-q4` |
 
 ### Custom Agent Templates
 Add new agent types by creating `agents/your-agent-name/template.md` in your reference repos.

@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const { performance } = require('perf_hooks');
 
 // Import new modules
@@ -19,6 +19,8 @@ const { createDecisionTrace } = require('./decision-trace');
 const { evaluateRetrievalGate } = require('./retrieval-gate');
 const { recordRun } = require('./runs-store');
 const { estimateTokens, estimateCost } = require('./token-estimator');
+const externalSkills = require('./external-skills');
+const vectorIndex = require('./vector-index');
 
 let REPOS_ROOT;
 let OUTPUT_DIR;
@@ -174,13 +176,12 @@ async function orchestrate(goal, format = 'universal') {
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`\n📋 Goal: "${goal}"\n`);
 
-  refreshIndex(REPOS_ROOT);
   const trace = createDecisionTrace(goal);
 
   // Step 1: Analyze the goal semantically
   console.log("🔍 Analyzing goal...");
   const endAnalyze = startSpan('analyze_goal');
-  const analysis = analyzeGoal(goal, { decisionConfig });
+  const analysis = analyzeGoal(goal, { decisionConfig, stackProfile: config.stackProfile });
   const retrievalGate = evaluateRetrievalGate(goal, analysis, decisionConfig.retrievalGate || {});
   analysis.retrieval = retrievalGate;
   endAnalyze();
@@ -190,7 +191,8 @@ async function orchestrate(goal, format = 'universal') {
     keywords: analysis.keywords.length,
     expandedKeywords: analysis.expandedKeywords.length,
     routing: analysis.routing.mode,
-    uncertainty: analysis.uncertainty.score
+    uncertainty: analysis.uncertainty.score,
+    stackProfile: analysis.stackProfile?.enabled ? analysis.stackProfile.mode : 'disabled'
   });
   trace.addStep('retrieval_gate', {
     enabled: retrievalGate.enabled,
@@ -226,6 +228,7 @@ async function orchestrate(goal, format = 'universal') {
 
   const decisionMeta = {
     agentsMdPriority: decisionConfig.agentsMdPriority === true,
+    stackProfile: analysis.stackProfile || null,
     agentSelection: {
       deterministicSelected: selectedAgent.agentId,
       rerankedSelected: null,
@@ -334,6 +337,99 @@ async function orchestrate(goal, format = 'universal') {
   });
   endAgentSelect();
 
+  // Step 2.5: Optionally pull external skills (provider registry)
+  const onlineRequested = externalSkills.parseBoolean(process.env.CORTEX_ONLINE_SKILLS);
+  const trainingModeRequested = process.env.CORTEX_ONLINE_SKILLS_TRAINING || null;
+
+  let externalSkillsMeta = {
+    enabled: config.externalSkills?.enabled === true,
+    allowRemote: config.externalSkills?.allowRemote === true,
+    mode: (config.externalSkills?.mode || 'off').toString().toLowerCase(),
+    requestedOnline: onlineRequested,
+    used: false,
+    providers: [],
+    attemptedProviders: [],
+    selected: [],
+    installed: [],
+    query: null,
+    queryAssist: { mode: 'off', used: false, queries: [] },
+    training: { mode: externalSkills.normalizeTrainingMode(trainingModeRequested || config.externalSkills?.training?.mode || 'blocking') },
+    skippedReason: null,
+    error: null
+  };
+
+  const forceExternalSkills = onlineRequested === true;
+  if (!retrievalGate.enabled && !forceExternalSkills) {
+    externalSkillsMeta.skippedReason = 'retrieval_gate_disabled';
+  } else {
+    console.log("\n📦 Pulling external skills (providers)...");
+    const endExternal = startSpan('external_skills_install');
+    externalSkillsMeta = await externalSkills.pullExternalSkills({
+      goal,
+      analysis,
+      config,
+      reposRoot: REPOS_ROOT,
+      workspaceId,
+      request: {
+        online: onlineRequested,
+        trainingMode: trainingModeRequested
+      }
+    });
+    endExternal();
+  }
+
+  decisionMeta.resourceSelection.externalSkills = externalSkillsMeta;
+  trace.addStep('external_skills', {
+    enabled: externalSkillsMeta.enabled,
+    mode: externalSkillsMeta.mode,
+    used: externalSkillsMeta.used,
+    installed: externalSkillsMeta.installed.filter(i => i.installed).map(i => i.slug).join(',') || null,
+    skippedReason: externalSkillsMeta.skippedReason,
+    error: externalSkillsMeta.error
+  });
+
+  // Barrier: only "train" (index rebuild) after installs complete.
+  refreshIndex(REPOS_ROOT);
+
+  const installedNew = Array.isArray(externalSkillsMeta.installed) && externalSkillsMeta.installed.some((item) => item.installed === true);
+  const vectorStatusBefore = vectorIndex.getStatus({ workspaceId });
+  const vectorIndexMissing = vectorStatusBefore.enabled === true && !vectorStatusBefore.builtAt;
+  const trainingMode = externalSkills.normalizeTrainingMode(externalSkillsMeta.training?.mode || trainingModeRequested || 'blocking');
+  const shouldTrain = trainingMode !== 'off' && (installedNew || vectorIndexMissing);
+
+  if (shouldTrain) {
+    console.log("\n🔄 Training / indexing after external skill installs...");
+    const endTrain = startSpan('external_skills_training');
+    try {
+      if (trainingMode === 'blocking') {
+        const summary = await vectorIndex.rebuildIndex({ workspaceId, reposRoot: REPOS_ROOT });
+        externalSkillsMeta.training.performed = true;
+        externalSkillsMeta.training.blocking = true;
+        externalSkillsMeta.training.summary = summary;
+      } else if (trainingMode === 'background') {
+        const scriptPath = path.join(__dirname, 'vector-index-rebuild.js');
+        const child = spawn('node', [scriptPath], {
+          cwd: path.join(__dirname, '..'),
+          detached: true,
+          stdio: 'ignore',
+          env: {
+            ...process.env,
+            REPOS_ROOT: REPOS_ROOT,
+            CORTEX_WORKSPACE_ID: workspaceId || ''
+          }
+        });
+        child.unref();
+        externalSkillsMeta.training.performed = true;
+        externalSkillsMeta.training.background = true;
+        externalSkillsMeta.training.pid = child.pid || null;
+      }
+    } catch (e) {
+      externalSkillsMeta.training.error = e.message;
+    } finally {
+      endTrain();
+    }
+  }
+
   // Step 3: Find relevant resources with tech filtering
   console.log("\n📚 Searching resources...");
   const endResourceSearch = startSpan('resource_search');
@@ -348,7 +444,8 @@ async function orchestrate(goal, format = 'universal') {
     retrievalEnabled: retrievalGate.enabled,
     includeMeta: true,
     agentsMdPriority: decisionConfig.agentsMdPriority === true,
-    workspaceId
+    workspaceId,
+    stackProfile: config.stackProfile || {}
   });
   const resourceMeta = resources.__meta || {};
   decisionMeta.resourceSelection.rrfUsed = resourceMeta.rrfUsed === true;
@@ -357,6 +454,9 @@ async function orchestrate(goal, format = 'universal') {
   decisionMeta.resourceSelection.hydeUsed = resourceMeta.hydeUsed === true;
   decisionMeta.resourceSelection.hybridUsed = resourceMeta.hybridUsed === true;
   decisionMeta.resourceSelection.vectorIndexUsed = resourceMeta.vectorIndexUsed === true;
+  if (resourceMeta.stackProfile) {
+    decisionMeta.resourceSelection.stackProfile = resourceMeta.stackProfile;
+  }
 
   const lateInteraction = rerankResourcesLate({
     goalText: goal,
@@ -652,9 +752,38 @@ function generateFlightPlan({ goal, analysis, selectedAgent, selection, resource
     : `not used${decisionMeta?.agentSelection?.rerankReason ? ` (${decisionMeta.agentSelection.rerankReason})` : ''}`;
   const resourceRerankLabel = decisionMeta?.resourceSelection?.rerankUsed ? 'used' : 'not used';
   const resourceRerankPolicyLabel = decisionMeta?.resourceSelection?.rerankPolicy || 'n/a';
+  const externalSkillsLabel = (() => {
+    const meta = decisionMeta?.resourceSelection?.externalSkills;
+    if (!meta || meta.enabled !== true || meta.mode === 'off') return 'disabled';
+    if (meta.skippedReason) return `skipped (${meta.skippedReason})`;
+    if (meta.error) return `error (${meta.error})`;
+    const installed = Array.isArray(meta.installed)
+      ? meta.installed
+          .filter(i => i && (i.installed || i.alreadyInstalled) && i.slug)
+          .map(i => i.providerId ? `${i.providerId}:${i.slug}` : i.slug)
+      : [];
+    const training = meta.training?.mode ? `; training=${meta.training.mode}` : '';
+    if (installed.length > 0) return `used (${meta.mode}${training}; ${installed.join(', ')})`;
+    return `enabled (${meta.mode}${training})`;
+  })();
+  const stackProfileLabel = (() => {
+    const profile = decisionMeta?.stackProfile;
+    if (!profile || profile.enabled !== true) return 'disabled';
+    const include = [
+      ...(profile.include?.languages || []),
+      ...(profile.include?.frameworks || []),
+      ...(profile.include?.tools || []),
+      ...(profile.include?.platforms || []),
+      ...(profile.include?.tags || [])
+    ].filter(Boolean);
+    const includeLabel = include.length > 0 ? include.join(', ') : 'no tags';
+    const exclude = Array.isArray(profile.exclude) ? profile.exclude.filter(Boolean) : [];
+    const excludeLabel = exclude.length > 0 ? `; exclude ${exclude.join(', ')}` : '';
+    return `${profile.mode || 'soft'} (${includeLabel}${excludeLabel})`;
+  })();
 
   const decisionMatrixSection = decisionMeta
-    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Retrieval gate: ${retrievalLabel}\n- Query expansion: ${queryExpansionLabel}\n- RAG-Fusion: ${ragFusionLabel}\n- HyDE fallback: ${hydeLabel}\n- Hybrid retrieval: ${hybridLabel}\n- Semantic index: ${vectorIndexLabel}\n- Routing: ${routingLabel}\n- RRF fusion: ${decisionMeta.resourceSelection.rrfUsed ? 'enabled' : 'disabled'}\n- Late interaction rerank: ${lateInteractionLabel}\n- LLM agent mode: ${llmPolicyLabel}\n- LLM agent router: ${agentRerankLabel}\n- LLM resource mode: ${resourceRerankPolicyLabel}\n- Resource rerank: ${resourceRerankLabel}\n- Uncertainty: ${uncertaintyLabel}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
+    ? `\n## 2.5 DECISION MATRIX\n\n- Instruction priority: ${decisionMeta.agentsMdPriority ? 'AGENTS.md first' : 'disabled'}\n- Retrieval gate: ${retrievalLabel}\n- External skills (online providers): ${externalSkillsLabel}\n- Stack profile: ${stackProfileLabel}\n- Query expansion: ${queryExpansionLabel}\n- RAG-Fusion: ${ragFusionLabel}\n- HyDE fallback: ${hydeLabel}\n- Hybrid retrieval: ${hybridLabel}\n- Semantic index: ${vectorIndexLabel}\n- Routing: ${routingLabel}\n- RRF fusion: ${decisionMeta.resourceSelection.rrfUsed ? 'enabled' : 'disabled'}\n- Late interaction rerank: ${lateInteractionLabel}\n- LLM agent mode: ${llmPolicyLabel}\n- LLM agent router: ${agentRerankLabel}\n- LLM resource mode: ${resourceRerankPolicyLabel}\n- Resource rerank: ${resourceRerankLabel}\n- Uncertainty: ${uncertaintyLabel}\n- Low confidence: ${decisionMeta.agentSelection.lowConfidence ? 'yes' : 'no'}\n- Ambiguous top score: ${decisionMeta.agentSelection.ambiguous ? 'yes' : 'no'}\n`
     : '';
 
   const decisionTraceSection = decisionMeta?.trace?.steps?.length

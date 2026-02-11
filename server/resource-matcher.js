@@ -20,6 +20,7 @@ const TECH_DETECTION = {
     '.go': ['golang'],
     '.rb': ['ruby'],
     '.java': ['java'],
+    '.kt': ['kotlin', 'java'],
     '.cs': ['csharp', 'dotnet'],
     '.sh': ['bash', 'shell', 'devops'],
     '.ps1': ['powershell', 'windows', 'devops'],
@@ -36,6 +37,11 @@ const TECH_DETECTION = {
     'express\\(\\)|require.*express': ['express', 'nodejs', 'backend'],
     'import.*from.*next': ['nextjs', 'react', 'fullstack'],
     'tailwindcss|@tailwind': ['tailwind', 'css', 'frontend'],
+    'springframework|spring\\s+boot|@springbootapplication': ['spring', 'java', 'backend'],
+    'org\\.junit|junit\\b': ['junit', 'testing', 'java'],
+    'testng|org\\.testng': ['testng', 'testing', 'java'],
+    'androidx|android\\b': ['android', 'mobile'],
+    'ios|swiftui|uikit': ['ios', 'mobile'],
     'prisma|@prisma/client': ['prisma', 'database', 'orm'],
     'mongoose|mongodb': ['mongodb', 'database'],
     'jest|vitest|mocha|pytest': ['testing'],
@@ -49,12 +55,35 @@ const TECH_DETECTION = {
     'Cargo.toml': ['rust'],
     'go.mod': ['golang'],
     'Dockerfile': ['docker', 'devops'],
+    'pom.xml': ['maven', 'java', 'build'],
+    'build.gradle': ['gradle', 'java', 'build'],
+    'gradle.properties': ['gradle', 'java', 'build'],
     'tailwind.config': ['tailwind', 'css', 'frontend'],
     'vite.config': ['vite', 'frontend'],
     'tsconfig.json': ['typescript'],
     'jest.config': ['jest', 'testing'],
     'playwright.config': ['playwright', 'e2e', 'testing']
   }
+};
+
+const TECH_RELATIONS = {
+  typescript: ['javascript', 'nodejs'],
+  javascript: ['typescript', 'nodejs'],
+  react: ['javascript', 'typescript', 'frontend'],
+  vue: ['javascript', 'typescript', 'frontend'],
+  nextjs: ['react', 'nodejs', 'fullstack'],
+  express: ['nodejs', 'javascript', 'backend'],
+  fastapi: ['python', 'backend', 'api'],
+  django: ['python', 'backend'],
+  flask: ['python', 'backend'],
+  spring: ['java', 'backend'],
+  java: ['spring', 'junit', 'maven', 'gradle'],
+  junit: ['java', 'testing'],
+  testng: ['java', 'testing'],
+  maven: ['java', 'build'],
+  gradle: ['java', 'build'],
+  android: ['mobile'],
+  ios: ['mobile']
 };
 
 // Domain classification
@@ -452,23 +481,98 @@ function computePreferenceBoost(resource, analyzedGoal, techContext) {
   return Math.min(0.24, baseBoost + skillBonus + brandBonus);
 }
 
+function normalizeStackProfile(stackProfile) {
+  const profile = stackProfile && typeof stackProfile === 'object' ? stackProfile : {};
+  const include = profile.include || {};
+  const normalizeList = (value) => (
+    Array.isArray(value)
+      ? value.map((item) => item.toString().trim().toLowerCase()).filter(Boolean)
+      : []
+  );
+
+  return {
+    enabled: profile.enabled === true,
+    mode: profile.mode === 'strict' ? 'strict' : 'soft',
+    include: {
+      languages: normalizeList(include.languages),
+      frameworks: normalizeList(include.frameworks),
+      tools: normalizeList(include.tools),
+      platforms: normalizeList(include.platforms),
+      tags: normalizeList(include.tags)
+    },
+    exclude: normalizeList(profile.exclude)
+  };
+}
+
+function collectStackTokens(stackProfile) {
+  if (!stackProfile || stackProfile.enabled !== true) return [];
+  return [
+    ...(stackProfile.include.languages || []),
+    ...(stackProfile.include.frameworks || []),
+    ...(stackProfile.include.tools || []),
+    ...(stackProfile.include.platforms || []),
+    ...(stackProfile.include.tags || [])
+  ];
+}
+
+function techTokenMatches(resourceTech, token) {
+  if (!token || !Array.isArray(resourceTech)) return false;
+  if (resourceTech.includes(token)) return true;
+  const related = TECH_RELATIONS[token] || [];
+  if (related.some((rel) => resourceTech.includes(rel))) return true;
+  return resourceTech.some((tech) => (TECH_RELATIONS[tech] || []).includes(token));
+}
+
+function evaluateStackProfile(resource, stackProfile) {
+  const normalized = normalizeStackProfile(stackProfile);
+  if (!normalized.enabled) {
+    return {
+      enabled: false,
+      hasMatch: false,
+      mismatch: false,
+      penalty: 0,
+      bonus: 0,
+      matchedTokens: [],
+      excludedTokens: []
+    };
+  }
+
+  const includeTokens = collectStackTokens(normalized);
+  const excludeTokens = normalized.exclude || [];
+  const resourceTech = Array.isArray(resource.techStack) ? resource.techStack : [];
+  const matchedTokens = includeTokens.filter((token) => techTokenMatches(resourceTech, token));
+  const excludedTokens = excludeTokens.filter((token) => techTokenMatches(resourceTech, token));
+
+  const hasMatch = matchedTokens.length > 0;
+  const hasExclude = excludedTokens.length > 0;
+  const mismatch = hasExclude || (includeTokens.length > 0 && !hasMatch);
+
+  let penalty = 0;
+  let bonus = 0;
+  if (hasMatch) bonus = 0.06;
+  if (hasExclude) {
+    penalty = 0.35;
+  } else if (includeTokens.length > 0 && !hasMatch) {
+    penalty = resourceTech.length === 0 ? 0.12 : 0.22;
+  }
+
+  return {
+    enabled: true,
+    mode: normalized.mode,
+    hasMatch,
+    mismatch,
+    penalty,
+    bonus,
+    matchedTokens,
+    excludedTokens
+  };
+}
+
 /**
  * Check if tech stacks are compatible
  */
 function isTechCompatible(resourceTech, targetTech) {
   if (!targetTech || targetTech.length === 0) return true;
-
-  const TECH_RELATIONS = {
-    'typescript': ['javascript', 'nodejs'],
-    'javascript': ['typescript', 'nodejs'],
-    'react': ['javascript', 'typescript', 'frontend'],
-    'vue': ['javascript', 'typescript', 'frontend'],
-    'nextjs': ['react', 'nodejs', 'fullstack'],
-    'express': ['nodejs', 'javascript', 'backend'],
-    'fastapi': ['python', 'backend', 'api'],
-    'django': ['python', 'backend'],
-    'flask': ['python', 'backend']
-  };
 
   // Resource has matching tech
   const hasMatch = resourceTech.some(tech =>
@@ -485,7 +589,7 @@ function isTechCompatible(resourceTech, targetTech) {
 /**
  * Score a resource against the analyzed goal
  */
-function scoreResource(resource, analyzedGoal, techContext) {
+function scoreResource(resource, analyzedGoal, techContext, stackEval = null) {
   const weights = {
     filenameMatch: 0.22,
     keywordMatch: 0.18,
@@ -566,6 +670,8 @@ function scoreResource(resource, analyzedGoal, techContext) {
   const instructionBoost = resource.pathSignals?.isAgents ? INSTRUCTION_BOOST : 0;
 
   const preferenceBoost = computePreferenceBoost(resource, analyzedGoal, techContext);
+  const stackPenalty = stackEval?.penalty ?? 0;
+  const stackBonus = stackEval?.bonus ?? 0;
 
   // Domain penalty for explicitly excluded domains
   let domainPenalty = 0;
@@ -586,8 +692,10 @@ function scoreResource(resource, analyzedGoal, techContext) {
     qualityScore * weights.quality +
     pathPriority * weights.pathPriority +
     instructionBoost +
-    preferenceBoost -
-    domainPenalty;
+    preferenceBoost +
+    stackBonus -
+    domainPenalty -
+    stackPenalty;
 
   const sparseScore = Math.max(0, Math.min(1, total));
   const semanticScore = Math.max(
@@ -615,6 +723,10 @@ function scoreResource(resource, analyzedGoal, techContext) {
       pathPriority,
       instructionBoost,
       preferenceBoost,
+      stackPenalty,
+      stackBonus,
+      stackMatch: stackEval?.matchedTokens?.length ?? 0,
+      stackExclude: stackEval?.excludedTokens?.length ?? 0,
       domainPenalty,
       sparse: sparseScore,
       semantic: semanticScore
@@ -764,13 +876,19 @@ function buildResourceIndex(files, reposRoot, cat, semanticLookup) {
 function scoreResourcesForGoal(resources, analyzedGoal, techContext, options) {
   const categoryMinScore = options.categoryMinScore ?? 0.15;
   const hasInstructionSignal = options.hasInstructionSignal;
+  const stackProfile = techContext.stackProfile || {};
 
   const scored = resources.map((resource) => {
     if (!isTechCompatible(resource.techStack, techContext.techStack)) {
       return null;
     }
 
-    const scoring = scoreResource(resource, analyzedGoal, techContext);
+    const stackEval = evaluateStackProfile(resource, stackProfile);
+    if (stackProfile.enabled === true && stackProfile.mode === 'strict' && stackEval.mismatch && !resource.isInstruction) {
+      return null;
+    }
+
+    const scoring = scoreResource(resource, analyzedGoal, techContext, stackEval);
     return {
       ...resource,
       score: scoring.score,
@@ -876,15 +994,20 @@ async function findResources(analyzedGoal, reposRoot, options = {}) {
   const goalDomains = deriveGoalDomains(analyzedGoal);
   const goalText = analyzedGoal.originalGoal || '';
   const filteredGoalKeywords = filterGoalKeywords(goalKeywords);
+  const normalizedStackProfile = normalizeStackProfile(options.stackProfile);
+  const stackTokens = collectStackTokens(normalizedStackProfile);
+  const baseTechStack = [
+    ...(analyzedGoal.techStack?.languages || []),
+    ...(analyzedGoal.techStack?.frameworks || []),
+    ...(analyzedGoal.techStack?.inferred || [])
+  ];
+  const mergedTechStack = Array.from(new Set([...baseTechStack, ...stackTokens]));
   const techContext = {
-    techStack: [
-      ...(analyzedGoal.techStack?.languages || []),
-      ...(analyzedGoal.techStack?.frameworks || []),
-      ...(analyzedGoal.techStack?.inferred || [])
-    ],
+    techStack: mergedTechStack,
     domains: goalDomains,
     negativeDomains: goalDomains.includes('security') ? [] : ['security'],
-    hybrid: hybridConfig
+    hybrid: hybridConfig,
+    stackProfile: normalizedStackProfile
   };
 
   const allowAllInstructions = goalExplicitlyRequestsAgents(goalText) ||
@@ -1064,7 +1187,13 @@ async function findResources(analyzedGoal, reposRoot, options = {}) {
       vectorIndexUsed: vectorEnabled && vectorUsed,
       routingMode: routingOptions.routingMode,
       maxResults,
-      minScore
+      minScore,
+      stackProfile: {
+        enabled: normalizedStackProfile.enabled === true,
+        mode: normalizedStackProfile.mode,
+        includeCount: stackTokens.length,
+        excludeCount: normalizedStackProfile.exclude.length
+      }
     };
   }
 

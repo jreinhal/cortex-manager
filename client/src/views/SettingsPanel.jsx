@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, RefreshCw } from 'lucide-react';
+import { BookOpen, Check, RefreshCw } from 'lucide-react';
 
 export function SettingsPanel({
   config,
@@ -24,6 +24,7 @@ export function SettingsPanel({
   apiFetch,
   cn,
   defaultRbacRoles,
+  manualUrl,
   transition
 }) {
   // config is the full API response: { config: { reposRoot, ... }, system, isFirstRun }
@@ -74,6 +75,27 @@ export function SettingsPanel({
   const [embeddingBatchSize, setEmbeddingBatchSize] = useState(config?.config?.vectorIndex?.embedding?.batchSize ?? 16);
   const [embeddingTimeoutMs, setEmbeddingTimeoutMs] = useState(config?.config?.vectorIndex?.embedding?.timeoutMs ?? 12000);
   const [embeddingAllowRemote, setEmbeddingAllowRemote] = useState(config?.config?.vectorIndex?.embedding?.allowRemote ?? false);
+  const [externalSkillsEnabled, setExternalSkillsEnabled] = useState(config?.config?.externalSkills?.enabled ?? false);
+  const [externalSkillsAllowRemote, setExternalSkillsAllowRemote] = useState(config?.config?.externalSkills?.allowRemote ?? false);
+  const [externalSkillsMode, setExternalSkillsMode] = useState(config?.config?.externalSkills?.mode || 'off');
+  const [externalSkillsMaxSkills, setExternalSkillsMaxSkills] = useState(config?.config?.externalSkills?.maxSkills ?? 4);
+  const [externalSkillsInstallConcurrency, setExternalSkillsInstallConcurrency] = useState(config?.config?.externalSkills?.installConcurrency ?? 2);
+  const [externalSkillsTrainingMode, setExternalSkillsTrainingMode] = useState(config?.config?.externalSkills?.training?.mode || 'blocking');
+  const [externalSkillsQueryAssistMode, setExternalSkillsQueryAssistMode] = useState(config?.config?.externalSkills?.queryAssist?.mode || 'fallback');
+  const [externalSkillsProvidersJson, setExternalSkillsProvidersJson] = useState(() => (
+    JSON.stringify(config?.config?.externalSkills?.providers || [], null, 2)
+  ));
+  const [stackProfileEnabled, setStackProfileEnabled] = useState(config?.config?.stackProfile?.enabled ?? false);
+  const [stackProfileMode, setStackProfileMode] = useState(config?.config?.stackProfile?.mode || 'soft');
+  const [stackProfileLanguages, setStackProfileLanguages] = useState((config?.config?.stackProfile?.include?.languages || []).join(', '));
+  const [stackProfileFrameworks, setStackProfileFrameworks] = useState((config?.config?.stackProfile?.include?.frameworks || []).join(', '));
+  const [stackProfileTools, setStackProfileTools] = useState((config?.config?.stackProfile?.include?.tools || []).join(', '));
+  const [stackProfilePlatforms, setStackProfilePlatforms] = useState((config?.config?.stackProfile?.include?.platforms || []).join(', '));
+  const [stackProfileTags, setStackProfileTags] = useState((config?.config?.stackProfile?.include?.tags || []).join(', '));
+  const [stackProfileExclude, setStackProfileExclude] = useState((config?.config?.stackProfile?.exclude || []).join(', '));
+  const [externalSkillsError, setExternalSkillsError] = useState('');
+  const [externalSkillsUpdates, setExternalSkillsUpdates] = useState(null);
+  const [externalSkillsUpdatesLoading, setExternalSkillsUpdatesLoading] = useState(false);
   const [alertCost, setAlertCost] = useState(config?.config?.observability?.alertCost ?? 5);
   const [alertTokens, setAlertTokens] = useState(config?.config?.observability?.alertTokens ?? 50000);
   const [alertDuration, setAlertDuration] = useState(config?.config?.observability?.alertDurationMs ?? 30000);
@@ -92,6 +114,13 @@ export function SettingsPanel({
   const [workspaceCreateStructure, setWorkspaceCreateStructure] = useState(true);
   const [editingWorkspaceId, setEditingWorkspaceId] = useState(null);
   const defaultWorkspaceId = config?.config?.workspaces?.defaultId;
+  const resolvedManualUrl = manualUrl || '/manual/index.html';
+  const parseTokenList = (value) => Array.from(new Set(
+    (value || '')
+      .split(/[,\\n]/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  ));
 
   const handleSave = async () => {
     // Guard against empty submissions
@@ -101,6 +130,7 @@ export function SettingsPanel({
       return;
     }
     setError('');
+    setExternalSkillsError('');
     setSaving(true);
     try {
       let parsedRbacRoles = config?.config?.auth?.rbac?.roles || defaultRbacRoles;
@@ -198,10 +228,71 @@ export function SettingsPanel({
         alertTokens: Number(alertTokens) || 0,
         alertDurationMs: Number(alertDuration) || 0
       };
+      const stackProfile = {
+        ...(config?.config?.stackProfile || {}),
+        enabled: stackProfileEnabled,
+        mode: stackProfileMode,
+        include: {
+          ...(config?.config?.stackProfile?.include || {}),
+          languages: parseTokenList(stackProfileLanguages),
+          frameworks: parseTokenList(stackProfileFrameworks),
+          tools: parseTokenList(stackProfileTools),
+          platforms: parseTokenList(stackProfilePlatforms),
+          tags: parseTokenList(stackProfileTags)
+        },
+        exclude: parseTokenList(stackProfileExclude)
+      };
+
+      let parsedExternalProviders = config?.config?.externalSkills?.providers || [];
+      if (externalSkillsProvidersJson && externalSkillsProvidersJson.trim().length > 0) {
+        try {
+          const parsed = JSON.parse(externalSkillsProvidersJson);
+          if (!Array.isArray(parsed)) {
+            setExternalSkillsError('External providers must be a JSON array.');
+            setSaving(false);
+            return;
+          }
+          parsedExternalProviders = parsed;
+        } catch (e) {
+          setExternalSkillsError('External providers must be valid JSON.');
+          setSaving(false);
+          return;
+        }
+      } else {
+        parsedExternalProviders = [];
+      }
+
+      const externalSkills = {
+        ...(config?.config?.externalSkills || {}),
+        enabled: externalSkillsEnabled,
+        allowRemote: externalSkillsAllowRemote,
+        mode: externalSkillsMode,
+        maxSkills: Number(externalSkillsMaxSkills) || 4,
+        installConcurrency: Number(externalSkillsInstallConcurrency) || 2,
+        training: {
+          ...(config?.config?.externalSkills?.training || {}),
+          mode: externalSkillsTrainingMode
+        },
+        queryAssist: {
+          ...(config?.config?.externalSkills?.queryAssist || {}),
+          mode: externalSkillsQueryAssistMode
+        },
+        providers: parsedExternalProviders
+      };
       const res = await apiFetch(`/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reposRoot: reposRoot.trim(), llm, ui, auth: authConfig, queue, vectorIndex, observability })
+        body: JSON.stringify({
+          reposRoot: reposRoot.trim(),
+          llm,
+          ui,
+          auth: authConfig,
+          queue,
+          vectorIndex,
+          observability,
+          stackProfile,
+          externalSkills
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -274,6 +365,27 @@ export function SettingsPanel({
     setLlmTest({ status: 'done', results });
   };
 
+  const handleScanExternalSkillUpdates = async () => {
+    setExternalSkillsUpdatesLoading(true);
+    setExternalSkillsUpdates(null);
+    setExternalSkillsError('');
+    try {
+      const res = await apiFetch(`/external-skills/scan-updates`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        setExternalSkillsError(data.error || 'Failed to scan for updates.');
+      } else {
+        if (data.error) {
+          setExternalSkillsError(data.error);
+        }
+        setExternalSkillsUpdates(data);
+      }
+    } catch (e) {
+      setExternalSkillsError('Failed to scan for updates.');
+    }
+    setExternalSkillsUpdatesLoading(false);
+  };
+
   return (
     <motion.div
       key="settings"
@@ -284,6 +396,21 @@ export function SettingsPanel({
       className="w-full max-w-5xl"
     >
       <div className="glass-panel rounded-3xl p-8 space-y-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-800/70 bg-slate-900/40 px-5 py-4">
+          <div>
+            <div className="text-xs uppercase tracking-widest text-slate-500 mb-1">Documentation</div>
+            <div className="text-sm text-slate-200">Open the HTML user manual for setup, workflows, and troubleshooting.</div>
+          </div>
+          <a
+            href={resolvedManualUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl border border-slate-700/60 bg-slate-800/60 text-sm font-semibold text-slate-200 hover:text-white transition-ui"
+          >
+            <BookOpen size={16} aria-hidden="true" />
+            User Manual
+          </a>
+        </div>
         {/* Repos Root */}
         <div>
           <label htmlFor="settings-repos-root" className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
@@ -379,7 +506,7 @@ export function SettingsPanel({
           </div>
           {remoteBlocked && (
             <div className="mt-3 text-xs text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded-xl px-3 py-2">
-              Remote endpoints are disabled. Enable “Allow remote LLM endpoints” to use non-local URLs.
+              Remote endpoints are disabled. Enable 'Allow remote LLM endpoints' to use non-local URLs.
             </div>
           )}
           <div className="flex items-center gap-3 mt-4">
@@ -446,6 +573,109 @@ export function SettingsPanel({
           </div>
           <p className="text-xs text-slate-500 mt-2">
             Dense mode increases data density for power users.
+          </p>
+        </div>
+
+        {/* Stack Profile */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            Stack Profile
+          </label>
+          <div className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-4">
+            <label className="flex items-center gap-3 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={stackProfileEnabled}
+                onChange={(e) => setStackProfileEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+              />
+              Enable stack profile
+            </label>
+            <div className="grid sm:grid-cols-2 gap-4 items-start">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Mode</div>
+                <select
+                  value={stackProfileMode}
+                  onChange={(e) => setStackProfileMode(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                >
+                  <option value="soft">Soft match</option>
+                  <option value="strict">Strict match</option>
+                </select>
+              </div>
+              <p className="text-xs text-slate-500 mt-6">
+                Soft nudges results. Strict filters mismatches (except AGENTS.md).
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Languages</div>
+                <input
+                  type="text"
+                  value={stackProfileLanguages}
+                  onChange={(e) => setStackProfileLanguages(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="java, kotlin"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Frameworks</div>
+                <input
+                  type="text"
+                  value={stackProfileFrameworks}
+                  onChange={(e) => setStackProfileFrameworks(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="spring, junit"
+                />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Tools</div>
+                <input
+                  type="text"
+                  value={stackProfileTools}
+                  onChange={(e) => setStackProfileTools(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="maven, gradle"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Platforms</div>
+                <input
+                  type="text"
+                  value={stackProfilePlatforms}
+                  onChange={(e) => setStackProfilePlatforms(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="server, web"
+                />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Tags</div>
+                <input
+                  type="text"
+                  value={stackProfileTags}
+                  onChange={(e) => setStackProfileTags(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="backend, e2e"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Exclude</div>
+                <input
+                  type="text"
+                  value={stackProfileExclude}
+                  onChange={(e) => setStackProfileExclude(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-4 py-2 text-sm text-slate-200"
+                  placeholder="ios, android"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Comma or newline separated. Tokens are normalized to lowercase.
           </p>
         </div>
 
@@ -1012,6 +1242,171 @@ export function SettingsPanel({
             >
               Rebuild index
             </button>
+          </div>
+        </div>
+
+        {/* External Skills */}
+        <div>
+          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
+            External Skills (Online Providers)
+          </label>
+
+          <div className="rounded-2xl border border-slate-800/70 bg-slate-900/30 p-4 space-y-4">
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={externalSkillsEnabled}
+                  onChange={(e) => setExternalSkillsEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Enable online skill providers
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={externalSkillsAllowRemote}
+                  onChange={(e) => setExternalSkillsAllowRemote(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900/60 text-cyan-400 focus:ring-cyan-500/30"
+                />
+                Allow remote downloads (network)
+              </label>
+              <div className="text-xs text-slate-500">
+                Skills persist under <span className="font-mono">skills/</span> inside your Repository Root. Per-spawn retrieval is controlled by the 'Search online for skills' toggle.
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Mode</div>
+                <select
+                  value={externalSkillsMode}
+                  onChange={(e) => setExternalSkillsMode(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="off">Off</option>
+                  <option value="explicit">Explicit (goal slugs)</option>
+                  <option value="auto">Auto (search)</option>
+                </select>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Max skills/spawn</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={externalSkillsMaxSkills}
+                  onChange={(e) => setExternalSkillsMaxSkills(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Install concurrency</div>
+                <input
+                  type="number"
+                  min="1"
+                  max="8"
+                  value={externalSkillsInstallConcurrency}
+                  onChange={(e) => setExternalSkillsInstallConcurrency(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Training</div>
+                <select
+                  value={externalSkillsTrainingMode}
+                  onChange={(e) => setExternalSkillsTrainingMode(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="blocking">Blocking</option>
+                  <option value="background">Background</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Query assist</div>
+                <select
+                  value={externalSkillsQueryAssistMode}
+                  onChange={(e) => setExternalSkillsQueryAssistMode(e.target.value)}
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="off">Off</option>
+                  <option value="fallback">Fallback</option>
+                  <option value="always">Always</option>
+                </select>
+              </div>
+              <div className="sm:col-span-3 text-xs text-slate-500">
+                Provider types are strict adapters (no arbitrary scraping). Supported types: <span className="font-mono">clawhub_v1</span>, <span className="font-mono">index_json_v1</span>.
+                Explicit mode syntax: <span className="font-mono">clawhub: slack, jira</span> (provider id + slugs).
+              </div>
+
+              <div className="sm:col-span-3">
+                <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">Providers (JSON)</div>
+                <textarea
+                  value={externalSkillsProvidersJson}
+                  onChange={(e) => setExternalSkillsProvidersJson(e.target.value)}
+                  rows={10}
+                  spellCheck="false"
+                  className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-3 text-xs text-slate-200 font-mono focus-visible:outline-none focus-visible:border-cyan-500/50"
+                />
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    Scan uses the saved provider list. Save Settings after edits.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleScanExternalSkillUpdates}
+                    disabled={externalSkillsUpdatesLoading}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-ui",
+                      externalSkillsUpdatesLoading
+                        ? "bg-slate-900/60 border-slate-800 text-slate-400"
+                        : "bg-slate-800/60 border-slate-700/60 text-slate-200 hover:bg-slate-700/60"
+                    )}
+                  >
+                    <RefreshCw size={14} className={externalSkillsUpdatesLoading ? "animate-spin" : ""} aria-hidden="true" />
+                    Scan for updates
+                  </button>
+                </div>
+
+                {externalSkillsError && (
+                  <p className="text-red-400 text-sm mt-3" role="alert">{externalSkillsError}</p>
+                )}
+
+                {externalSkillsUpdates?.updates && (
+                  <div className="mt-3 rounded-2xl border border-slate-800/70 bg-slate-950/35 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="text-xs uppercase tracking-widest text-slate-500">Update scan</div>
+                      <div className="text-xs text-slate-500">
+                        {externalSkillsUpdates.installed?.length ?? 0} installed, {externalSkillsUpdates.updates?.filter((u) => u.updateAvailable).length ?? 0} updates
+                      </div>
+                    </div>
+
+                    {externalSkillsUpdates.updates.filter((u) => u.updateAvailable).length === 0 ? (
+                      <div className="text-xs text-slate-400">No updates detected.</div>
+                    ) : (
+                      <div className="space-y-1 text-xs text-slate-300">
+                        {externalSkillsUpdates.updates
+                          .filter((u) => u.updateAvailable)
+                          .slice(0, 24)
+                          .map((u) => (
+                            <div
+                              key={`${u.providerId}:${u.slug}`}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/60 bg-slate-900/40 px-3 py-2"
+                            >
+                              <div className="font-mono">{u.providerId}:{u.slug}</div>
+                              <div className="text-slate-400 font-mono">
+                                {`${u.installedVersion || 'unknown'} -> ${u.latestVersion || 'unknown'}`}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

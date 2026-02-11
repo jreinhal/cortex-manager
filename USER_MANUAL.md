@@ -216,6 +216,19 @@ Click **"Copy to Clipboard"** and paste the Flight Plan into:
 
 The LLM will read the referenced files and execute the mission.
 
+### Generation Chain
+
+The status timeline shows each stage of the spawn. When online skills are enabled, additional steps appear:
+
+- Create agent profile
+- Analyze goal keywords
+- Select best agent
+- Search knowledge base
+- Search online skills (if enabled)
+- Persist external skills (if any are found)
+- Train agent knowledge (blocking or background)
+- Generate flight plan
+
 ### Understanding Flight Plans
 
 **Example Flight Plan**:
@@ -267,6 +280,13 @@ CORTEX will:
 - Analyze its purpose
 - Categorize automatically
 - Update the Knowledge Base view
+
+### Skill Repos vs External Skills
+
+- **Skill Repos** counts repositories stored under your reference root.
+- **External Skills** counts downloaded SKILL.md bundles installed from online providers.
+
+External skills are persisted inside your skills repo (for example, `D:\Projects\reference-repos\skills`) and are indexed like any other local skill.
 
 #### Via Command Line
 
@@ -378,7 +398,7 @@ The Library keeps reusable assets in one place.
 Workspaces let you isolate repositories, runs, evaluations, and audit trails per team or customer.
 
 ### Create a Workspace
-1. Open **Settings → Workspaces**.
+1. Open **Settings -> Workspaces**.
 2. Enter a name, repos root, and output directory.
 3. Optionally enable **Create structure** to bootstrap the folder layout.
 
@@ -434,12 +454,54 @@ The Audit Trail records security‑relevant actions (spawns, evaluations, config
 
 ---
 
+## External Skills (Online Providers)
+
+External Skills let agents download and install new `SKILL.md` bundles from approved online registries (for example, ClawHub) during agent spawn.
+
+### Safety Model
+- Disabled by default.
+- Admins must enable External Skills in **Settings** and allow remote downloads.
+- Dev override: set `CORTEX_DEV_MODE=1` to allow remote providers while testing (even if remote downloads are disabled in Settings).
+- Per-spawn toggle: enable **Search online for skills** in Agent Factory.
+- Bundles are treated as untrusted input and extracted with zip-slip protections and blocked extensions.
+- Skills persist under `<reposRoot>/skills/` (for example, `D:\Projects\reference-repos\skills`) and become available like any other local skill.
+
+### Provider Registry (Admin-Owned)
+Providers are configured as a JSON array in **Settings -> External Skills (Online Providers)**. Each provider uses a code-defined adapter `type`:
+
+- `clawhub_v1`: ClawHub registry API (search + zip download).
+- `index_json_v1`: JSON index URL that returns `{ slug, downloadUrl, version?, sha256? }`.
+
+Example:
+
+```json
+[
+  {
+    "id": "clawhub",
+    "type": "clawhub_v1",
+    "enabled": true,
+    "registryBase": "https://auth.clawdhub.com/api/v1",
+    "providerDirName": "_clawhub"
+  }
+]
+```
+
+### Using External Skills During Spawn
+- Enable **Search online for skills** in Agent Factory.
+- Optional (explicit mode): include slugs in the goal, e.g. `clawhub: slack, jira`.
+- Training: choose Blocking or Background. Index rebuild runs only after all downloads complete.
+
+### Update Scans
+Settings includes **Scan for updates** to compare installed skill versions against their provider. CORTEX does not auto-update skills on spawn.
+
+---
+
 ## Observability
 
 The Observability panels summarize token usage, cost estimates, and latency.
 
 ### Alerts
-Configure thresholds in **Settings → Observability Alerts**:
+Configure thresholds in **Settings -> Observability Alerts**:
 - Cost alert (USD)
 - Token alert
 - Duration alert (ms)

@@ -5,7 +5,13 @@
   "main": "server/index.js",
   "scripts": {
     "start": "concurrently \"node server/index.js\" \"cd client && npm run dev\"",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint . && cd client && eslint .",
+    "lint:fix": "eslint . --fix && cd client && eslint . --fix",
+    "format": "prettier --write \"server/**/*.js\" \"*.js\" && cd client && prettier --write \"src/**/*.{js,jsx}\"",
+    "format:check": "prettier --check \"server/**/*.js\" \"*.js\" && cd client && prettier --check \"src/**/*.{js,jsx}\"",
     "e2e": "playwright test --project=chromium",
     "e2e:ui": "playwright test --ui --project=chromium",
     "e2e:edge": "playwright test --project=edge --headed",
@@ -24,6 +30,12 @@
     "string-similarity": "^4.0.4"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.52.0",
+    "eslint": "^10.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.3.0",
+    "prettier": "^3.8.1",
+    "vitest": "^4.0.18"
   }
 }

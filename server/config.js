@@ -109,6 +109,18 @@ const DEFAULT_CONFIG = {
       weight: 0.45
     }
   },
+  stackProfile: {
+    enabled: false,
+    mode: 'soft',
+    include: {
+      languages: [],
+      frameworks: [],
+      tools: [],
+      platforms: [],
+      tags: []
+    },
+    exclude: []
+  },
   llm: {
     enabled: true,
     provider: 'openai-compatible',
@@ -239,6 +251,62 @@ const DEFAULT_CONFIG = {
       timeoutMs: 12000,
       allowRemote: false
     }
+  },
+  // Admin-configured external skill providers (remote by nature, disabled by default).
+  externalSkills: {
+    enabled: false,
+    allowRemote: false,
+    // off: do nothing
+    // explicit: only install skills explicitly requested in the goal (e.g. "clawhub: gog, slack")
+    // auto: search enabled providers based on goal keywords and install top matches
+    mode: 'off',
+    // Global cap across all providers per spawn.
+    maxSkills: 4,
+    // Concurrency cap for downloads/installs.
+    installConcurrency: 2,
+    // Query assist uses the configured LLM to propose better search queries (queries only, never URLs).
+    queryAssist: {
+      // off | fallback | always
+      mode: 'fallback',
+      maxQueries: 3,
+      timeoutMs: 4000
+    },
+    // Index rebuild after downloads (\"training\" barrier).
+    training: {
+      // blocking | background | off
+      mode: 'blocking'
+    },
+    // Provider registry (\"types\" are code-defined adapters).
+    providers: [
+      {
+        id: 'clawhub',
+        type: 'clawhub_v1',
+        enabled: false,
+        registryBase: 'https://auth.clawdhub.com/api/v1',
+        providerDirName: '_clawhub',
+        maxSkills: 2,
+        minScore: 0.35,
+        timeoutMs: 8000,
+        maxZipBytes: 15728640, // 15 MiB
+        overwrite: true
+      }
+    ]
+  },
+  // External skill registry integrations (remote by nature, disabled by default).
+  clawhub: {
+    enabled: false,
+    allowRemote: false,
+    // off: do nothing
+    // explicit: only install skills explicitly requested in the goal (e.g. "clawhub: gog, slack")
+    // auto: search registry based on goal keywords and install top matches
+    mode: 'off',
+    registryBase: 'https://auth.clawdhub.com/api/v1',
+    providerDirName: '_clawhub',
+    maxSkills: 2,
+    minScore: 0.35,
+    timeoutMs: 8000,
+    maxZipBytes: 15728640, // 15 MiB
+    overwrite: true
   },
   observability: {
     alertCost: 5,
@@ -479,6 +547,17 @@ function getConfig() {
     ...DEFAULT_CONFIG.decisionMatrix,
     ...(config.decisionMatrix || {})
   };
+  config.stackProfile = {
+    ...DEFAULT_CONFIG.stackProfile,
+    ...(config.stackProfile || {})
+  };
+  config.stackProfile.include = {
+    ...DEFAULT_CONFIG.stackProfile.include,
+    ...(config.stackProfile.include || {})
+  };
+  config.stackProfile.exclude = Array.isArray(config.stackProfile.exclude)
+    ? config.stackProfile.exclude
+    : DEFAULT_CONFIG.stackProfile.exclude.slice();
   config.llm = {
     ...DEFAULT_CONFIG.llm,
     ...(config.llm || {})
@@ -527,6 +606,21 @@ function getConfig() {
     ...DEFAULT_CONFIG.vectorIndex.embedding,
     ...(config.vectorIndex.embedding || {})
   };
+  config.externalSkills = {
+    ...DEFAULT_CONFIG.externalSkills,
+    ...(config.externalSkills || {})
+  };
+  config.externalSkills.queryAssist = {
+    ...DEFAULT_CONFIG.externalSkills.queryAssist,
+    ...(config.externalSkills.queryAssist || {})
+  };
+  config.externalSkills.training = {
+    ...DEFAULT_CONFIG.externalSkills.training,
+    ...(config.externalSkills.training || {})
+  };
+  config.externalSkills.providers = Array.isArray(config.externalSkills.providers)
+    ? config.externalSkills.providers
+    : DEFAULT_CONFIG.externalSkills.providers.slice();
   config.observability = {
     ...DEFAULT_CONFIG.observability,
     ...(config.observability || {})
@@ -647,7 +741,18 @@ function updateConfig(updates) {
  */
 function isFirstRun() {
   const config = loadConfig();
-  return !config.firstRunComplete;
+  if (config.firstRunComplete) {
+    return false;
+  }
+  if (config.reposRoot) {
+    saveConfig({
+      ...config,
+      firstRunComplete: true,
+      setupDate: config.setupDate || new Date().toISOString()
+    });
+    return false;
+  }
+  return true;
 }
 
 /**

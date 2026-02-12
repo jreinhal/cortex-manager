@@ -82,6 +82,7 @@ export function OrchestratorView({
   savedPrompts,
   onSavePrompt,
   onDeletePrompt,
+  onClearAllPrompts,
   onUsePrompt,
   onDirtyChange,
   prefillGoal,
@@ -296,6 +297,14 @@ export function OrchestratorView({
     }
 
     await onDeletePrompt?.(id);
+  };
+
+  const handleClearAllPrompts = async () => {
+    const count = savedPrompts.length;
+    if (!window.confirm(`Clear all ${count} saved prompt${count !== 1 ? 's' : ''}? This cannot be undone.`)) {
+      return;
+    }
+    await onClearAllPrompts?.();
   };
 
   const handleUsePrompt = (query) => {
@@ -732,9 +741,19 @@ export function OrchestratorView({
                 <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner" data-testid="saved-prompts-section">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-amber-300 uppercase tracking-[0.3em]">Saved Prompts</div>
-                    <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
-                      {savedPrompts.length} total
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleClearAllPrompts}
+                        className="text-[10px] font-medium text-slate-500 hover:text-red-400 transition-ui"
+                        title="Clear all saved prompts"
+                        aria-label="Clear all saved prompts"
+                      >
+                        Clear All
+                      </button>
+                      <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
+                        {savedPrompts.length} total
+                      </span>
+                    </div>
                   </div>
                   <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
                     {savedPrompts.slice(0, 4).map((prompt) => (

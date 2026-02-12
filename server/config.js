@@ -1012,6 +1012,23 @@ function deletePrompt(id) {
   return false;
 }
 
+/**
+ * Delete all saved prompts for a workspace (or all if no workspace)
+ */
+function deleteAllPrompts(workspaceId = null) {
+  const prompts = loadPromptsFromFile() || [];
+  const config = loadConfig();
+  const defaultId = config.workspaces?.defaultId || 'default';
+
+  const remaining = workspaceId
+    ? prompts.filter((p) => !matchesWorkspace(p, workspaceId, defaultId))
+    : [];
+
+  const deletedCount = prompts.length - remaining.length;
+  savePromptsToFile(remaining);
+  return deletedCount;
+}
+
 module.exports = {
   getConfig,
   updateConfig,
@@ -1032,5 +1049,6 @@ module.exports = {
   savePrompt,
   updatePrompt,
   deletePrompt,
+  deleteAllPrompts,
   CONFIG_PATH
 };

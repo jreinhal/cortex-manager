@@ -6,13 +6,21 @@ export function LibraryView({
   agents,
   tools,
   onDeletePrompt,
+  onClearAllPrompts,
   onUsePrompt,
   transition
 }) {
   const handleDeletePrompt = (prompt) => {
-    const label = prompt?.title ? `“${prompt.title}”` : 'this prompt';
+    const label = prompt?.title ? `"${prompt.title}"` : 'this prompt';
     if (!window.confirm(`Delete ${label}?`)) return;
     onDeletePrompt?.(prompt.id);
+  };
+
+  const handleClearAllPrompts = () => {
+    const count = savedPrompts.length;
+    if (!count) return;
+    if (!window.confirm(`Clear all ${count} saved prompt${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    onClearAllPrompts?.();
   };
 
   return (
@@ -26,7 +34,20 @@ export function LibraryView({
     >
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="glass-panel rounded-3xl p-6">
-          <div className="text-xs uppercase tracking-[0.3em] text-amber-300 font-bold mb-4">Saved Prompts</div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-amber-300 font-bold">Saved Prompts</div>
+            {savedPrompts.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllPrompts}
+                className="text-[10px] font-medium text-slate-500 hover:text-red-400 transition-colors"
+                title="Clear all saved prompts"
+                aria-label="Clear all saved prompts"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
           {savedPrompts.length === 0 && (
             <EmptyState title="No prompts saved" subtitle="Save prompts from Agent Factory." />
           )}

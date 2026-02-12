@@ -369,6 +369,20 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
     return false
   }, [])
 
+  const clearAllPrompts = useCallback(async () => {
+    try {
+      const res = await apiFetch('/prompts/all', { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setSavedPrompts([])
+        return data.deletedCount || 0
+      }
+    } catch (e) {
+      console.error('Failed to clear prompts:', e)
+    }
+    return 0
+  }, [])
+
   const createDataset = useCallback(
     async (name, description, benchmarkType = 'response') => {
       try {
@@ -808,6 +822,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
     handleSpawn,
     savePrompt,
     deletePrompt,
+    clearAllPrompts,
     createDataset,
     deleteDataset,
     addDatasetItem,

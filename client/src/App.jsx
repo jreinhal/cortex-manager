@@ -371,6 +371,7 @@ function App() {
               savedPrompts={data.savedPrompts}
               onSavePrompt={data.savePrompt}
               onDeletePrompt={data.deletePrompt}
+              onClearAllPrompts={data.clearAllPrompts}
               onUsePrompt={handleAgentUsePrompt}
               onDirtyChange={setDirtyGoal}
               prefillGoal={prefillGoal}
@@ -414,6 +415,7 @@ function App() {
               agents={data.agents}
               tools={data.tools}
               onDeletePrompt={data.deletePrompt}
+              onClearAllPrompts={data.clearAllPrompts}
               onUsePrompt={handleLibraryUsePrompt}
               transition={SPRING_SMOOTH}
             />

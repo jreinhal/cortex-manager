@@ -119,4 +119,22 @@ describe('parseStackText', () => {
     const result = parseStackText('React React React React')
     expect(result.frameworks.filter((f) => f === 'react')).toHaveLength(1)
   })
+
+  it('matches symbol-bearing aliases like c#, c++, .net', () => {
+    const result = parseStackText('C# and C++ with .NET framework')
+    expect(result.languages).toContain('csharp')
+    expect(result.languages).toContain('cpp')
+    // c# and c++ should not falsely match plain 'c'
+    expect(result.languages).not.toContain('c')
+  })
+
+  it('does not false-positive "next" as Next.js in prose', () => {
+    const result = parseStackText('The next steps are to deploy the API')
+    expect(result.frameworks).not.toContain('nextjs')
+  })
+
+  it('still matches explicit nextjs/next.js aliases', () => {
+    const result = parseStackText('We use Next.js for SSR')
+    expect(result.frameworks).toContain('nextjs')
+  })
 })

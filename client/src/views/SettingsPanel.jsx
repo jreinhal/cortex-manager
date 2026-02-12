@@ -144,18 +144,26 @@ export function SettingsPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStackFileError(
+          (data && data.error) || 'Failed to parse file. Please try again later.'
+        );
+        setStackFileParsing(false);
+        return;
+      }
       if (!data.success) {
         setStackFileError(data.error || 'Failed to parse file.');
         setStackFileParsing(false);
         return;
       }
       const { languages, frameworks, tools, platforms, tags } = data.data;
-      if (languages.length) setStackProfileLanguages(languages.join(', '));
-      if (frameworks.length) setStackProfileFrameworks(frameworks.join(', '));
-      if (tools.length) setStackProfileTools(tools.join(', '));
-      if (platforms.length) setStackProfilePlatforms(platforms.join(', '));
-      if (tags.length) setStackProfileTags(tags.join(', '));
+      // Always overwrite all fields so stale values from previous imports are cleared
+      setStackProfileLanguages(languages.length ? languages.join(', ') : '');
+      setStackProfileFrameworks(frameworks.length ? frameworks.join(', ') : '');
+      setStackProfileTools(tools.length ? tools.join(', ') : '');
+      setStackProfilePlatforms(platforms.length ? platforms.join(', ') : '');
+      setStackProfileTags(tags.length ? tags.join(', ') : '');
       setStackProfileEnabled(true);
     } catch (err) {
       setStackFileError('Failed to parse file. Check the connection and try again.');

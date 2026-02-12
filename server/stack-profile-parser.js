@@ -18,7 +18,7 @@ const PARSE_TAXONOMY = {
     php: ['php'],
     csharp: ['c#', 'csharp', 'c-sharp', '.net', 'dotnet'],
     cpp: ['c++', 'cpp'],
-    c: ['\\bc\\b'],
+    c: ['\\bc(?![#+])\\b'],
     dart: ['dart'],
     elixir: ['elixir'],
     scala: ['scala'],
@@ -31,7 +31,7 @@ const PARSE_TAXONOMY = {
   },
   frameworks: {
     react: ['react', 'reactjs', 'react.js', 'react 19'],
-    nextjs: ['next', 'nextjs', 'next.js'],
+    nextjs: ['nextjs', 'next.js'],
     vue: ['vue', 'vuejs', 'vue.js'],
     nuxt: ['nuxt', 'nuxtjs', 'nuxt.js'],
     angular: ['angular', 'angularjs'],
@@ -169,6 +169,59 @@ function escapeForRegex(str) {
 }
 
 /**
+ * Check if an alias contains non-word characters at its boundaries,
+ * requiring lookaround-based matching instead of \b.
+ */
+function hasSymbolBoundary(alias) {
+  return /^\W/.test(alias) || /\W$/.test(alias)
+}
+
+/**
+ * Build a compiled matcher for a single alias string.
+ * - Aliases starting with \b are treated as raw regex patterns.
+ * - Multi-word aliases use plain substring matching.
+ * - Symbol-bearing aliases (c#, c++, .net) use lookaround boundaries.
+ * - Normal single-word aliases use \b word boundaries.
+ */
+function buildMatcher(alias) {
+  const isRegexPattern = alias.startsWith('\\b')
+  if (isRegexPattern) {
+    try {
+      const regex = new RegExp(alias, 'i')
+      return (text) => regex.test(text)
+    } catch {
+      return () => false
+    }
+  }
+  if (alias.includes(' ')) {
+    return (text) => text.includes(alias)
+  }
+  if (hasSymbolBoundary(alias)) {
+    // Use lookaround so non-word chars at edges still match
+    const escaped = escapeForRegex(alias)
+    const regex = new RegExp(`(?<!\\w)${escaped}(?!\\w)`, 'i')
+    return (text) => regex.test(text)
+  }
+  const escaped = escapeForRegex(alias)
+  const regex = new RegExp(`\\b${escaped}\\b`, 'i')
+  return (text) => regex.test(text)
+}
+
+// Precompile all matchers at module load for performance
+const COMPILED_TAXONOMY = Object.entries(PARSE_TAXONOMY).map(([category, entries]) => ({
+  category,
+  entries: Object.entries(entries).map(([canonical, aliases]) => ({
+    canonical,
+    matchers: aliases.map(buildMatcher),
+  })),
+}))
+
+const COMPILED_TAG_SIGNALS = Object.entries(TAG_SIGNALS).map(([tag, aliases]) => ({
+  tag,
+  matchers: aliases.map(buildMatcher),
+}))
+
+/**
  * Parse freeform text and extract tech stack tokens classified by category
  * @param {string} text - Raw text describing a tech stack
  * @returns {{ languages: string[], frameworks: string[], tools: string[], platforms: string[], tags: string[] }}
@@ -188,53 +241,24 @@ function parseStackText(text) {
     tags: new Set(),
   }
 
-  // Match against taxonomy categories
-  for (const [category, entries] of Object.entries(PARSE_TAXONOMY)) {
-    for (const [canonical, aliases] of Object.entries(entries)) {
-      for (const alias of aliases) {
-        const isRegexPattern = alias.startsWith('\\b')
-        if (isRegexPattern) {
-          try {
-            const regex = new RegExp(alias, 'i')
-            if (regex.test(normalized)) {
-              result[category].add(canonical)
-              break
-            }
-          } catch {
-            // skip invalid regex
-          }
-        } else if (alias.includes(' ')) {
-          // Multi-word: exact substring match
-          if (normalized.includes(alias)) {
-            result[category].add(canonical)
-            break
-          }
-        } else {
-          // Single word: word boundary match
-          const regex = new RegExp(`\\b${escapeForRegex(alias)}\\b`, 'i')
-          if (regex.test(normalized)) {
-            result[category].add(canonical)
-            break
-          }
+  // Match against precompiled taxonomy matchers
+  for (const { category, entries } of COMPILED_TAXONOMY) {
+    for (const { canonical, matchers } of entries) {
+      for (const matcher of matchers) {
+        if (matcher(normalized)) {
+          result[category].add(canonical)
+          break
         }
       }
     }
   }
 
-  // Match tag signals
-  for (const [tag, aliases] of Object.entries(TAG_SIGNALS)) {
-    for (const alias of aliases) {
-      if (alias.includes(' ')) {
-        if (normalized.includes(alias)) {
-          result.tags.add(tag)
-          break
-        }
-      } else {
-        const regex = new RegExp(`\\b${escapeForRegex(alias)}\\b`, 'i')
-        if (regex.test(normalized)) {
-          result.tags.add(tag)
-          break
-        }
+  // Match precompiled tag signal matchers
+  for (const { tag, matchers } of COMPILED_TAG_SIGNALS) {
+    for (const matcher of matchers) {
+      if (matcher(normalized)) {
+        result.tags.add(tag)
+        break
       }
     }
   }

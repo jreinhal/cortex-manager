@@ -9,6 +9,7 @@ const createJobRoutes = require('./jobs')
 const createEvaluationRoutes = require('./evaluations')
 const createPromptRoutes = require('./prompts')
 const createAnalyticsRoutes = require('./analytics')
+const createStackProfileRoutes = require('./stack-profile')
 
 function mountRoutes(app, deps) {
   const {
@@ -61,6 +62,7 @@ function mountRoutes(app, deps) {
   )
   app.use('/api', createPromptRoutes({ config, auth }))
   app.use('/api', createAnalyticsRoutes({ auth }))
+  app.use('/api', createStackProfileRoutes({ auth }))
 }
 
 module.exports = mountRoutes

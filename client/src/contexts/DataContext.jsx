@@ -74,8 +74,9 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchSessions = useCallback(async () => {
     try {
       const res = await apiFetch('/sessions')
+      if (!res.ok) return
       const data = await res.json()
-      setSessions(data)
+      setSessions(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error('Failed to fetch sessions:', e)
     }
@@ -84,6 +85,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchRuns = useCallback(async () => {
     try {
       const res = await apiFetch('/runs')
+      if (!res.ok) return
       const data = await res.json()
       setRuns(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -94,6 +96,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchDatasets = useCallback(async () => {
     try {
       const res = await apiFetch('/datasets')
+      if (!res.ok) return
       const data = await res.json()
       setDatasets(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -104,6 +107,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchEvaluations = useCallback(async () => {
     try {
       const res = await apiFetch('/evaluations')
+      if (!res.ok) return
       const data = await res.json()
       setEvaluations(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -114,6 +118,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchAgents = useCallback(async () => {
     try {
       const res = await apiFetch('/agents')
+      if (!res.ok) return
       const data = await res.json()
       setAgents(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -124,6 +129,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchTools = useCallback(async () => {
     try {
       const res = await apiFetch('/tools')
+      if (!res.ok) return
       const data = await res.json()
       setTools(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -134,6 +140,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchSavedPrompts = useCallback(async () => {
     try {
       const res = await apiFetch('/prompts')
+      if (!res.ok) return
       const data = await res.json()
       setSavedPrompts(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -144,6 +151,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchEvaluationTemplates = useCallback(async () => {
     try {
       const res = await apiFetch('/evaluation-templates')
+      if (!res.ok) return
       const data = await res.json()
       setEvaluationTemplates(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -154,6 +162,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchJobs = useCallback(async () => {
     try {
       const res = await apiFetch('/jobs')
+      if (!res.ok) return
       const data = await res.json()
       setJobs(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -164,6 +173,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchObservabilitySummary = useCallback(async () => {
     try {
       const res = await apiFetch('/observability/summary')
+      if (!res.ok) return
       const data = await res.json()
       setObservabilitySummary(data)
     } catch (e) {
@@ -174,6 +184,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchVectorStatus = useCallback(async () => {
     try {
       const res = await apiFetch('/vector-index/status')
+      if (!res.ok) return
       const data = await res.json()
       setVectorStatus(data)
     } catch (e) {
@@ -243,8 +254,10 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   const fetchRepos = useCallback(async () => {
     try {
       const res = await apiFetch('/repos')
+      if (!res.ok) return
       const data = await res.json()
-      const enriched = data.map((repo) => ({
+      const items = Array.isArray(data) ? data : []
+      const enriched = items.map((repo) => ({
         ...repo,
         Purpose: repo.Category || derivePurpose(repo.Path),
       }))

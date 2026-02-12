@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Check, RefreshCw } from 'lucide-react';
+import { BookOpen, Check, RefreshCw, Upload } from 'lucide-react';
 
 export function SettingsPanel({
   config,
@@ -121,6 +121,47 @@ export function SettingsPanel({
       .map((item) => item.trim().toLowerCase())
       .filter(Boolean)
   ));
+  const stackFileRef = useRef(null);
+  const [stackFileParsing, setStackFileParsing] = useState(false);
+  const [stackFileError, setStackFileError] = useState('');
+
+  const handleStackFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset the input so the same file can be re-uploaded
+    e.target.value = '';
+    setStackFileError('');
+    setStackFileParsing(true);
+    try {
+      const text = await file.text();
+      if (!text.trim()) {
+        setStackFileError('File is empty.');
+        setStackFileParsing(false);
+        return;
+      }
+      const res = await apiFetch('/stack-profile/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setStackFileError(data.error || 'Failed to parse file.');
+        setStackFileParsing(false);
+        return;
+      }
+      const { languages, frameworks, tools, platforms, tags } = data.data;
+      if (languages.length) setStackProfileLanguages(languages.join(', '));
+      if (frameworks.length) setStackProfileFrameworks(frameworks.join(', '));
+      if (tools.length) setStackProfileTools(tools.join(', '));
+      if (platforms.length) setStackProfilePlatforms(platforms.join(', '));
+      if (tags.length) setStackProfileTags(tags.join(', '));
+      setStackProfileEnabled(true);
+    } catch (err) {
+      setStackFileError('Failed to parse file. Check the connection and try again.');
+    }
+    setStackFileParsing(false);
+  };
 
   const handleSave = async () => {
     // Guard against empty submissions
@@ -578,9 +619,38 @@ export function SettingsPanel({
 
         {/* Stack Profile */}
         <div>
-          <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
-            Stack Profile
-          </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <label className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+              Stack Profile
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                ref={stackFileRef}
+                type="file"
+                accept=".txt,.md,.text,.csv,.json"
+                onChange={handleStackFileUpload}
+                className="hidden"
+                aria-label="Upload tech stack file"
+              />
+              <button
+                type="button"
+                onClick={() => stackFileRef.current?.click()}
+                disabled={stackFileParsing}
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-ui",
+                  stackFileParsing
+                    ? "bg-slate-900/60 border-slate-800 text-slate-400"
+                    : "bg-slate-800/60 border-slate-700/60 text-slate-200 hover:bg-slate-700/60"
+                )}
+              >
+                <Upload size={14} className={stackFileParsing ? "animate-pulse" : ""} aria-hidden="true" />
+                {stackFileParsing ? 'Parsing...' : 'Import from file'}
+              </button>
+            </div>
+          </div>
+          {stackFileError && (
+            <p className="text-red-400 text-xs mb-3" role="alert">{stackFileError}</p>
+          )}
           <div className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 space-y-4">
             <label className="flex items-center gap-3 text-sm text-slate-300">
               <input
@@ -675,7 +745,7 @@ export function SettingsPanel({
             </div>
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            Comma or newline separated. Tokens are normalized to lowercase.
+            Comma or newline separated. Tokens are normalized to lowercase. Use "Import from file" to auto-fill from a text file describing your tech stack.
           </p>
         </div>
 

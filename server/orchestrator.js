@@ -578,6 +578,10 @@ async function orchestrate(goal, format = 'universal') {
   console.log(`\n--- PREVIEW ---\n`);
   console.log(flightPlan);
 
+  // Emit structured metadata for the API route to parse
+  const meta = { performance: { totalMs: Date.now() - startedAt, spans } };
+  console.log(`\n___CORTEX_META___${JSON.stringify(meta)}`);
+
   const durationMs = Date.now() - startedAt;
   const resourceTotal = knowledgeCount + skillsCount + toolsCount;
   const tokensEstimated = estimateTokens(flightPlan);

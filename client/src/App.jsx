@@ -367,6 +367,7 @@ function App() {
               onSpawn={data.handleSpawn}
               loading={data.loading}
               result={data.spawnResult}
+              spawnPerformance={data.spawnPerformance}
               sessions={data.sessions}
               savedPrompts={data.savedPrompts}
               onSavePrompt={data.savePrompt}

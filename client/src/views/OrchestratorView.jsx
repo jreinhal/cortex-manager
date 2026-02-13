@@ -74,10 +74,22 @@ const buildSpawnStepDefs = ({ onlineSkills, trainingMode }) => {
   return steps;
 };
 
+// Map backend span names to step keys
+const SPAN_TO_STEP_KEY = {
+  analyze_goal: 'analyze',
+  select_agent: 'route',
+  external_skills_install: 'external-search',
+  external_skills_training: 'external-train',
+  resource_search: 'retrieve',
+  generate_flight_plan: 'compose',
+  persist_output: 'compose',
+}
+
 export function OrchestratorView({
   onSpawn,
   loading,
   result,
+  spawnPerformance,
   sessions,
   savedPrompts,
   onSavePrompt,
@@ -367,24 +379,56 @@ export function OrchestratorView({
       ? { online: onlineSkills, trainingMode: onlineSkillsTrainingMode }
       : null;
 
-    await onSpawn(goal, format, runInBackground, externalSkillsRequest);
+    const result = await onSpawn(goal, format, runInBackground, externalSkillsRequest);
 
-    // Mark all done
+    // Mark all steps done (real durations applied via spawnPerformance effect below)
     clearSpawnTimeouts();
+    const spawnFailed = result && !result.success;
     setSpawnSteps((prev) =>
       prev.map((step) => {
         if (step.done) {
-          return step;
+          return spawnFailed ? { ...step, error: true } : step;
         }
         const endTime = Date.now();
         return {
           ...step,
           done: true,
+          error: spawnFailed,
           durationMs: step.startedAt ? endTime - step.startedAt : 0
         };
       })
     );
   };
+
+  // Overlay real backend timing when available
+  useEffect(() => {
+    if (!spawnPerformance?.spans?.length || spawnSteps.length === 0) return;
+
+    // Build a map from step key to total duration across all matching spans
+    const durationByKey = {};
+    for (const span of spawnPerformance.spans) {
+      const key = SPAN_TO_STEP_KEY[span.name];
+      if (key) {
+        durationByKey[key] = (durationByKey[key] || 0) + span.durationMs;
+      }
+    }
+
+    // The 'init' step covers everything before analyze_goal
+    const analyzeSpan = spawnPerformance.spans.find((s) => s.name === 'analyze_goal');
+    if (analyzeSpan) {
+      durationByKey['init'] = analyzeSpan.startMs;
+    }
+
+    setSpawnSteps((prev) =>
+      prev.map((step) => {
+        if (step.key in durationByKey) {
+          return { ...step, durationMs: durationByKey[step.key] };
+        }
+        // Steps with no matching span that are skipped/disabled keep durationMs: 0
+        return step;
+      })
+    );
+  }, [spawnPerformance, spawnSteps.length]);
 
   const handleCopy = async () => {
     try {

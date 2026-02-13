@@ -102,7 +102,28 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
 
         audit('spawn.complete', { format: normalizedFormat, goal }, req)
         config.recordSpawn(goal, 'std-agent', 0, req.workspace?.id || null)
-        res.json({ success: true, output: stdout })
+
+        // Extract structured metadata emitted by the orchestrator
+        let performance = null
+        let cleanOutput = stdout
+        const metaSentinel = '___CORTEX_META___'
+        const metaIndex = stdout.lastIndexOf(metaSentinel)
+        if (metaIndex !== -1) {
+          const metaLine = stdout.substring(metaIndex + metaSentinel.length).split('\n')[0]
+          cleanOutput = stdout.substring(0, metaIndex).trimEnd()
+          try {
+            const meta = JSON.parse(metaLine)
+            performance = meta.performance || null
+          } catch (_e) {
+            // non-critical: continue without structured metadata
+          }
+        }
+
+        const response = { success: true, output: cleanOutput }
+        if (performance) {
+          response.performance = performance
+        }
+        res.json(response)
       })
     }
   )

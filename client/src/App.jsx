@@ -367,10 +367,12 @@ function App() {
               onSpawn={data.handleSpawn}
               loading={data.loading}
               result={data.spawnResult}
+              spawnPerformance={data.spawnPerformance}
               sessions={data.sessions}
               savedPrompts={data.savedPrompts}
               onSavePrompt={data.savePrompt}
               onDeletePrompt={data.deletePrompt}
+              onClearAllPrompts={data.clearAllPrompts}
               onUsePrompt={handleAgentUsePrompt}
               onDirtyChange={setDirtyGoal}
               prefillGoal={prefillGoal}
@@ -414,6 +416,7 @@ function App() {
               agents={data.agents}
               tools={data.tools}
               onDeletePrompt={data.deletePrompt}
+              onClearAllPrompts={data.clearAllPrompts}
               onUsePrompt={handleLibraryUsePrompt}
               transition={SPRING_SMOOTH}
             />

@@ -33,6 +33,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
   // Spawn state
   const [loading, setLoading] = useState(false)
   const [spawnResult, setSpawnResult] = useState('')
+  const [spawnPerformance, setSpawnPerformance] = useState(null)
 
   const addLog = useCallback((msg) => {
     setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 200))
@@ -367,6 +368,20 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
       console.error('Failed to delete prompt:', e)
     }
     return false
+  }, [])
+
+  const clearAllPrompts = useCallback(async () => {
+    try {
+      const res = await apiFetch('/prompts/all', { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setSavedPrompts([])
+        return data.deletedCount || 0
+      }
+    } catch (e) {
+      console.error('Failed to clear prompts:', e)
+    }
+    return 0
   }, [])
 
   const createDataset = useCallback(
@@ -729,6 +744,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
     async (goal, format = 'universal', runInBackground = false, externalSkillsRequest = null) => {
       setLoading(true)
       setSpawnResult('')
+      setSpawnPerformance(null)
       addLog(`Orchestrating agent for: "${goal}"…`)
       try {
         const res = await apiFetch('/spawn', {
@@ -742,25 +758,32 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
             setSpawnResult(`Spawn queued as ${data.job?.id}. Monitor Jobs for progress.`)
             addLog(`Spawn queued (${data.job?.id || 'job'}).`)
             fetchJobs()
-          } else {
-            setSpawnResult(data.output)
-            addLog('Agent Spawned Successfully')
-
-            await apiFetch('/sessions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ goal, agent: 'std-agent', output: data.output, format }),
-            })
-            fetchSessions()
-            fetchRuns()
+            setLoading(false)
+            return { success: true, queued: true }
           }
-        } else {
-          addLog(`Spawn Error: ${data.error}`)
+          setSpawnResult(data.output)
+          const perf = data.performance || null
+          setSpawnPerformance(perf)
+          addLog('Agent Spawned Successfully')
+
+          await apiFetch('/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal, agent: 'std-agent', output: data.output, format }),
+          }).catch(() => {})
+          fetchSessions()
+          fetchRuns()
+          setLoading(false)
+          return { success: true }
         }
-      } catch (_e) {
+        addLog(`Spawn Error: ${data.error}`)
+        setLoading(false)
+        return { success: false, error: data.error }
+      } catch (err) {
         addLog('Spawn request failed. Check the server and try again.')
+        setLoading(false)
+        return { success: false, error: err.message }
       }
-      setLoading(false)
     },
     [addLog, fetchJobs, fetchSessions, fetchRuns],
   )
@@ -796,6 +819,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
     // Spawn
     loading,
     spawnResult,
+    spawnPerformance,
 
     // Actions
     addLog,
@@ -808,6 +832,7 @@ export function DataProvider({ children, isFirstRun, authEnabled, authUser }) {
     handleSpawn,
     savePrompt,
     deletePrompt,
+    clearAllPrompts,
     createDataset,
     deleteDataset,
     addDatasetItem,

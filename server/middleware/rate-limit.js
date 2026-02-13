@@ -2,12 +2,15 @@ const rateLimit = require('express-rate-limit')
 
 /**
  * General API rate limiter.
- * 100 requests per minute per IP — generous for a local tool,
- * but prevents accidental runaway loops.
+ * 1000 requests per minute per IP — generous for a local tool
+ * that polls many endpoints concurrently (repos, categories, runs,
+ * sessions, agents, tools, prompts, evaluations, datasets, jobs,
+ * observability, vector status, workspaces, category-sizes).
+ * Only guards against truly accidental runaway loops.
  */
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests, please try again later.' },

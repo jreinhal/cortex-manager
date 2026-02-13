@@ -105,6 +105,42 @@ describe('Prompts API', () => {
     })
   })
 
+  describe('DELETE /api/prompts/all', () => {
+    it('clears all saved prompts', async () => {
+      // Create a couple prompts first
+      await request(app)
+        .post('/api/prompts')
+        .send({ title: 'Bulk A', query: 'Bulk query A' })
+      await request(app)
+        .post('/api/prompts')
+        .send({ title: 'Bulk B', query: 'Bulk query B' })
+
+      // Verify they exist
+      const before = await request(app).get('/api/prompts')
+      expect(before.body.length).toBeGreaterThanOrEqual(2)
+
+      // Clear all
+      const res = await request(app).delete('/api/prompts/all')
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.deletedCount).toBeGreaterThanOrEqual(2)
+
+      // Verify empty
+      const after = await request(app).get('/api/prompts')
+      expect(after.body.length).toBe(0)
+    })
+
+    it('returns 0 when no prompts exist', async () => {
+      // Clear first to ensure empty
+      await request(app).delete('/api/prompts/all')
+
+      const res = await request(app).delete('/api/prompts/all')
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.deletedCount).toBe(0)
+    })
+  })
+
   describe('GET /api/agents', () => {
     it('returns an array (may be empty)', async () => {
       const res = await request(app).get('/api/agents')

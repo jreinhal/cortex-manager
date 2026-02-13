@@ -235,7 +235,8 @@ function scoreAgent(agent, analyzedGoal) {
     complexityFit: 0,
     signalBoosts: 0,
     signalPenalties: 0,
-    contextualRules: 0
+    contextualRules: 0,
+    stackProfileBoost: 0
   };
   const reasons = [];
 
@@ -275,6 +276,11 @@ function scoreAgent(agent, analyzedGoal) {
   const contextResult = applyContextualRules(agent, analyzedGoal.originalGoal);
   breakdown.contextualRules = contextResult.adjustment;
   reasons.push(...contextResult.reasons);
+
+  // 8. Stack Profile Alignment (up to ±8 points)
+  const stackBoost = scoreStackProfileAlignment(agent, analyzedGoal.stackProfile);
+  breakdown.stackProfileBoost = stackBoost.adjustment;
+  reasons.push(...stackBoost.reasons);
 
   const totalScore = Object.values(breakdown).reduce((sum, v) => sum + v, 0);
   const normalizedScore = Math.max(0, Math.min(100, totalScore));
@@ -445,6 +451,82 @@ function calculateConfidence(breakdown, totalScore) {
   confidence -= negativeDimensions * 0.1;
 
   return Math.max(0, Math.min(1, confidence));
+}
+
+// Map stack profile tech tokens to agent domain keys
+const STACK_TOKEN_TO_DOMAIN = {
+  react: 'frontend', vue: 'frontend', nextjs: 'frontend', angular: 'frontend',
+  svelte: 'frontend', tailwind: 'frontend', css: 'frontend', html: 'frontend',
+  express: 'backend', fastapi: 'backend', django: 'backend', flask: 'backend',
+  'node.js': 'backend', nodejs: 'backend', nestjs: 'backend', rails: 'backend',
+  spring: 'backend', 'asp.net': 'backend', laravel: 'backend', koa: 'backend',
+  docker: 'devops', kubernetes: 'devops', terraform: 'devops', ansible: 'devops',
+  aws: 'devops', gcp: 'devops', azure: 'devops', ci: 'devops', cd: 'devops',
+  jest: 'testing', mocha: 'testing', pytest: 'testing', playwright: 'testing',
+  cypress: 'testing', vitest: 'testing',
+  postgres: 'data', mongodb: 'data', redis: 'data', mysql: 'data',
+  elasticsearch: 'data', sqlite: 'data', prisma: 'data', supabase: 'data',
+  selenium: 'automation', puppeteer: 'automation', scrapy: 'automation',
+};
+
+/**
+ * Score how well an agent's domain strengths align with the stack profile.
+ * Returns an adjustment (positive or negative) and reasons.
+ */
+function scoreStackProfileAlignment(agent, stackProfile) {
+  const reasons = [];
+  if (!stackProfile || stackProfile.enabled !== true) {
+    return { adjustment: 0, reasons };
+  }
+
+  const tokens = [
+    ...(stackProfile.include?.languages || []),
+    ...(stackProfile.include?.frameworks || []),
+    ...(stackProfile.include?.tools || []),
+    ...(stackProfile.include?.platforms || []),
+    ...(stackProfile.include?.tags || [])
+  ].map((t) => t.toLowerCase().trim()).filter(Boolean);
+
+  if (tokens.length === 0) {
+    return { adjustment: 0, reasons };
+  }
+
+  // Map tokens to domains and tally domain weights
+  const domainHits = {};
+  for (const token of tokens) {
+    const domain = STACK_TOKEN_TO_DOMAIN[token];
+    if (domain) {
+      domainHits[domain] = (domainHits[domain] || 0) + 1;
+    }
+  }
+
+  const domains = Object.keys(domainHits);
+  if (domains.length === 0) {
+    return { adjustment: 0, reasons };
+  }
+
+  // Calculate alignment: how well the agent's domain scores match the profile's domains
+  let totalAlignment = 0;
+  let totalWeight = 0;
+  for (const domain of domains) {
+    const agentScore = agent.domains[domain] ?? 5; // neutral default
+    const weight = domainHits[domain];
+    totalAlignment += (agentScore / 10) * weight;
+    totalWeight += weight;
+  }
+
+  const avgAlignment = totalWeight > 0 ? totalAlignment / totalWeight : 0.5;
+  // Map 0-1 alignment to -4 to +8 adjustment (biased toward boost for good matches)
+  const adjustment = Math.round((avgAlignment - 0.4) * 13.3);
+  const clamped = Math.max(-4, Math.min(8, adjustment));
+
+  if (clamped > 0) {
+    reasons.push(`Stack profile alignment: +${clamped} (${domains.join(', ')})`);
+  } else if (clamped < 0) {
+    reasons.push(`Stack profile mismatch: ${clamped} (${domains.join(', ')})`);
+  }
+
+  return { adjustment: clamped, reasons };
 }
 
 /**

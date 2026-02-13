@@ -74,14 +74,27 @@ const buildSpawnStepDefs = ({ onlineSkills, trainingMode }) => {
   return steps;
 };
 
+// Map backend span names to step keys
+const SPAN_TO_STEP_KEY = {
+  analyze_goal: 'analyze',
+  select_agent: 'route',
+  external_skills_install: 'external-search',
+  external_skills_training: 'external-train',
+  resource_search: 'retrieve',
+  generate_flight_plan: 'compose',
+  persist_output: 'compose',
+}
+
 export function OrchestratorView({
   onSpawn,
   loading,
   result,
+  spawnPerformance,
   sessions,
   savedPrompts,
   onSavePrompt,
   onDeletePrompt,
+  onClearAllPrompts,
   onUsePrompt,
   onDirtyChange,
   prefillGoal,
@@ -298,6 +311,14 @@ export function OrchestratorView({
     await onDeletePrompt?.(id);
   };
 
+  const handleClearAllPrompts = async () => {
+    const count = savedPrompts.length;
+    if (!window.confirm(`Clear all ${count} saved prompt${count !== 1 ? 's' : ''}? This cannot be undone.`)) {
+      return;
+    }
+    await onClearAllPrompts?.();
+  };
+
   const handleUsePrompt = (query) => {
     setGoal(query);
     if (onUsePrompt) {
@@ -358,24 +379,56 @@ export function OrchestratorView({
       ? { online: onlineSkills, trainingMode: onlineSkillsTrainingMode }
       : null;
 
-    await onSpawn(goal, format, runInBackground, externalSkillsRequest);
+    const result = await onSpawn(goal, format, runInBackground, externalSkillsRequest);
 
-    // Mark all done
+    // Mark all steps done (real durations applied via spawnPerformance effect below)
     clearSpawnTimeouts();
+    const spawnFailed = result && !result.success;
     setSpawnSteps((prev) =>
       prev.map((step) => {
         if (step.done) {
-          return step;
+          return spawnFailed ? { ...step, error: true } : step;
         }
         const endTime = Date.now();
         return {
           ...step,
           done: true,
+          error: spawnFailed,
           durationMs: step.startedAt ? endTime - step.startedAt : 0
         };
       })
     );
   };
+
+  // Overlay real backend timing when available
+  useEffect(() => {
+    if (!spawnPerformance?.spans?.length || spawnSteps.length === 0) return;
+
+    // Build a map from step key to total duration across all matching spans
+    const durationByKey = {};
+    for (const span of spawnPerformance.spans) {
+      const key = SPAN_TO_STEP_KEY[span.name];
+      if (key) {
+        durationByKey[key] = (durationByKey[key] || 0) + span.durationMs;
+      }
+    }
+
+    // The 'init' step covers everything before analyze_goal
+    const analyzeSpan = spawnPerformance.spans.find((s) => s.name === 'analyze_goal');
+    if (analyzeSpan) {
+      durationByKey['init'] = analyzeSpan.startMs;
+    }
+
+    setSpawnSteps((prev) =>
+      prev.map((step) => {
+        if (step.key in durationByKey) {
+          return { ...step, durationMs: durationByKey[step.key] };
+        }
+        // Steps with no matching span that are skipped/disabled keep durationMs: 0
+        return step;
+      })
+    );
+  }, [spawnPerformance, spawnSteps.length]);
 
   const handleCopy = async () => {
     try {
@@ -732,9 +785,19 @@ export function OrchestratorView({
                 <div className="space-y-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-4 shadow-inner" data-testid="saved-prompts-section">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-amber-300 uppercase tracking-[0.3em]">Saved Prompts</div>
-                    <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
-                      {savedPrompts.length} total
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleClearAllPrompts}
+                        className="text-[10px] font-medium text-slate-500 hover:text-red-400 transition-ui"
+                        title="Clear all saved prompts"
+                        aria-label="Clear all saved prompts"
+                      >
+                        Clear All
+                      </button>
+                      <span className="text-[10px] font-mono text-slate-500 bg-slate-900/70 px-2 py-0.5 rounded-full border border-slate-800">
+                        {savedPrompts.length} total
+                      </span>
+                    </div>
                   </div>
                   <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
                     {savedPrompts.slice(0, 4).map((prompt) => (

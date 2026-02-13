@@ -549,11 +549,11 @@ function evaluateStackProfile(resource, stackProfile) {
 
   let penalty = 0;
   let bonus = 0;
-  if (hasMatch) bonus = 0.06;
+  if (hasMatch) bonus = 0.15;
   if (hasExclude) {
-    penalty = 0.35;
+    penalty = 0.45;
   } else if (includeTokens.length > 0 && !hasMatch) {
-    penalty = resourceTech.length === 0 ? 0.12 : 0.22;
+    penalty = resourceTech.length === 0 ? 0.18 : 0.30;
   }
 
   return {

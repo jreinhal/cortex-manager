@@ -53,6 +53,17 @@ function createPromptRoutes({ config, auth }) {
   )
 
   router.delete(
+    '/prompts/all',
+    auth.requirePermission('prompts', 'delete', 'editor'),
+    (req, res) => {
+      const workspaceId = req.workspace?.id || null
+      const deletedCount = config.deleteAllPrompts(workspaceId)
+      audit('prompts.clear-all', { deletedCount }, req)
+      res.json({ success: true, deletedCount })
+    }
+  )
+
+  router.delete(
     '/prompts/:id',
     auth.requirePermission('prompts', 'delete', 'editor'),
     (req, res) => {

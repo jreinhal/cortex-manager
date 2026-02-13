@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Check, RefreshCw, Upload } from 'lucide-react';
+import { BookOpen, Check, RefreshCw, Trash2, Upload } from 'lucide-react';
 
 export function SettingsPanel({
   config,
@@ -640,6 +640,21 @@ export function SettingsPanel({
                 className="hidden"
                 aria-label="Upload tech stack file"
               />
+              <button
+                type="button"
+                onClick={() => {
+                  setStackProfileLanguages('');
+                  setStackProfileFrameworks('');
+                  setStackProfileTools('');
+                  setStackProfilePlatforms('');
+                  setStackProfileTags('');
+                  setStackProfileExclude('');
+                }}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-ui bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-950/20"
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Clear stack
+              </button>
               <button
                 type="button"
                 onClick={() => stackFileRef.current?.click()}

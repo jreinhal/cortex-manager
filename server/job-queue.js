@@ -249,7 +249,7 @@ function startJob(job, options = {}) {
       }
     }
 
-    const child = spawn('node', [orchestratorPath, '--stdin', normalizedFormat], {
+    const child = spawn(process.execPath, [orchestratorPath, '--stdin', normalizedFormat], {
       cwd: path.join(__dirname, '..'),
       env: {
         ...process.env,

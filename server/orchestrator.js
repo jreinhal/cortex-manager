@@ -893,7 +893,7 @@ function readStdin() {
 async function runCli() {
   const firstArg = process.argv[2];
   const useStdin = firstArg === '--stdin';
-  const formatArg = useStdin ? (process.argv[3] || 'universal') : (process.argv[3] || 'universal');
+  const formatArg = process.argv[3] || 'universal';
   const goal = useStdin ? await readStdin() : firstArg;
 
   if (!goal || !goal.trim()) {

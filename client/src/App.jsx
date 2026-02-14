@@ -4561,7 +4561,10 @@ function App() {
 
   const handleAdd = async () => {
     if (!url) return;
-    const trimmedUrl = url.trim().replace(/\/+$/, '');
+    let trimmedUrl = url.trim();
+    while (trimmedUrl.endsWith('/')) {
+      trimmedUrl = trimmedUrl.slice(0, -1);
+    }
     const repoName = trimmedUrl.split('/').pop()?.replace(/\.git$/i, '');
     if (repoName && repos.some(r => r.Name?.toLowerCase() === repoName.toLowerCase())) {
       addLog(`Repo already exists: ${repoName}`);
@@ -4714,7 +4717,6 @@ function App() {
     } finally {
       setLoading(false);
     }
-    return { ok: false, error: 'Spawn failed' };
   };
 
   const addLog = (msg) => {

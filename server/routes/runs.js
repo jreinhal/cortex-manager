@@ -13,8 +13,16 @@ const { audit, matchesWorkspace, resolveRunOutputPath } = require('./helpers')
 
 function parseOutputPath(rawText) {
   if (!rawText) return null
-  const match = String(rawText).match(/Saved to:\s+(.+)$/m)
-  return match ? match[1].trim() : null
+  const marker = 'Saved to:'
+  const lines = String(rawText).split('\n')
+  for (const line of lines) {
+    const idx = line.indexOf(marker)
+    if (idx !== -1) {
+      const value = line.slice(idx + marker.length).trim()
+      if (value) return value
+    }
+  }
+  return null
 }
 
 function extractFlightPlanFromLogs(rawText) {
@@ -113,7 +121,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
         return res.json({ success: true, queued: true, job })
       }
 
-      const child = spawn('node', [orchestratorPath, '--stdin', normalizedFormat], {
+      const child = spawn(process.execPath, [orchestratorPath, '--stdin', normalizedFormat], {
         cwd: path.join(__dirname, '..', '..'),
         env: {
           ...process.env,

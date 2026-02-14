@@ -18,7 +18,6 @@ export function HomeView({
   jobs,
 }) {
   const recentRuns = runs.slice(0, 5)
-  const latestRun = runs[0] || null
   const configuredModel = appConfig?.config?.llm?.model || '—'
 
   return (

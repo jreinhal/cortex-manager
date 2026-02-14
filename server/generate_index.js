@@ -32,7 +32,7 @@ function walk(dir, prefix = '') {
   let files;
   try {
     files = fs.readdirSync(dir);
-  } catch (e) {
+  } catch {
     return output; // Skip directories we can't read
   }
 
@@ -45,7 +45,7 @@ function walk(dir, prefix = '') {
       const bStat = fs.statSync(bPath);
       if (aStat.isDirectory() && !bStat.isDirectory()) return -1;
       if (!aStat.isDirectory() && bStat.isDirectory()) return 1;
-    } catch (e) {
+    } catch {
       // Skip files we can't stat
     }
     return a.localeCompare(b);
@@ -66,7 +66,7 @@ function walk(dir, prefix = '') {
       } else {
         output += `${prefix}- 📄 [${file}](${relPath})\n`;
       }
-    } catch (e) {
+    } catch {
       // Skip files we can't access
     }
   });

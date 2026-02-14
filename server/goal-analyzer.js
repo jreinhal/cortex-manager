@@ -434,7 +434,7 @@ function analyzeActions(goal) {
 /**
  * Assess task complexity
  */
-function assessComplexity(goal, intent, techStack) {
+function assessComplexity(goal, _intent, _techStack) {
   const normalizedGoal = goal.toLowerCase();
   let level = 'moderate';
   let estimatedSteps = 10;

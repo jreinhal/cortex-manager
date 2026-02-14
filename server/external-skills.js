@@ -797,7 +797,7 @@ async function pullExternalSkills({ goal, analysis, config, reposRoot, workspace
           let pointer = 0;
           for (const provider of enabledProviders) {
             const providerMax = Math.max(0, Number(provider.maxSkills || 0));
-            for (const q of llmQueries) {
+            for (const _query of llmQueries) {
               const result = assistSettled[pointer];
               pointer += 1;
               if (result?.status === 'fulfilled') {

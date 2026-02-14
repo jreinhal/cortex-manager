@@ -99,14 +99,14 @@ function generateRunId() {
 function getGitMetadata(cwd) {
   try {
     execSync('git rev-parse --is-inside-work-tree', { cwd, stdio: 'pipe' });
-  } catch (e) {
+  } catch {
     return null;
   }
 
   const exec = (cmd) => {
     try {
       return execSync(cmd, { cwd, stdio: 'pipe' }).toString().trim();
-    } catch (e) {
+    } catch {
       return '';
     }
   };
@@ -835,7 +835,7 @@ ${techStackDisplay.length > 0 ? `| **Tech Stack** | ${techStackDisplay.join(', '
 
 ### Required Capabilities
 ${Object.entries(analysis.capabilities)
-  .filter(([k, v]) => v === true)
+  .filter(([, v]) => v === true)
   .map(([k]) => `- ${k}`)
   .join('\n') || '- No specific capabilities required'}
 ${risksSection}

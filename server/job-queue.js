@@ -267,10 +267,14 @@ function startJob(job, options = {}) {
     const startedAt = Date.now();
 
     try {
-      child.stdin.write(goal);
-      child.stdin.end();
+      child.stdin.end(goal);
     } catch (e) {
       stderr += `\n[stdin write error] ${e.message}`;
+      try {
+        child.stdin.end();
+      } catch (_stdinEndError) {
+        // no-op
+      }
     }
 
     child.stdout.on('data', (data) => {

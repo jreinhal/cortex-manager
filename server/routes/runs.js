@@ -35,10 +35,27 @@ function resolveRunFromOutputPath({ runsStore, outputPath, workspaceId }) {
   )
 }
 
-function loadRunOutput(run, maxChars) {
-  if (!run?.outputPath) return null
+function appendLimited(buffer, chunk, maxChars) {
+  const text = chunk ? chunk.toString() : ''
+  if (!text) return buffer
+  const combined = `${buffer}${text}`
+  if (!Number.isFinite(maxChars) || maxChars <= 0 || combined.length <= maxChars) return combined
+  return combined.slice(combined.length - maxChars)
+}
+
+function resolveMaxOutputChars(value) {
+  const fallback = 120000
+  const maxAllowed = 1000000
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.min(Math.floor(parsed), maxAllowed)
+}
+
+async function loadRunOutput(run, workspace, maxChars) {
+  const resolved = resolveRunOutputPath(run, workspace)
+  if (!resolved) return null
   try {
-    const content = fs.readFileSync(run.outputPath, 'utf8')
+    const content = await fsp.readFile(resolved, 'utf8')
     if (!Number.isFinite(maxChars) || maxChars <= 0) return content
     return content.length > maxChars ? content.slice(0, maxChars) : content
   } catch (_e) {
@@ -107,6 +124,10 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
         },
       })
 
+      const currentConfig = config.getConfig()
+      const maxOutputChars = resolveMaxOutputChars(currentConfig?.llm?.maxOutputChars)
+      const maxBufferedChars = Math.max(maxOutputChars * 2, 250000)
+      const verboseSpawnLogs = process.env.CORTEX_SPAWN_STREAM_DEBUG === '1'
       let stdout = ''
       let stderr = ''
       let settled = false
@@ -117,20 +138,26 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
       }
 
       child.stdout.on('data', (data) => {
-        stdout += data.toString()
-        console.log(`[ORCHESTRATOR] ${data.toString().trim()}`)
+        stdout = appendLimited(stdout, data, maxBufferedChars)
+        if (verboseSpawnLogs) {
+          console.log(`[ORCHESTRATOR] ${data.toString().trim()}`)
+        }
       })
 
       child.stderr.on('data', (data) => {
-        stderr += data.toString()
+        stderr = appendLimited(stderr, data, maxBufferedChars)
         console.error(`[ORCHESTRATOR ERR] ${data.toString().trim()}`)
       })
 
       try {
-        child.stdin.write(goal)
-        child.stdin.end()
+        child.stdin.end(goal)
       } catch (e) {
         console.error('[ORCHESTRATOR] Failed to stream goal to orchestrator stdin:', e)
+        try {
+          child.stdin.end()
+        } catch (_stdinEndError) {
+          // no-op
+        }
       }
 
       child.on('error', (err) => {
@@ -138,7 +165,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
         finish(500, { success: false, error: err.message })
       })
 
-      child.on('close', (code) => {
+      child.on('close', async (code) => {
         if (settled) return
         if (code !== 0) {
           audit('spawn.failed', { format: normalizedFormat, goal, code }, req)
@@ -158,8 +185,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
           outputPath,
           workspaceId,
         })
-        const maxOutputChars = Number(config.getConfig()?.llm?.maxOutputChars || 120000)
-        const runOutput = loadRunOutput(matchedRun, maxOutputChars)
+        const runOutput = await loadRunOutput(matchedRun, req.workspace, maxOutputChars)
         const output = runOutput ?? extractFlightPlanFromLogs(stdout)
 
         finish(200, { success: true, output, run: matchedRun })

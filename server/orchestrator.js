@@ -897,7 +897,7 @@ async function runCli() {
   const goal = useStdin ? await readStdin() : firstArg;
 
   if (!goal || !goal.trim()) {
-    console.error('Usage: node orchestrator.js "<User Goal>"');
+    console.error('Usage: node orchestrator.js "<User Goal>" [format]');
     console.error('   or: node orchestrator.js --stdin [format]');
     process.exit(1);
   }

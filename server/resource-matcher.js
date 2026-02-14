@@ -225,7 +225,7 @@ function walkDirectory(dir, fileList = [], options = {}) {
           fileList.push(filePath);
         }
       }
-    } catch (e) {
+    } catch {
       // Skip inaccessible files
     }
   });

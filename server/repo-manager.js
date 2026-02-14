@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { getConfig } = require('./config');
 
 const SIZE_REFRESH_MS = 5000;
@@ -225,7 +225,7 @@ function analyzeRepoContent(repoPath) {
           });
         }
       });
-    } catch (e) {
+    } catch {
       // Ignore read errors
     }
   }

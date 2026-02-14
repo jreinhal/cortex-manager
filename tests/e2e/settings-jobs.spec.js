@@ -69,8 +69,7 @@ test.describe('Settings Persistence', () => {
   })
 
   test('settings persist after page reload', async ({ page, request }) => {
-    const configRes = await request.get(`${API_BASE}/config`)
-    const config = await configRes.json()
+    await request.get(`${API_BASE}/config`)
 
     await page.getByTestId('nav-settings').click()
     const reposRootInput = page.getByTestId('settings-repos-root')

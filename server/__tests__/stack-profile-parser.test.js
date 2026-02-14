@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+/* global describe, it, expect */
 
 const { parseStackText } = require('../stack-profile-parser')
 

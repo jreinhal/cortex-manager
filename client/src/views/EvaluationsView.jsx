@@ -20,7 +20,9 @@ export function EvaluationsView({
   onUpdateTemplate,
   onDeleteTemplate,
   onImportTemplates,
-  onExportTemplates
+  onExportTemplates,
+  onOpenRuns,
+  onOpenAgentFactory
 }) {
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasets[0]?.id || '');
   const [datasetName, setDatasetName] = useState('');
@@ -308,7 +310,17 @@ export function EvaluationsView({
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold mb-4">Datasets</div>
           <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-            {datasets.length === 0 && <EmptyState title="No datasets yet" subtitle="Create one to start evaluations." />}
+            {datasets.length === 0 && (
+              <EmptyState title="No datasets yet" subtitle="Create one to start evaluations.">
+                <button
+                  type="button"
+                  onClick={onOpenAgentFactory}
+                  className="px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold"
+                >
+                  Open Agent Factory
+                </button>
+              </EmptyState>
+            )}
             {datasets.map((dataset) => (
               <button
                 key={dataset.id}
@@ -580,6 +592,18 @@ export function EvaluationsView({
                 ))}
               </select>
             </div>
+            {evalDatasetId && evalNeedsRun && runs.length === 0 && (
+              <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-3">
+                <span>No runs available yet. Generate a run in Agent Factory, then evaluate it.</span>
+                <button
+                  type="button"
+                  onClick={onOpenAgentFactory}
+                  className="px-3 py-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 text-amber-200 font-semibold"
+                >
+                  Open Agent Factory
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={handleCreateEvaluation}
@@ -589,7 +613,17 @@ export function EvaluationsView({
               Create evaluation
             </button>
           <div className="mt-6 space-y-3">
-            {evaluations.length === 0 && <EmptyState title="No evaluations yet" subtitle="Create one to capture scores." />}
+            {evaluations.length === 0 && (
+              <EmptyState title="No evaluations yet" subtitle="Create one to capture scores.">
+                <button
+                  type="button"
+                  onClick={onOpenRuns}
+                  className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold"
+                >
+                  Open Runs
+                </button>
+              </EmptyState>
+            )}
             {evaluations.map((evaluation) => {
               const isRetrieval = evaluation.type === 'retrieval';
               const detail = isRetrieval

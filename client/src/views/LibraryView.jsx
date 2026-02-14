@@ -8,6 +8,8 @@ export function LibraryView({
   onDeletePrompt,
   onClearAllPrompts,
   onUsePrompt,
+  onOpenAgentFactory,
+  onOpenKnowledgeBase,
   transition
 }) {
   const handleDeletePrompt = (prompt) => {
@@ -49,7 +51,15 @@ export function LibraryView({
             )}
           </div>
           {savedPrompts.length === 0 && (
-            <EmptyState title="No prompts saved" subtitle="Save prompts from Agent Factory." />
+            <EmptyState title="No prompts saved" subtitle="Save prompts from Agent Factory.">
+              <button
+                type="button"
+                onClick={onOpenAgentFactory}
+                className="px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold"
+              >
+                Open Agent Factory
+              </button>
+            </EmptyState>
           )}
           <div className="space-y-3">
             {savedPrompts.map((prompt) => (
@@ -80,7 +90,15 @@ export function LibraryView({
         <div className="glass-panel rounded-3xl p-6">
           <div className="text-xs uppercase tracking-[0.3em] text-cyan-300 font-bold mb-4">Agent Templates</div>
           {agents.length === 0 && (
-            <EmptyState title="No agent templates" subtitle="Add templates in your reference repos." />
+            <EmptyState title="No agent templates" subtitle="Add templates in your reference repos.">
+              <button
+                type="button"
+                onClick={onOpenKnowledgeBase}
+                className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold"
+              >
+                Open Knowledge Base
+              </button>
+            </EmptyState>
           )}
           <div className="space-y-3">
             {agents.map((agent) => (
@@ -100,7 +118,15 @@ export function LibraryView({
         <div className="glass-panel rounded-3xl p-6">
           <div className="text-xs uppercase tracking-[0.3em] text-emerald-300 font-bold mb-4">Tools & Utilities</div>
           {tools.length === 0 && (
-            <EmptyState title="No tools detected" subtitle="Add tools in the reference repos tools folder." />
+            <EmptyState title="No tools detected" subtitle="Add tools in the reference repos tools folder.">
+              <button
+                type="button"
+                onClick={onOpenKnowledgeBase}
+                className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold"
+              >
+                Open Knowledge Base
+              </button>
+            </EmptyState>
           )}
           <div className="space-y-3">
             {tools.map((tool) => (

@@ -17,6 +17,7 @@ import { AuditView } from './views/AuditView';
 import { LogsView } from './views/LogsView';
 import { SettingsPanel } from './views/SettingsPanel';
 import { LibraryView } from './views/LibraryView';
+import { EvaluationsView as EvaluationsPanel } from './views/EvaluationsView';
 import { VIEW_KEYS, VIEW_PATHS, resolveViewFromPath, resolveViewFromQuery } from './router';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
@@ -5201,7 +5202,7 @@ function App() {
             )}
 
             {view === 'evaluations' && (
-              <EvaluationsView
+              <EvaluationsPanel
                 datasets={datasets}
                 runs={runs}
                 evaluations={evaluations}
@@ -5216,6 +5217,8 @@ function App() {
                 onDeleteTemplate={deleteEvaluationTemplate}
                 onImportTemplates={importEvaluationTemplates}
                 onExportTemplates={exportEvaluationTemplates}
+                onOpenRuns={() => handleViewChange('runs')}
+                onOpenAgentFactory={() => handleViewChange('agents')}
               />
             )}
 
@@ -5226,6 +5229,8 @@ function App() {
                 tools={tools}
                 onDeletePrompt={deletePrompt}
                 onUsePrompt={handleLibraryUsePrompt}
+                onOpenAgentFactory={() => handleViewChange('agents')}
+                onOpenKnowledgeBase={() => handleViewChange('knowledge')}
                 EmptyState={EmptyState}
                 transition={SPRING_SMOOTH}
               />

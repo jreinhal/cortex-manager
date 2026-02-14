@@ -1462,8 +1462,13 @@ export function OrchestratorView({
       className="w-full space-y-2 density-stack"
     >
       <div>
-        <h1 className="text-2xl font-semibold text-white tracking-tight mb-2">Agent Factory</h1>
-        <p className="text-slate-400 text-sm">Spawn specialized autonomous agents using natural language.</p>
+        <h1 className="text-2xl font-semibold text-white tracking-tight mb-2">
+          Agent Factory
+          <span className="ml-3 text-sm text-slate-500 font-medium">Task Planner</span>
+        </h1>
+        <p className="text-slate-400 text-sm">
+          Describe the outcome and CORTEX builds a reusable flight plan with concrete file references.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-start">
@@ -2547,6 +2552,37 @@ function JobsView({ jobs, onCancelJob }) {
     return 'text-slate-300 bg-slate-800/60 border-slate-700';
   };
 
+  const formatJobType = (type) => {
+    if (!type) return 'Background Task';
+    const known = {
+      spawn: 'Agent Spawn',
+      vector_rebuild: 'Vector Index Rebuild',
+      vector_index_rebuild: 'Vector Index Rebuild',
+      'vector-index': 'Vector Index Rebuild'
+    };
+    if (known[type]) return known[type];
+    if (/e2e-/i.test(type)) return `Test Task (${type})`;
+    return type
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const getJobIssue = (job) => {
+    const message = String(job?.error || '').trim();
+    if (!message) return null;
+    if (/unknown job type/i.test(message)) {
+      const typeLabel = job?.type ? String(job.type) : 'n/a';
+      return {
+        tone: 'warning',
+        message: `No built-in worker is registered for "${typeLabel}". This is usually expected for ad-hoc or test jobs.`
+      };
+    }
+    return { tone: 'error', message };
+  };
+  const selectedIssue = selected ? getJobIssue(selected) : null;
+
   return (
     <motion.div
       key="jobs"
@@ -2566,6 +2602,7 @@ function JobsView({ jobs, onCancelJob }) {
           {jobs.map((job) => (
             <button
               key={job.id}
+              type="button"
               onClick={() => setSelectedId(job.id)}
               className={cn(
                 "w-full text-left p-3 rounded-2xl border transition-ui",
@@ -2574,12 +2611,12 @@ function JobsView({ jobs, onCancelJob }) {
                   : "bg-slate-900/40 border-slate-800/60 hover:border-slate-700"
               )}
             >
-              <div className="text-sm text-slate-200">{job.type}</div>
+              <div className="text-sm text-slate-200">{formatJobType(job.type)}</div>
               <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
                 <span className={cn("px-2 py-0.5 rounded-full border text-[10px] uppercase", statusTone(job.status))}>
                   {job.status}
                 </span>
-                <span>{new Date(job.createdAt).toLocaleTimeString()}</span>
+                <span>{job.createdAt ? new Date(job.createdAt).toLocaleTimeString() : '—'}</span>
               </div>
             </button>
           ))}
@@ -2593,7 +2630,8 @@ function JobsView({ jobs, onCancelJob }) {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.3em] text-slate-400 font-bold">Job Detail</div>
-                <div className="text-lg text-white font-semibold">{selected.type}</div>
+                <div className="text-lg text-white font-semibold">{formatJobType(selected.type)}</div>
+                <div className="text-xs text-slate-500 mt-1 font-mono">{selected.type || 'n/a'}</div>
               </div>
               <span className={cn("px-3 py-1 rounded-full border text-xs uppercase", statusTone(selected.status))}>
                 {selected.status}
@@ -2605,9 +2643,16 @@ function JobsView({ jobs, onCancelJob }) {
               {selected.durationMs && <div>Duration: <span className="text-slate-100">{formatDuration(selected.durationMs)}</span></div>}
               {selected.runId && <div>Run: <span className="text-slate-100">{selected.runId}</span></div>}
             </div>
-            {selected.error && (
-              <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-                {selected.error}
+            {selectedIssue && (
+              <div
+                className={cn(
+                  "text-sm rounded-xl px-3 py-2 border",
+                  selectedIssue.tone === 'warning'
+                    ? "text-amber-200 bg-amber-500/10 border-amber-500/25"
+                    : "text-red-300 bg-red-500/10 border-red-500/20"
+                )}
+              >
+                {selectedIssue.message}
               </div>
             )}
             {['queued', 'running'].includes(selected.status) && (
@@ -4926,92 +4971,106 @@ function App() {
               <span className="font-display font-bold text-3xl tracking-tighter text-white">CORTEX</span>
             </div>
 
-            <div className="space-y-3">
-              <NavItem
-                icon={LayoutDashboard}
-                label="Command Center"
-                active={view === 'home'}
-                to="/"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-home"
-              />
-              <NavItem
-                icon={Cpu}
-                label="Agent Factory"
-                active={view === 'agents'}
-                to="/agents"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-agents"
-              />
-              <NavItem
-                icon={Activity}
-                label="Runs"
-                badge={runs.length}
-                active={view === 'runs'}
-                to="/runs"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-runs"
-              />
-              <NavItem
-                icon={BarChart3}
-                label="Jobs"
-                badge={jobs.length}
-                active={view === 'jobs'}
-                to="/jobs"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-jobs"
-              />
-              <NavItem
-                icon={FlaskConical}
-                label="Evaluations"
-                badge={datasets.length + evaluations.length}
-                active={view === 'evaluations'}
-                to="/evaluations"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-evaluations"
-              />
-              <NavItem
-                icon={Library}
-                label="Library"
-                badge={savedPrompts.length}
-                active={view === 'library'}
-                to="/library"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-library"
-              />
-              <NavItem
-                icon={BookOpen}
-                label="Knowledge Base"
-                badge={repos.length}
-                active={view === 'knowledge'}
-                to="/knowledge"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-knowledge"
-              />
-              <NavItem
-                icon={Terminal}
-                label="System Logs"
-                active={view === 'logs'}
-                to="/logs"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-logs"
-              />
-              <NavItem
-                icon={History}
-                label="Audit Trail"
-                active={view === 'audit'}
-                to="/audit"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-audit"
-              />
-              <NavItem
-                icon={Settings}
-                label="Settings"
-                active={view === 'settings'}
-                to="/settings"
-                onBeforeNavigate={confirmNavigation}
-                testId="nav-settings"
-              />
+            <div className="space-y-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.28em] text-slate-500 font-semibold mb-2 px-3">
+                  Core Workflow
+                </div>
+                <div className="space-y-2">
+                  <NavItem
+                    icon={LayoutDashboard}
+                    label="Command Center"
+                    active={view === 'home'}
+                    to="/"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-home"
+                  />
+                  <NavItem
+                    icon={Cpu}
+                    label="Agent Factory"
+                    active={view === 'agents'}
+                    to="/agents"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-agents"
+                  />
+                  <NavItem
+                    icon={BookOpen}
+                    label="Knowledge Base"
+                    badge={repos.length}
+                    active={view === 'knowledge'}
+                    to="/knowledge"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-knowledge"
+                  />
+                  <NavItem
+                    icon={Activity}
+                    label="Runs"
+                    badge={runs.length}
+                    active={view === 'runs'}
+                    to="/runs"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-runs"
+                  />
+                  <NavItem
+                    icon={Library}
+                    label="Library"
+                    badge={savedPrompts.length}
+                    active={view === 'library'}
+                    to="/library"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-library"
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.28em] text-slate-500 font-semibold mb-2 px-3">
+                  Operations
+                </div>
+                <div className="space-y-2">
+                  <NavItem
+                    icon={BarChart3}
+                    label="Jobs"
+                    badge={jobs.length}
+                    active={view === 'jobs'}
+                    to="/jobs"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-jobs"
+                  />
+                  <NavItem
+                    icon={FlaskConical}
+                    label="Evaluations"
+                    badge={datasets.length + evaluations.length}
+                    active={view === 'evaluations'}
+                    to="/evaluations"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-evaluations"
+                  />
+                  <NavItem
+                    icon={Terminal}
+                    label="System Logs"
+                    active={view === 'logs'}
+                    to="/logs"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-logs"
+                  />
+                  <NavItem
+                    icon={History}
+                    label="Audit Trail"
+                    active={view === 'audit'}
+                    to="/audit"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-audit"
+                  />
+                  <NavItem
+                    icon={Settings}
+                    label="Settings"
+                    active={view === 'settings'}
+                    to="/settings"
+                    onBeforeNavigate={confirmNavigation}
+                    testId="nav-settings"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

@@ -6,7 +6,7 @@
 
 ---
 
-## ðŸŽ¯ What is CORTEX?
+## What is CORTEX?
 
 **CORTEX** is a self-hosted AI orchestration platform that transforms how development teams leverage Large Language Models (LLMs). Unlike cloud-based AI tools that require uploading your entire codebase to third-party servers, CORTEX keeps your intellectual property local while providing enterprise-grade agent spawning, context management, and knowledge organization.
 
@@ -50,7 +50,19 @@ We decouple **Data** (your local repositories) from **Intelligence** (the LLM), 
 
 ---
 
-## âœ¨ Key Features
+## Who CORTEX Is For (ICP)
+
+### Primary ICP
+- **Software Engineering teams** that need faster, auditable code-review/refactor workflows without uploading code to third-party services.
+- **Data Engineering / Platform teams** that need repeatable repository-driven reviews and shared operational playbooks.
+
+### Secondary ICP
+- **AI/ML Scientists** who need repeatable evaluation workflows (rubrics + retrieval benchmarks) and experiment traceability.
+- **Security and consulting teams** that need isolated workspaces, audit exports, and reproducible agent plans for client delivery.
+
+---
+
+## Key Features
 
 ### ðŸ­ **Agent Factory**
 Spawn specialized AI agents using natural language prompts. CORTEX analyzes your request, scans your local knowledge base, and generates a "Flight Plan"â€”a pre-configured prompt that tells the execution LLM exactly what files to read and what to do.
@@ -73,11 +85,17 @@ Built with React, Tailwind CSS, and Framer Motion, featuring:
 - **One-Click Operations**: Spawn agents, manage repos, view logsâ€”all from a beautiful interface
 
 ### ðŸ“¸ **Product Screenshots**
+Updated from a live local CORTEX instance on **February 14, 2026**.
+
 ![Command Center](docs/screenshots/command-center.png)
 ![Agent Factory](docs/screenshots/agent-factory.png)
 ![Knowledge Base](docs/screenshots/knowledge-base.png)
+![Run Explorer](docs/screenshots/run-explorer.png)
+![Jobs](docs/screenshots/jobs.png)
 ![Evaluations](docs/screenshots/evaluations.png)
+![Library](docs/screenshots/library.png)
 ![Audit Trail](docs/screenshots/audit-trail.png)
+![System Logs](docs/screenshots/system-logs.png)
 ![Settings](docs/screenshots/settings.png)
 
 To run Edge E2E coverage: `npm run e2e:edge`
@@ -255,7 +273,9 @@ cortex/
 ## ðŸ“˜ User Manual
 
 - **HTML Manual (local)**: [http://localhost:3001/manual/index.html](http://localhost:3001/manual/index.html)
-- **Source**: `docs/user-manual/index.html`
+- **Markdown source**: `USER_MANUAL.md`
+- **HTML source**: `docs/user-manual/index.html`
+- **Screenshots**: `docs/screenshots/*.png`
 
 ### Configuration Options
 

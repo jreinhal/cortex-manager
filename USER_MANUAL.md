@@ -1,7 +1,7 @@
 ﻿# CORTEX User Manual
 
 **Version 1.0.0**  
-**Last Updated: January 2026**
+**Last Updated: February 14, 2026**
 
 ---
 
@@ -10,20 +10,21 @@
 1. [Introduction](#introduction)
 2. [Installation](#installation)
 3. [Getting Started](#getting-started)
-4. [Command Center](#command-center)
-5. [Agent Factory](#agent-factory)
-6. [Knowledge Base](#knowledge-base)
-7. [Run Explorer](#run-explorer)
-8. [Job Queue](#job-queue)
-9. [Evaluations](#evaluations)
-10. [Library](#library)
-11. [Workspaces](#workspaces)
-12. [Audit Trail](#audit-trail)
-13. [Security & Access](#security--access)
-14. [Observability](#observability)
-15. [Advanced Workflows](#advanced-workflows)
-16. [Troubleshooting](#troubleshooting)
-17. [Best Practices](#best-practices)
+4. [UI Screenshot Gallery](#ui-screenshot-gallery)
+5. [Command Center](#command-center)
+6. [Agent Factory](#agent-factory)
+7. [Knowledge Base](#knowledge-base)
+8. [Run Explorer](#run-explorer)
+9. [Job Queue](#job-queue)
+10. [Evaluations](#evaluations)
+11. [Library](#library)
+12. [Workspaces](#workspaces)
+13. [Audit Trail](#audit-trail)
+14. [Security & Access](#security--access)
+15. [Observability](#observability)
+16. [Advanced Workflows](#advanced-workflows)
+17. [Troubleshooting](#troubleshooting)
+18. [Best Practices](#best-practices)
 
 ---
 
@@ -138,6 +139,42 @@ CORTEX automatically analyzes the repository's README and assigns it to a catego
 #### 4. Verify in Knowledge Base
 
 Open the Knowledge Base view. Your new repository should appear in the appropriate category card.
+
+---
+
+## UI Screenshot Gallery
+
+These screenshots were captured from a live local CORTEX instance on **February 14, 2026**.
+
+### Command Center
+![Command Center](docs/screenshots/command-center.png)
+
+### Agent Factory
+![Agent Factory](docs/screenshots/agent-factory.png)
+
+### Knowledge Base
+![Knowledge Base](docs/screenshots/knowledge-base.png)
+
+### Run Explorer
+![Run Explorer](docs/screenshots/run-explorer.png)
+
+### Job Queue
+![Job Queue](docs/screenshots/jobs.png)
+
+### Evaluations
+![Evaluations](docs/screenshots/evaluations.png)
+
+### Library
+![Library](docs/screenshots/library.png)
+
+### Audit Trail
+![Audit Trail](docs/screenshots/audit-trail.png)
+
+### System Logs
+![System Logs](docs/screenshots/system-logs.png)
+
+### Settings
+![Settings](docs/screenshots/settings.png)
 
 ---
 

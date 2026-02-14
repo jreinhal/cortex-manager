@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 3001
 // ==========================================
 
 app.use(cors())
-app.use(bodyParser.json())
+app.use(bodyParser.json({ limit: '2mb' }))
 app.use('/api', apiLimiter)
 
 // ==========================================

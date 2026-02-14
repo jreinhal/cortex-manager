@@ -1365,7 +1365,7 @@ export function SettingsPanel({
                 Allow remote downloads (network)
               </label>
               <div className="text-xs text-slate-500">
-                Skills persist under <span className="font-mono">skills/</span> inside your Repository Root. Per-spawn retrieval is controlled by the 'Search online for skills' toggle.
+                Skills persist under <span className="font-mono">skills/</span> inside your Repository Root. The spawn toggle follows this admin setting by default.
               </div>
             </div>
 

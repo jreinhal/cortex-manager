@@ -1,6 +1,10 @@
 # Reference Repository Classification Standards
 
-This document defines the definitive taxonomy for `D:\Projects\reference-repos`. All cloned repositories must be sorted into one of the following directories.
+This document defines the definitive taxonomy for `<REPOS_ROOT>`. All cloned repositories must be sorted into one of the following directories.
+
+Placeholder paths:
+- `<REPOS_ROOT>`: root folder that holds reference repositories.
+- `<BUNDLES_JSON>`: path to bundles.json for prompt bundles.
 
 ## Mental Framework
 To differentiate between categories, use this analogy:
@@ -72,38 +76,38 @@ Use these "Compound Prompts" to spawn agents that are both SKILLED (Code) and SM
 **Use for:** Building features, debugging, and high-quality software engineering.
 **Prompt:**
 > "Act as the **Core Dev Team**.
-> 1. Load the `core-dev` bundle from `D:\claude-skills\data\bundles.json`.
-> 2. Read `D:\Projects\reference-repos\knowledge\Awesome-Agentic-Reasoning\README.md` to ground your logic in the latest research.
+> 1. Load the `core-dev` bundle from `<BUNDLES_JSON>`.
+> 2. Read `<REPOS_ROOT>\knowledge\Awesome-Agentic-Reasoning\README.md` to ground your logic in the latest research.
 > 3. Apply 'Self-Correction' and 'Chain-of-Thought' principles from that research to this objective: [Insert Task Here]"
 
 ### 2. The Security Team (Red Team / Audit)
 **Use for:** Finding vulnerabilities, penetration testing, security reviews.
 **Prompt:**
 > "Act as the **Security Team**.
-> 1. Load the `security-core` bundle from `D:\claude-skills\data\bundles.json`.
-> 2. Read `D:\Projects\reference-repos\knowledge\Awesome-Agentic-Reasoning\README.md` and focus on the 'Security' and 'Robustness' papers.
+> 1. Load the `security-core` bundle from `<BUNDLES_JSON>`.
+> 2. Read `<REPOS_ROOT>\knowledge\Awesome-Agentic-Reasoning\README.md` and focus on the 'Security' and 'Robustness' papers.
 > 3. Audit the following files/architecture for vulnerabilities..."
 
 ### 3. The Ops Team (DevOps & Infrastructure)
 **Use for:** Docker, CI/CD, Kubernetes, Cloud Deployment.
 **Prompt:**
 > "Act as the **Ops Team**.
-> 1. Load the `ops-core` bundle from `D:\claude-skills\data\bundles.json`.
-> 2. Read `D:\Projects\reference-repos\knowledge\Awesome-Agentic-Reasoning\README.md` and look for 'Self-Evolving' infrastructure patterns.
+> 1. Load the `ops-core` bundle from `<BUNDLES_JSON>`.
+> 2. Read `<REPOS_ROOT>\knowledge\Awesome-Agentic-Reasoning\README.md` and look for 'Self-Evolving' infrastructure patterns.
 > 3. Create a deployment plan for..."
 
 ### 4. The Data Team (Database & Analytics)
 **Use for:** SQL, Schemas, Vectors, Data Pipelines.
 **Prompt:**
 > "Act as the **Data Team**.
-> 1. Load the `data-core` bundle from `D:\claude-skills\data\bundles.json`.
-> 2. Read `D:\Projects\reference-repos\knowledge\Awesome-Agentic-Reasoning\README.md` to reference 'Reasoning with Large Language Models'.
+> 1. Load the `data-core` bundle from `<BUNDLES_JSON>`.
+> 2. Read `<REPOS_ROOT>\knowledge\Awesome-Agentic-Reasoning\README.md` to reference 'Reasoning with Large Language Models'.
 > 3. Optimize the database structure for..."
 
 ### 5. The Kubernetes Team (K8s Specialists)
 **Use for:** Advanced cluster management, Helm charts, Service Mesh.
 **Prompt:**
 > "Act as the **K8s Team**.
-> 1. Load the `k8s-core` bundle from `D:\claude-skills\data\bundles.json`.
-> 2. Read `D:\Projects\reference-repos\knowledge\Awesome-Agentic-Reasoning\README.md` for context on 'Orchestration'.
+> 1. Load the `k8s-core` bundle from `<BUNDLES_JSON>`.
+> 2. Read `<REPOS_ROOT>\knowledge\Awesome-Agentic-Reasoning\README.md` for context on 'Orchestration'.
 > 3. Generate the manifests for..."

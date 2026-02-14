@@ -249,7 +249,7 @@ function startJob(job, options = {}) {
       }
     }
 
-    const child = spawn('node', [orchestratorPath, goal, normalizedFormat], {
+    const child = spawn('node', [orchestratorPath, '--stdin', normalizedFormat], {
       cwd: path.join(__dirname, '..'),
       env: {
         ...process.env,
@@ -259,13 +259,19 @@ function startJob(job, options = {}) {
         ...externalSkillsEnv
       }
     });
-
     const tracker = { process: child, cancelRequested: false };
     activeJobs.set(job.id, tracker);
 
     let stdout = '';
     let stderr = '';
     const startedAt = Date.now();
+
+    try {
+      child.stdin.write(goal);
+      child.stdin.end();
+    } catch (e) {
+      stderr += `\n[stdin write error] ${e.message}`;
+    }
 
     child.stdout.on('data', (data) => {
       stdout += data.toString();

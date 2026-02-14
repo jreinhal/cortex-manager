@@ -115,11 +115,11 @@ Rules for the model:
 ## Decision Trace
 Every run emits a lightweight decision trace summary in the flight plan (goal analysis, routing mode, uncertainty, agent selection, and resource counts). This mirrors structured reasoning traces from RAG systems while keeping output deterministic and auditable.
 
-## D: Drive Installation (Windows)
-Install and store all local model artifacts on D:\:
-- Model directory: `D:\Models\qwen2.5-14b-instruct-q4`
-- Set `LLM_MODEL_DIR` or `OLLAMA_MODELS` to a D:\ path
-- Point the local inference server to the D:\ model path
+## Local Model Installation (Windows)
+Install and store all local model artifacts on a dedicated drive (example `C:\Models`):
+- Model directory: `C:\Models\qwen2.5-14b-instruct-q4`
+- Set `LLM_MODEL_DIR` or `OLLAMA_MODELS` to the model path
+- Point the local inference server to the same model directory
 
 ## References (Design Influence)
 - https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals

@@ -24,17 +24,23 @@ function getSizeCache(reposRoot) {
 /**
  * Execute git command and return result
  */
-function gitExec(args, cwd = null) {
+function gitExec(args, cwd = null, options = {}) {
   try {
     const result = execSync(`git ${args}`, {
       cwd: cwd || process.cwd(),
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: options.timeout || 120000
     });
     return { success: true, output: result.trim() };
   } catch (e) {
-    return { success: false, error: e.message, output: e.stdout || '' };
+    const isTimeout = e.killed || e.signal === 'SIGTERM';
+    return {
+      success: false,
+      error: isTimeout ? 'Operation timed out. Check the URL and your network connection.' : e.message,
+      output: e.stdout || ''
+    };
   }
 }
 
@@ -356,10 +362,10 @@ async function cloneRepository(url, progressCallback = null, options = {}) {
 
   if (callback) callback(`Cloning: ${repoName}`);
 
-  // Validate remote URL before cloning
-  const remoteCheck = gitExec(`ls-remote --heads --tags "${trimmedUrl}"`);
+  // Validate remote URL before cloning (15s timeout to fail fast for invalid URLs)
+  const remoteCheck = gitExec(`ls-remote --heads --tags "${trimmedUrl}"`, null, { timeout: 15000 });
   if (!remoteCheck.success) {
-    return { success: false, error: 'Repository not found or inaccessible' };
+    return { success: false, error: remoteCheck.error || 'Repository not found or inaccessible' };
   }
 
   // Clone to temp location first

@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { useCallback, useRef, useState } from 'react';
+import { motion as Motion } from 'framer-motion';
 import { BookOpen, Check, RefreshCw, Trash2, Upload } from 'lucide-react';
 
 export function SettingsPanel({
@@ -68,7 +68,7 @@ export function SettingsPanel({
   const [vectorAutoRebuild, setVectorAutoRebuild] = useState(config?.config?.vectorIndex?.autoRebuild ?? false);
   const [vectorMinScore, setVectorMinScore] = useState(config?.config?.vectorIndex?.minScore ?? 0.08);
   const [vectorMode, setVectorMode] = useState(config?.config?.vectorIndex?.mode || 'hash');
-  const [embeddingEnabled, setEmbeddingEnabled] = useState(config?.config?.vectorIndex?.embedding?.enabled ?? false);
+  const [embeddingEnabled] = useState(config?.config?.vectorIndex?.embedding?.enabled ?? false);
   const [embeddingEndpoint, setEmbeddingEndpoint] = useState(config?.config?.vectorIndex?.embedding?.endpoint || '');
   const [embeddingModel, setEmbeddingModel] = useState(config?.config?.vectorIndex?.embedding?.model || '');
   const [embeddingDimensions, setEmbeddingDimensions] = useState(config?.config?.vectorIndex?.embedding?.dimensions ?? 768);
@@ -125,6 +125,53 @@ export function SettingsPanel({
   const [stackFileParsing, setStackFileParsing] = useState(false);
   const [stackFileError, setStackFileError] = useState('');
 
+  const resetWorkspaceForm = useCallback(() => {
+    setEditingWorkspaceId(null);
+    setWorkspaceName('');
+    setWorkspaceReposRoot('');
+    setWorkspaceOutputDir('');
+    setWorkspaceCreateStructure(true);
+  }, []);
+
+  const startEditWorkspace = useCallback((workspace) => {
+    if (!workspace) return;
+    setEditingWorkspaceId(workspace.id || null);
+    setWorkspaceName(workspace.name || '');
+    setWorkspaceReposRoot(workspace.reposRoot || '');
+    setWorkspaceOutputDir(workspace.outputDir || '');
+    // Directory creation is intended for new workspaces.
+    setWorkspaceCreateStructure(false);
+    setError('');
+  }, []);
+
+  const buildWorkspacePayload = () => ({
+    name: workspaceName.trim(),
+    reposRoot: workspaceReposRoot.trim(),
+    outputDir: workspaceOutputDir.trim(),
+    createStructure: workspaceCreateStructure
+  });
+
+  const handleSaveWorkspace = async () => {
+    const payload = buildWorkspacePayload();
+    if (!payload.reposRoot) {
+      setError('Workspace repos root cannot be empty');
+      return;
+    }
+
+    setError('');
+    try {
+      if (editingWorkspaceId) {
+        await onUpdateWorkspace?.(editingWorkspaceId, payload);
+      } else {
+        await onCreateWorkspace?.(payload);
+      }
+      resetWorkspaceForm();
+    } catch (e) {
+      console.error('Workspace save failed:', e);
+      setError('Failed to save workspace. Check the connection and try again.');
+    }
+  };
+
   const handleStackFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -165,7 +212,7 @@ export function SettingsPanel({
       setStackProfilePlatforms(platforms.length ? platforms.join(', ') : '');
       setStackProfileTags(tags.length ? tags.join(', ') : '');
       setStackProfileEnabled(true);
-    } catch (err) {
+    } catch {
       setStackFileError('Failed to parse file. Check the connection and try again.');
     }
     setStackFileParsing(false);
@@ -187,7 +234,7 @@ export function SettingsPanel({
         try {
           parsedRbacRoles = JSON.parse(rbacRolesJson);
           setRbacError('');
-        } catch (e) {
+        } catch {
           setRbacError('RBAC policy must be valid JSON.');
           setSaving(false);
           return;
@@ -302,7 +349,7 @@ export function SettingsPanel({
             return;
           }
           parsedExternalProviders = parsed;
-        } catch (e) {
+        } catch {
           setExternalSkillsError('External providers must be valid JSON.');
           setSaving(false);
           return;
@@ -368,7 +415,7 @@ export function SettingsPanel({
       const url = new URL(value);
       const host = url.hostname.toLowerCase();
       return !['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(host);
-    } catch (e) {
+    } catch {
       return false;
     }
   };
@@ -429,14 +476,14 @@ export function SettingsPanel({
         }
         setExternalSkillsUpdates(data);
       }
-    } catch (e) {
+    } catch {
       setExternalSkillsError('Failed to scan for updates.');
     }
     setExternalSkillsUpdatesLoading(false);
   };
 
   return (
-    <motion.div
+    <Motion.div
       key="settings"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -1665,7 +1712,7 @@ export function SettingsPanel({
           </div>
         )}
       </div>
-    </motion.div>
+    </Motion.div>
   );
 }
 

@@ -144,15 +144,23 @@ export function SettingsPanel({
     setError('');
   }, []);
 
-  const buildWorkspacePayload = () => ({
-    name: workspaceName.trim(),
-    reposRoot: workspaceReposRoot.trim(),
-    outputDir: workspaceOutputDir.trim(),
-    createStructure: workspaceCreateStructure
-  });
+  const buildWorkspacePayload = ({ forUpdate = false } = {}) => {
+    const payload = {
+      name: workspaceName.trim(),
+      reposRoot: workspaceReposRoot.trim(),
+      createStructure: workspaceCreateStructure
+    };
+    const outputDir = workspaceOutputDir.trim();
+    // Preserve existing outputDir on updates when the field is intentionally left blank.
+    if (outputDir || !forUpdate) {
+      payload.outputDir = outputDir;
+    }
+    return payload;
+  };
 
   const handleSaveWorkspace = async () => {
-    const payload = buildWorkspacePayload();
+    const isUpdate = Boolean(editingWorkspaceId);
+    const payload = buildWorkspacePayload({ forUpdate: isUpdate });
     if (!payload.reposRoot) {
       setError('Workspace repos root cannot be empty');
       return;
@@ -160,10 +168,15 @@ export function SettingsPanel({
 
     setError('');
     try {
-      if (editingWorkspaceId) {
-        await onUpdateWorkspace?.(editingWorkspaceId, payload);
+      let result;
+      if (isUpdate) {
+        result = await onUpdateWorkspace?.(editingWorkspaceId, payload);
       } else {
-        await onCreateWorkspace?.(payload);
+        result = await onCreateWorkspace?.(payload);
+      }
+      if (result?.success === false) {
+        setError(result.error || 'Failed to save workspace. Check the connection and try again.');
+        return;
       }
       resetWorkspaceForm();
     } catch (e) {

@@ -48,3 +48,6 @@ config.json
 vector_index*.json
 spawned_agents/
 test-results/
+.codex-*.log
+cortex-*.log
+.claude/

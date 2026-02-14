@@ -1,4 +1,4 @@
-# CORTEX
+﻿# CORTEX
 
 ### **Centralized Orchestration & Repository Training for Expert eXecution**
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 🎯 What is CORTEX?
+## ðŸŽ¯ What is CORTEX?
 
 **CORTEX** is a self-hosted AI orchestration platform that transforms how development teams leverage Large Language Models (LLMs). Unlike cloud-based AI tools that require uploading your entire codebase to third-party servers, CORTEX keeps your intellectual property local while providing enterprise-grade agent spawning, context management, and knowledge organization.
 
@@ -22,57 +22,57 @@ Modern AI tools suffer from three critical flaws:
 We decouple **Data** (your local repositories) from **Intelligence** (the LLM), creating a "Reference-Based RAG" system:
 
 ```
-┌─────────────────────┐
-│   Your Codebase     │  ◄── Stays Local, Never Uploaded
-│  (Reference Repos)  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   CORTEX Platform   │  ◄── Scans, Indexes, Generates Plans
-│   (Orchestrator)    │
-└──────────┬──────────┘
-           │
-           ▼
-   ┌───────────────┐
-   │ Flight Plan   │  ◄── Exported Markdown with File Paths
-   │  (Markdown)   │
-   └───────┬───────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Any LLM You Choose │  ◄── GPT-4, Claude, Gemini, Qwen
-│   (Execution Layer) │
-└─────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Your Codebase     â”‚  â—„â”€â”€ Stays Local, Never Uploaded
+â”‚  (Reference Repos)  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚
+           â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   CORTEX Platform   â”‚  â—„â”€â”€ Scans, Indexes, Generates Plans
+â”‚   (Orchestrator)    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚
+           â–¼
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚ Flight Plan   â”‚  â—„â”€â”€ Exported Markdown with File Paths
+   â”‚  (Markdown)   â”‚
+   â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚
+           â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  Any LLM You Choose â”‚  â—„â”€â”€ GPT-4, Claude, Gemini, Qwen
+â”‚   (Execution Layer) â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
-**Result**: You control the data, choose the model, and maintain an auditable AI workflow—locally or with remote inference as needed.
+**Result**: You control the data, choose the model, and maintain an auditable AI workflowâ€”locally or with remote inference as needed.
 
 ---
 
-## ✨ Key Features
+## âœ¨ Key Features
 
-### 🏭 **Agent Factory**
-Spawn specialized AI agents using natural language prompts. CORTEX analyzes your request, scans your local knowledge base, and generates a "Flight Plan"—a pre-configured prompt that tells the execution LLM exactly what files to read and what to do.
+### ðŸ­ **Agent Factory**
+Spawn specialized AI agents using natural language prompts. CORTEX analyzes your request, scans your local knowledge base, and generates a "Flight Plan"â€”a pre-configured prompt that tells the execution LLM exactly what files to read and what to do.
 
 **Example**:
 - **Your Input**: *"Audit the authentication module for security vulnerabilities"*
 - **CORTEX Output**: A specialized Agent Plan referencing your exact auth files, security best practices from your knowledge base, and step-by-step instructions
 
-### 🔒 **Local-First Architecture**
+### ðŸ”’ **Local-First Architecture**
 - **Runs Locally by Default**: Everything works on `localhost` out of the box
 - **Optional Remote LLMs**: You can connect to a cloud or LAN LLM endpoint when desired
 - **Remote Endpoints Disabled by Default**: Explicitly enable remote endpoints in Settings to use non-local LLMs
 - **File Path References**: Instead of uploading code, CORTEX generates plans with file paths
 - **Flexible Execution**: Copy/paste plans or integrate via API
 
-### 🎨 **Premium Dashboard UI**
+### ðŸŽ¨ **Premium Dashboard UI**
 Built with React, Tailwind CSS, and Framer Motion, featuring:
 - **Glassmorphism Design**: Apple/Google-inspired visual language
 - **Real-Time Monitoring**: Watch repository scans and agent spawns in action
-- **One-Click Operations**: Spawn agents, manage repos, view logs—all from a beautiful interface
+- **One-Click Operations**: Spawn agents, manage repos, view logsâ€”all from a beautiful interface
 
-### 📸 **Product Screenshots**
+### ðŸ“¸ **Product Screenshots**
 ![Command Center](docs/screenshots/command-center.png)
 ![Agent Factory](docs/screenshots/agent-factory.png)
 ![Knowledge Base](docs/screenshots/knowledge-base.png)
@@ -82,7 +82,7 @@ Built with React, Tailwind CSS, and Framer Motion, featuring:
 
 To run Edge E2E coverage: `npm run e2e:edge`
 
-### ✅ **Marketability Proof (Demo Report)**
+### âœ… **Marketability Proof (Demo Report)**
 Generate a live report from the running system (repos, scans, spawns, evaluations):
 
 ```
@@ -92,54 +92,54 @@ npm run marketability:demo
 Output: `docs/marketability-demo-report.md`  
 Checklist: `docs/marketability-readiness.md`
 
-### 📚 **Reference Repository Management**
+### ðŸ“š **Reference Repository Management**
 Organize your AI knowledge base into structured categories:
 - **Agents**: Pre-configured agent templates (Agent-S, Standard Agent)
 - **Skills**: Reusable procedures (Testing frameworks, API patterns)
 - **Knowledge**: Documentation, best practices, research papers
 - **Tools**: Utility scripts and automation helpers
 
-### 🌐 **External Skills (Online Providers)**
+### ðŸŒ **External Skills (Online Providers)**
 - Optional per-spawn online skill search
 - Downloaded skills persist under `reference-repos/skills`
 - Training can run blocking or background after new skills arrive
 
-### 🧭 **Workspaces & Multi‑Tenant Control**
+### ðŸ§­ **Workspaces & Multiâ€‘Tenant Control**
 - Create multiple workspaces with isolated repos and outputs.
 - Workspace-scoped analytics, runs, evaluations, and audit trails.
 - Admin-only switching for shared installations.
 
-### 🧪 **Evaluation Lab (Rubrics + Retrieval Benchmarks)**
+### ðŸ§ª **Evaluation Lab (Rubrics + Retrieval Benchmarks)**
 - LLM rubric grading with reusable template library.
 - Dataset import/export for repeatable QA.
 - Retrieval benchmarks with precision/recall/MRR scoring.
 
-### 🧾 **Audit Trail & Compliance**
-- Append‑only audit log with user, workspace, and event metadata.
-- SCIM‑style provisioning and header‑based SSO for enterprise IdPs.
+### ðŸ§¾ **Audit Trail & Compliance**
+- Appendâ€‘only audit log with user, workspace, and event metadata.
+- SCIMâ€‘style provisioning and headerâ€‘based SSO for enterprise IdPs.
 - Export audit events as CSV/JSON for compliance reviews.
 
-### 🖥️ **Cross-Platform Support**
+### ðŸ–¥ï¸ **Cross-Platform Support**
 CORTEX runs on Windows, macOS, and Linux with zero configuration changes.
 
-### 📊 **Analytics & Session History**
+### ðŸ“Š **Analytics & Session History**
 - Track agent spawn history and success rates
 - Reuse previous sessions with one click
 - View most-used agents and resources
 - Audit log written to `audit.log.jsonl` for compliance reviews
 
-### 🧭 **Run Explorer**
+### ðŸ§­ **Run Explorer**
 - Inspect decision matrices, traces, and quality signals per spawn
 - Review run duration, uncertainty, and resource coverage
-- Drill into a performance timeline with per‑stage durations
+- Drill into a performance timeline with perâ€‘stage durations
 - Surface issues like low-confidence routing or sparse retrieval
-- Compare runs side‑by‑side and view git metadata/diff stats
+- Compare runs sideâ€‘byâ€‘side and view git metadata/diff stats
 - Track estimated token usage and cost per run
 
-### 🧪 **Evaluation Lab**
+### ðŸ§ª **Evaluation Lab**
 - Build datasets of prompts + expected outcomes
-  - Per‑item grading with pass/fail thresholds
-  - Optional LLM rubric grading with built‑in templates
+  - Perâ€‘item grading with pass/fail thresholds
+  - Optional LLM rubric grading with builtâ€‘in templates
   - Export/import datasets as JSON for sharing and versioning
   - Versioned datasets with update history
 - Score runs against datasets for regression testing
@@ -148,66 +148,66 @@ CORTEX runs on Windows, macOS, and Linux with zero configuration changes.
   - Manage rubric templates (create, edit, delete, import/export)
   - Capture LLM grading usage and cost estimates
 
-### 📦 **Library & Templates**
+### ðŸ“¦ **Library & Templates**
 - Save and reuse prompts across teams
 - Browse agent templates and tool catalog
 - Jump from library assets directly into Agent Factory
 
-### 🔐 **Authentication & RBAC**
+### ðŸ” **Authentication & RBAC**
 - Optional local authentication with Viewer/Editor/Admin roles
 - Bootstrap-first admin flow to secure initial setup
 - Resource-level RBAC policy with per-action permissions
 
-### 🧵 **Background Job Queue**
+### ðŸ§µ **Background Job Queue**
 - Queue spawns and index rebuilds for long-running tasks
 - Monitor status, cancel jobs, and view outputs
 
-### 🧠 **Semantic Vector Index**
-- Local TF‑IDF vector index with chunking + overlap
+### ðŸ§  **Semantic Vector Index**
+- Local TFâ€‘IDF vector index with chunking + overlap
 - Hybrid sparse/semantic retrieval support
-- Manual rebuild or auto‑rebuild when missing
+- Manual rebuild or autoâ€‘rebuild when missing
 
-### 📈 **Observability & Cost Tracking**
+### ðŸ“ˆ **Observability & Cost Tracking**
 - Aggregate run/eval tokens + cost estimates
 - Alert thresholds for cost, tokens, and duration
 
 ---
 
-## 🏗️ Architecture
+## ðŸ—ï¸ Architecture
 
 ```
 cortex/
-├── client/                  # React + Vite Frontend
-│   ├── src/
-│   │   ├── App.jsx         # Main UI (Dashboard, Agent Factory, Settings)
-│   │   └── index.css       # Tailwind Globals
-│   └── package.json
-├── server/                  # Node.js + Express Backend
-│   ├── index.js            # API Server (Port 3001)
-│   ├── orchestrator.js     # Agent Spawning Logic
-│   ├── goal-analyzer.js    # Intent + tech stack analysis
-│   ├── retrieval-gate.js   # Query classification for retrieval skipping
-│   ├── agent-selector.js   # Deterministic agent scoring
-│   ├── resource-matcher.js # Resource scoring + filtering
-│   ├── llm-reranker.js     # Optional Qwen rerank layer
-│   ├── late-interaction-reranker.js # Token-level rerank (ColBERT-style)
-│   ├── auth.js             # Auth middleware + token issuance
-│   ├── auth-store.js       # Local user store
-│   ├── job-queue.js        # Background job queue
-│   ├── vector-index.js     # Semantic vector index lifecycle
-│   ├── token-estimator.js  # Token + cost estimation helpers
-│   ├── observability.js    # Usage summary helpers
-│   ├── config.js           # Configuration Management
-│   └── repo-manager.js     # Cross-platform Git Operations
-├── config.json             # User Configuration (created on first run)
-├── runs.json               # Run history (auto-generated)
-├── datasets.json           # Evaluation datasets (auto-generated)
-├── evaluations.json        # Evaluation results (auto-generated)
-├── evaluation_templates.json # Rubric templates (auto-generated)
-├── jobs.json               # Background queue (auto-generated)
-├── users.json              # Local auth users (auto-generated)
-├── vector_index.json       # Semantic index (auto-generated)
-└── package.json            # Monorepo Root
+â”œâ”€â”€ client/                  # React + Vite Frontend
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ App.jsx         # Main UI (Dashboard, Agent Factory, Settings)
+â”‚   â”‚   â””â”€â”€ index.css       # Tailwind Globals
+â”‚   â””â”€â”€ package.json
+â”œâ”€â”€ server/                  # Node.js + Express Backend
+â”‚   â”œâ”€â”€ index.js            # API Server (Port 3001)
+â”‚   â”œâ”€â”€ orchestrator.js     # Agent Spawning Logic
+â”‚   â”œâ”€â”€ goal-analyzer.js    # Intent + tech stack analysis
+â”‚   â”œâ”€â”€ retrieval-gate.js   # Query classification for retrieval skipping
+â”‚   â”œâ”€â”€ agent-selector.js   # Deterministic agent scoring
+â”‚   â”œâ”€â”€ resource-matcher.js # Resource scoring + filtering
+â”‚   â”œâ”€â”€ llm-reranker.js     # Optional Qwen rerank layer
+â”‚   â”œâ”€â”€ late-interaction-reranker.js # Token-level rerank (ColBERT-style)
+â”‚   â”œâ”€â”€ auth.js             # Auth middleware + token issuance
+â”‚   â”œâ”€â”€ auth-store.js       # Local user store
+â”‚   â”œâ”€â”€ job-queue.js        # Background job queue
+â”‚   â”œâ”€â”€ vector-index.js     # Semantic vector index lifecycle
+â”‚   â”œâ”€â”€ token-estimator.js  # Token + cost estimation helpers
+â”‚   â”œâ”€â”€ observability.js    # Usage summary helpers
+â”‚   â”œâ”€â”€ config.js           # Configuration Management
+â”‚   â””â”€â”€ repo-manager.js     # Cross-platform Git Operations
+â”œâ”€â”€ config.json             # User Configuration (created on first run)
+â”œâ”€â”€ runs.json               # Run history (auto-generated)
+â”œâ”€â”€ datasets.json           # Evaluation datasets (auto-generated)
+â”œâ”€â”€ evaluations.json        # Evaluation results (auto-generated)
+â”œâ”€â”€ evaluation_templates.json # Rubric templates (auto-generated)
+â”œâ”€â”€ jobs.json               # Background queue (auto-generated)
+â”œâ”€â”€ users.json              # Local auth users (auto-generated)
+â”œâ”€â”€ vector_index.json       # Semantic index (auto-generated)
+â””â”€â”€ package.json            # Monorepo Root
 ```
 
 ### Technology Stack
@@ -218,7 +218,7 @@ cortex/
 
 ---
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 ### Prerequisites
 - **Node.js** 18+ ([Download](https://nodejs.org/))
@@ -228,8 +228,8 @@ cortex/
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/your-org/cortex.git
-   cd cortex
+   git clone https://github.com/jreinhal/cortex-manager.git
+   cd cortex-manager
    ```
 
 2. **Install Dependencies**
@@ -252,7 +252,7 @@ cortex/
    - Frontend: [http://localhost:5173](http://localhost:5173)
    - Backend API: [http://localhost:3001](http://localhost:3001)
 
-## 📘 User Manual
+## ðŸ“˜ User Manual
 
 - **HTML Manual (local)**: [http://localhost:3001/manual/index.html](http://localhost:3001/manual/index.html)
 - **Source**: `docs/user-manual/index.html`
@@ -285,7 +285,7 @@ CORTEX can be configured via:
 
 ---
 
-## 📖 Usage
+## ðŸ“– Usage
 
 ### Spawning Your First Agent
 
@@ -324,7 +324,7 @@ CORTEX can be configured via:
 
 ---
 
-## 🎓 Core Concepts
+## ðŸŽ“ Core Concepts
 
 ### Flight Plans
 A **Flight Plan** is a Markdown document generated by CORTEX containing:
@@ -341,23 +341,23 @@ A **Flight Plan** is a Markdown document generated by CORTEX containing:
 Your `reference-repos` folder structure might look like:
 ```
 ~/reference-repos/
-├── agents/
-│   ├── Agent-S/              # OS-level automation agent
-│   └── std-agent/            # General-purpose reasoning agent
-├── skills/
-│   ├── react-testing/
-│   └── api-design/
-├── knowledge/
-│   ├── security-guidelines/
-│   └── performance-optimization/
-└── tools/
-    └── code-analysis/
+â”œâ”€â”€ agents/
+â”‚   â”œâ”€â”€ Agent-S/              # OS-level automation agent
+â”‚   â””â”€â”€ std-agent/            # General-purpose reasoning agent
+â”œâ”€â”€ skills/
+â”‚   â”œâ”€â”€ react-testing/
+â”‚   â””â”€â”€ api-design/
+â”œâ”€â”€ knowledge/
+â”‚   â”œâ”€â”€ security-guidelines/
+â”‚   â””â”€â”€ performance-optimization/
+â””â”€â”€ tools/
+    â””â”€â”€ code-analysis/
 ```
 
 CORTEX automatically categorizes repos based on their content.
 
-### Decision Matrix (AGENTS‑First)
-CORTEX uses a deterministic decision matrix with an LLM-assisted agent router (advisory by default), retrieval gating, query expansion (RAG‑Fusion), hybrid retrieval (sparse + semantic) with RRF fusion, optional HyDE fallback, a late‑interaction rerank, and an optional Qwen2.5 resource rerank layer for low‑confidence/uncertain cases. AGENTS.md instructions are treated as the highest‑priority context and always appear first in required reading.
+### Decision Matrix (AGENTSâ€‘First)
+CORTEX uses a deterministic decision matrix with an LLM-assisted agent router (advisory by default), retrieval gating, query expansion (RAGâ€‘Fusion), hybrid retrieval (sparse + semantic) with RRF fusion, optional HyDE fallback, a lateâ€‘interaction rerank, and an optional Qwen2.5 resource rerank layer for lowâ€‘confidence/uncertain cases. AGENTS.md instructions are treated as the highestâ€‘priority context and always appear first in required reading.
 
 ```mermaid
 flowchart TD
@@ -396,7 +396,7 @@ See `docs/decision-matrix.md` for the full spec and gating rules.
 
 ---
 
-## 🛠️ Advanced Configuration
+## ðŸ› ï¸ Advanced Configuration
 
 ### Environment Variables
 
@@ -406,7 +406,7 @@ See `docs/decision-matrix.md` for the full spec and gating rules.
 | `CORTEX_OUTPUT_DIR` | Where to save flight plans | `./spawned_agents` |
 | `PORT` | Backend API port | `3001` |
 | `LLM_ENABLED` | Enable optional reranker | `1` |
-| `LLM_ENDPOINT` | OpenAI‑compatible or Ollama endpoint | `http://localhost:8080/v1/chat/completions` |
+| `LLM_ENDPOINT` | OpenAIâ€‘compatible or Ollama endpoint | `http://localhost:8080/v1/chat/completions` |
 | `LLM_MODEL` | Local model name | `qwen2.5-14b-instruct-q4` |
 | `LLM_MODEL_DIR` | Model directory (Windows default) | `C:\\Models\\qwen2.5-14b-instruct-q4` |
 
@@ -424,7 +424,7 @@ Optionally add `agent.config.json` for custom keywords:
 
 ---
 
-## 🔧 Troubleshooting
+## ðŸ”§ Troubleshooting
 
 ### `npm start` fails
 - **Issue**: Port already in use
@@ -454,7 +454,7 @@ Optionally add `agent.config.json` for custom keywords:
 
 ---
 
-## 📊 Roadmap
+## ðŸ“Š Roadmap
 
 - [x] Basic Repository Management
 - [x] Agent Factory UI
@@ -477,7 +477,7 @@ Optionally add `agent.config.json` for custom keywords:
 
 ---
 
-## 🏢 Enterprise Use Cases
+## ðŸ¢ Enterprise Use Cases
 
 ### 1. **Consultancy Firms**
 - Spin up client-specific agents using isolated repos
@@ -496,7 +496,7 @@ Optionally add `agent.config.json` for custom keywords:
 
 ---
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 
 We welcome contributions!
 
@@ -515,34 +515,35 @@ npm start
 
 ### Testing
 - Automated: `npm run e2e` (Playwright)
-- Manual QA: `docs/qa-manual.md` (includes decision‑matrix verification)
+- Manual QA: `docs/qa-manual.md` (includes decisionâ€‘matrix verification)
 
 ---
 
-## 📜 License
+## ðŸ“œ License
 
 MIT License - feel free to use CORTEX commercially.
 
 ---
 
-## 🙏 Acknowledgments
+## ðŸ™ Acknowledgments
 
 - **Agent-S**: [Original Repository](https://github.com/simular-ai/Agent-S)
 - **Design Inspiration**: Apple Human Interface Guidelines, Google Material Design 3
 
 ---
 
-## 💬 Support
+## ðŸ’¬ Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/cortex/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/cortex/discussions)
-
----
-
-## 🌟 Star Us on GitHub!
-
-If CORTEX helps your team, please give us a ⭐ on GitHub!
+- **Issues**: [GitHub Issues](https://github.com/jreinhal/cortex-manager/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jreinhal/cortex-manager/discussions)
 
 ---
 
-**Built with ❤️ for developers who value privacy, flexibility, and control.**
+## ðŸŒŸ Star Us on GitHub!
+
+If CORTEX helps your team, please give us a â­ on GitHub!
+
+---
+
+**Built with â¤ï¸ for developers who value privacy, flexibility, and control.**
+

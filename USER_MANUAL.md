@@ -1,4 +1,4 @@
-# CORTEX User Manual
+﻿# CORTEX User Manual
 
 **Version 1.0.0**  
 **Last Updated: January 2026**
@@ -66,8 +66,8 @@ npm --version
 #### 2. Clone CORTEX
 
 ```bash
-git clone https://github.com/your-org/cortex.git
-cd cortex
+git clone https://github.com/jreinhal/cortex-manager.git
+cd cortex-manager
 ```
 
 #### 3. Install Dependencies
@@ -124,7 +124,7 @@ cd ~/Projects/reference-repos
 Use the CORTEX UI or command line:
 
 ```bash
-git clone https://github.com/your-org/security-guidelines.git
+git clone https://github.com/OWASP/CheatSheetSeries.git
 ```
 
 #### 3. Let CORTEX Categorize It
@@ -147,16 +147,16 @@ Open the Knowledge Base view. Your new repository should appear in the appropria
 
 The sidebar contains the primary workspace areas:
 
-1. **🏠 Command Center**: Overview of runs, evaluations, and knowledge coverage
-2. **🏭 Agent Factory**: Spawn specialized AI agents
-3. **🧭 Runs**: Trace explorer with decision matrices and performance signals
-4. **🧵 Jobs**: Background queue monitoring
-5. **🧪 Evaluations**: Dataset management and run scoring
-6. **📦 Library**: Saved prompts, agent templates, and tools
-7. **📚 Knowledge Base**: Manage reference repositories
-8. **🧾 Audit Trail**: Compliance events and security logs
-9. **📜 Logs**: Real-time operation logs
-10. **⚙️ Settings**: Configuration options
+1. **ðŸ  Command Center**: Overview of runs, evaluations, and knowledge coverage
+2. **ðŸ­ Agent Factory**: Spawn specialized AI agents
+3. **ðŸ§­ Runs**: Trace explorer with decision matrices and performance signals
+4. **ðŸ§µ Jobs**: Background queue monitoring
+5. **ðŸ§ª Evaluations**: Dataset management and run scoring
+6. **ðŸ“¦ Library**: Saved prompts, agent templates, and tools
+7. **ðŸ“š Knowledge Base**: Manage reference repositories
+8. **ðŸ§¾ Audit Trail**: Compliance events and security logs
+9. **ðŸ“œ Logs**: Real-time operation logs
+10. **âš™ï¸ Settings**: Configuration options
 
 ### Command Center Cards
 
@@ -172,7 +172,7 @@ Recent runs and recent sessions appear on the right to help you pick up where yo
 
 ### What is an Agent?
 
-An "Agent" in CORTEX is a specialized AI configuration designed for a specific task. The Agent Factory generates a "Flight Plan"—a structured prompt that tells your chosen LLM exactly what to do.
+An "Agent" in CORTEX is a specialized AI configuration designed for a specific task. The Agent Factory generates a "Flight Plan"â€”a structured prompt that tells your chosen LLM exactly what to do.
 
 ### How to Spawn an Agent
 
@@ -362,12 +362,12 @@ Evaluations let you score runs against curated datasets.
 ### Score a Run
 1. Select a dataset and a recent run.
 2. Click **Create Evaluation** to store the scorecard.
-3. Results include per‑item grading and pass/fail thresholds.
+3. Results include perâ€‘item grading and pass/fail thresholds.
 4. The **Evaluation Trends** panel summarizes response vs retrieval quality over time.
 
 ### Retrieval Benchmarks
 - Set the dataset type to **Retrieval**.
-- Provide expected resource paths (comma‑separated) for each item.
+- Provide expected resource paths (commaâ€‘separated) for each item.
 - Retrieval evaluations do not require a run and return precision/recall/MRR.
 
 ### LLM Rubric Grading
@@ -410,9 +410,9 @@ Workspaces let you isolate repositories, runs, evaluations, and audit trails per
 
 ## Audit Trail
 
-The Audit Trail records security‑relevant actions (spawns, evaluations, config changes).
+The Audit Trail records securityâ€‘relevant actions (spawns, evaluations, config changes).
 
-### What’s Logged
+### Whatâ€™s Logged
 - Event name (e.g., `runs.spawn`, `repos.clone`, `evaluations.create`)
 - User and role (if authenticated)
 - Workspace ID
@@ -443,10 +443,10 @@ The Audit Trail records security‑relevant actions (spawns, evaluations, config
 - The RBAC editor lets you define per-resource actions (read, create, update, delete, export).
 - Use `"*": ["*"]` to grant full access for a role (default for Admins).
 
-### SSO (Header‑Based)
+### SSO (Headerâ€‘Based)
 - Enable **SSO** in Settings to trust identity headers from your reverse proxy or IdP.
 - Configure header names for user, role, and workspace.
-- Optionally enable auto‑provisioning to create users on first login.
+- Optionally enable autoâ€‘provisioning to create users on first login.
 
 ### SCIM Provisioning
 - Enable **SCIM** in Settings and set a provisioning token.
@@ -648,13 +648,13 @@ Group related knowledge:
 
 ```
 reference-repos/
-├── knowledge/
-│   ├── backend/
-│   ├── frontend/
-│   └── devops/
-├── skills/
-│   ├── testing/
-│   └── deployment/
+â”œâ”€â”€ knowledge/
+â”‚   â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ frontend/
+â”‚   â””â”€â”€ devops/
+â”œâ”€â”€ skills/
+â”‚   â”œâ”€â”€ testing/
+â”‚   â””â”€â”€ deployment/
 ```
 
 ### 2. Keep READMEs Descriptive
@@ -678,10 +678,10 @@ git commit -m "Initial knowledge base"
 ### 4. Use Consistent Naming
 
 Name folders clearly:
-- ✅ `security-guidelines/`
-- ✅ `react-testing-patterns/`
-- ❌ `stuff/`
-- ❌ `misc/`
+- âœ… `security-guidelines/`
+- âœ… `react-testing-patterns/`
+- âŒ `stuff/`
+- âŒ `misc/`
 
 ### 5. Curate Regularly
 
@@ -818,10 +818,11 @@ Spawns an agent and returns a Flight Plan.
 
 ## Support & Community
 
-- **GitHub Issues**: [Report bugs](https://github.com/your-org/cortex/issues)
-- **Discussions**: [Ask questions](https://github.com/your-org/cortex/discussions)
+- **GitHub Issues**: [Report bugs](https://github.com/jreinhal/cortex-manager/issues)
+- **Discussions**: [Ask questions](https://github.com/jreinhal/cortex-manager/discussions)
 - **Email**: support@cortex.ai
 
 ---
 
 **End of User Manual**
+

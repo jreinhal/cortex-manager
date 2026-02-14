@@ -47,6 +47,7 @@ describe('SettingsPanel workspace actions', () => {
   it('creates a workspace with form values', async () => {
     const props = createProps()
     render(<SettingsPanel {...props} />)
+    fireEvent.click(screen.getByTestId('settings-tab-workspaces'))
 
     fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: ' New Workspace ' } })
     fireEvent.change(screen.getByPlaceholderText('Repos root'), { target: { value: ' D:\\Repos\\New ' } })
@@ -66,6 +67,7 @@ describe('SettingsPanel workspace actions', () => {
   it('shows validation error when workspace repos root is empty', async () => {
     const props = createProps()
     render(<SettingsPanel {...props} />)
+    fireEvent.click(screen.getByTestId('settings-tab-workspaces'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
 
@@ -78,6 +80,7 @@ describe('SettingsPanel workspace actions', () => {
   it('edits an existing workspace and sends update payload', async () => {
     const props = createProps()
     render(<SettingsPanel {...props} />)
+    fireEvent.click(screen.getByTestId('settings-tab-workspaces'))
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0])
     fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'Primary Updated' } })
@@ -98,6 +101,7 @@ describe('SettingsPanel workspace actions', () => {
   it('omits blank outputDir when updating a workspace', async () => {
     const props = createProps()
     render(<SettingsPanel {...props} />)
+    fireEvent.click(screen.getByTestId('settings-tab-workspaces'))
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
     fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'Secondary Updated' } })
@@ -119,6 +123,7 @@ describe('SettingsPanel workspace actions', () => {
     })
     const props = createProps({ onCreateWorkspace })
     render(<SettingsPanel {...props} />)
+    fireEvent.click(screen.getByTestId('settings-tab-workspaces'))
 
     fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'Temp Workspace' } })
     fireEvent.change(screen.getByPlaceholderText('Repos root'), { target: { value: 'D:\\Repos\\Temp' } })
@@ -135,6 +140,7 @@ describe('SettingsPanel workspace actions', () => {
   it('resets workspace form when canceling edit', async () => {
     const props = createProps()
     render(<SettingsPanel {...props} />)
+    fireEvent.click(screen.getByTestId('settings-tab-workspaces'))
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
     fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'Temporary Name' } })

@@ -103,6 +103,7 @@ export function SettingsPanel({
   const [loading, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [settingsTab, setSettingsTab] = useState('general');
   const reposRootInputRef = useRef(null);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -124,6 +125,21 @@ export function SettingsPanel({
   const stackFileRef = useRef(null);
   const [stackFileParsing, setStackFileParsing] = useState(false);
   const [stackFileError, setStackFileError] = useState('');
+  const allSettingsTabs = [
+    { id: 'general', label: 'General' },
+    { id: 'security', label: 'Security' },
+    { id: 'workspaces', label: 'Workspaces' },
+    { id: 'processing', label: 'Processing' },
+    { id: 'observability', label: 'Observability' }
+  ];
+  const settingsTabs = (
+    authUser?.role === 'admin'
+      ? allSettingsTabs
+      : allSettingsTabs.filter((tab) => tab.id !== 'workspaces')
+  );
+  const activeSettingsTab = settingsTabs.some((tab) => tab.id === settingsTab)
+    ? settingsTab
+    : 'general';
 
   const resetWorkspaceForm = useCallback(() => {
     setEditingWorkspaceId(null);
@@ -235,7 +251,12 @@ export function SettingsPanel({
     // Guard against empty submissions
     if (!reposRoot || !reposRoot.trim()) {
       setError('Repository root path cannot be empty');
-      reposRootInputRef.current?.focus();
+      if (activeSettingsTab !== 'general') {
+        setSettingsTab('general');
+        setTimeout(() => reposRootInputRef.current?.focus(), 0);
+      } else {
+        reposRootInputRef.current?.focus();
+      }
       return;
     }
     setError('');
@@ -495,6 +516,24 @@ export function SettingsPanel({
     setExternalSkillsUpdatesLoading(false);
   };
 
+  const handleSettingsTabKeyDown = (event, currentIndex) => {
+    if (settingsTabs.length === 0) return;
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') {
+      nextIndex = (currentIndex + 1) % settingsTabs.length;
+    } else if (event.key === 'ArrowLeft') {
+      nextIndex = (currentIndex - 1 + settingsTabs.length) % settingsTabs.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = settingsTabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    setSettingsTab(settingsTabs[nextIndex].id);
+  };
+
   return (
     <Motion.div
       key="settings"
@@ -520,6 +559,68 @@ export function SettingsPanel({
             User Manual
           </a>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/70 bg-slate-900/35 px-4 py-3">
+          <div
+            role="tablist"
+            aria-label="Settings sections"
+            className="inline-flex flex-wrap items-center gap-2"
+          >
+            {settingsTabs.map((tab, index) => (
+              <button
+                key={tab.id}
+                type="button"
+                id={`settings-tab-trigger-${tab.id}`}
+                data-testid={`settings-tab-${tab.id}`}
+                role="tab"
+                aria-selected={activeSettingsTab === tab.id}
+                aria-controls="settings-active-panel"
+                tabIndex={activeSettingsTab === tab.id ? 0 : -1}
+                onClick={() => setSettingsTab(tab.id)}
+                onKeyDown={(event) => handleSettingsTabKeyDown(event, index)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-xs font-semibold transition-ui",
+                  activeSettingsTab === tab.id
+                    ? "bg-cyan-500 text-white"
+                    : "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            data-testid="settings-save"
+            onClick={handleSave}
+            disabled={loading || saved}
+            className={cn(
+              "px-5 py-2 rounded-2xl font-bold transition-ui flex items-center gap-2 text-sm",
+              saved
+                ? "bg-emerald-500 text-white"
+                : "bg-cyan-500 hover:bg-cyan-400 text-white"
+            )}
+          >
+            {saved ? <Check size={18} aria-hidden="true" /> : loading ? <RefreshCw size={18} className="animate-spin" aria-hidden="true" /> : null}
+            {saved ? 'Saved!' : 'Save Settings'}
+          </button>
+        </div>
+        {error && (
+          <div
+            className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+            role="alert"
+            data-testid="settings-error"
+          >
+            {error}
+          </div>
+        )}
+        <div
+          id="settings-active-panel"
+          role="tabpanel"
+          aria-labelledby={`settings-tab-trigger-${activeSettingsTab}`}
+          className="space-y-8"
+        >
+        {activeSettingsTab === 'general' && (
+          <>
         {/* Repos Root */}
         <div>
           <label htmlFor="settings-repos-root" className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
@@ -540,27 +641,10 @@ export function SettingsPanel({
               ref={reposRootInputRef}
               className="flex-1 bg-slate-900/50 border border-slate-800 rounded-2xl px-6 py-4 text-slate-200 focus-visible:outline-none focus-visible:border-cyan-500/50 font-mono text-sm"
             />
-            <button
-              data-testid="settings-save"
-              onClick={handleSave}
-              disabled={loading || saved}
-              className={cn(
-                "px-6 py-4 rounded-2xl font-bold transition-ui flex items-center gap-2",
-                saved
-                  ? "bg-emerald-500 text-white"
-                  : "bg-cyan-500 hover:bg-cyan-400 text-white"
-              )}
-            >
-              {saved ? <Check size={20} aria-hidden="true" /> : loading ? <RefreshCw size={20} className="animate-spin" aria-hidden="true" /> : null}
-              {saved ? 'Saved!' : 'Save Settings'}
-            </button>
           </div>
           <p className="text-slate-500 text-xs mt-2">
             This is where CORTEX looks for Agents, Skills, Knowledge, and Tools
           </p>
-          {error && (
-            <p className="text-red-400 text-sm mt-2" role="alert" data-testid="settings-error">{error}</p>
-          )}
         </div>
 
         {/* LLM Endpoints */}
@@ -857,8 +941,11 @@ export function SettingsPanel({
             System follows your OS theme. Light mode is optimized for long sessions.
           </p>
         </div>
+          </>
+        )}
 
         {/* Security & Access */}
+        {activeSettingsTab === 'security' && (
         <div>
           <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
             Security & Access
@@ -997,9 +1084,10 @@ export function SettingsPanel({
             Enable authentication before onboarding additional users. Bootstrap creates the first admin.
           </p>
         </div>
+        )}
 
         {/* Workspaces */}
-        {authUser?.role === 'admin' && (
+        {activeSettingsTab === 'workspaces' && authUser?.role === 'admin' && (
           <div>
             <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
               Workspaces
@@ -1118,6 +1206,7 @@ export function SettingsPanel({
         )}
 
         {/* Queue & Workers */}
+        {activeSettingsTab === 'processing' && (
         <div>
           <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
             Queue & Workers
@@ -1246,8 +1335,10 @@ export function SettingsPanel({
             </div>
           </div>
         </div>
+        )}
 
         {/* Vector Index */}
+        {activeSettingsTab === 'processing' && (
         <div>
           <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
             Semantic Vector Index
@@ -1397,8 +1488,10 @@ export function SettingsPanel({
             </button>
           </div>
         </div>
+        )}
 
         {/* External Skills */}
+        {activeSettingsTab === 'processing' && (
         <div>
           <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
             External Skills (Online Providers)
@@ -1562,8 +1655,10 @@ export function SettingsPanel({
             </div>
           </div>
         </div>
+        )}
 
         {/* Observability Alerts */}
+        {activeSettingsTab === 'observability' && (
         <div>
           <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
             Observability Alerts
@@ -1604,9 +1699,10 @@ export function SettingsPanel({
             </div>
           </div>
         </div>
+        )}
 
         {/* User Management */}
-        {authStatus?.enabled && authUser?.role === 'admin' && (
+        {activeSettingsTab === 'security' && authStatus?.enabled && authUser?.role === 'admin' && (
           <div>
             <label className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 block">
               User Management
@@ -1724,6 +1820,7 @@ export function SettingsPanel({
             </div>
           </div>
         )}
+        </div>
       </div>
     </Motion.div>
   );

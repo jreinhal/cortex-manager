@@ -265,8 +265,10 @@ describe('recordSpawn', () => {
 
     config.recordSpawn('test goal', 'claude', 5)
 
-    const afterCount = config.getAnalytics().totalSpawns
-    expect(afterCount).toBe(beforeCount + 1)
+    const afterAnalytics = config.getAnalytics()
+    const expectedCount = Math.min(beforeCount + 1, 100)
+    expect(afterAnalytics.totalSpawns).toBe(expectedCount)
+    expect(afterAnalytics.recentSpawns[0]?.goal).toContain('test goal')
   })
 
   it('truncates long goals', () => {

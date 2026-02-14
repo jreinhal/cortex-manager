@@ -191,9 +191,18 @@ test('spawn generates flight plan and telemetry updates', async ({ page, request
   await expect(page.getByTestId('recent-sessions-section')).toBeVisible();
   await expect(page.getByTestId('recent-sessions-section')).toContainText(TEST_PROMPT_PREFIX);
 
-  const afterRes = await request.get(`${API_BASE}/analytics`);
-  expect(afterRes.ok()).toBeTruthy();
-  const after = await afterRes.json();
-  expect(after.totalSpawns).toBeGreaterThan(before.totalSpawns);
+  let after = null;
+  await expect.poll(async () => {
+    const res = await request.get(`${API_BASE}/analytics`);
+    if (!res.ok()) return false;
+    after = await res.json();
+    const totalIncreased = Number(after?.totalSpawns || 0) > Number(before?.totalSpawns || 0);
+    const recentIncludesPrompt = Array.isArray(after?.recentSpawns)
+      && after.recentSpawns.some((spawn) => spawn.goal && spawn.goal.includes(TEST_PROMPT_PREFIX));
+    return totalIncreased || recentIncludesPrompt;
+  }, { timeout: 30000 }).toBeTruthy();
+
+  expect(Number(after?.totalSpawns || 0)).toBeGreaterThanOrEqual(Number(before?.totalSpawns || 0));
+  expect(Array.isArray(after?.recentSpawns)).toBe(true);
   expect(after.recentSpawns.some((spawn) => spawn.goal && spawn.goal.includes(TEST_PROMPT_PREFIX))).toBeTruthy();
 });

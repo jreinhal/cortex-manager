@@ -33,7 +33,9 @@ test.describe('Settings Persistence', () => {
   test('settings page loads with current config values', async ({ page, request }) => {
     const configRes = await request.get(`${API_BASE}/config`)
     expect(configRes.ok()).toBeTruthy()
-    const config = await configRes.json()
+    const configPayload = await configRes.json()
+    const currentReposRoot = configPayload?.config?.reposRoot || configPayload?.reposRoot || ''
+    expect(currentReposRoot).toBeTruthy()
 
     await page.getByTestId('nav-settings').click()
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
@@ -44,14 +46,15 @@ test.describe('Settings Persistence', () => {
     const value = await reposRootInput.inputValue()
     expect(value).toBeTruthy()
     // The repos root should match the config value
-    expect(value.toLowerCase()).toBe(config.reposRoot.toLowerCase())
+    expect(value.toLowerCase()).toBe(currentReposRoot.toLowerCase())
   })
 
   test('saving valid settings shows success feedback', async ({ page, request }) => {
     // Get current config to restore later
     const configRes = await request.get(`${API_BASE}/config`)
-    const config = await configRes.json()
-    const originalReposRoot = config.reposRoot
+    const configPayload = await configRes.json()
+    const originalReposRoot = configPayload?.config?.reposRoot || configPayload?.reposRoot || ''
+    expect(originalReposRoot).toBeTruthy()
 
     await page.getByTestId('nav-settings').click()
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()

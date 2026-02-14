@@ -11,6 +11,24 @@ const { getConfig } = require('./config');
 
 const SIZE_REFRESH_MS = 5000;
 const sizeCacheByRoot = new Map();
+const GIT_EXECUTABLE = resolveGitExecutable();
+
+function resolveGitExecutable() {
+  const pathValue = process.env.PATH || process.env.Path || '';
+  const entries = pathValue.split(path.delimiter).filter(Boolean);
+  const candidates = process.platform === 'win32'
+    ? ['git.exe', 'git.cmd', 'git.bat']
+    : ['git'];
+  for (const dir of entries) {
+    for (const candidate of candidates) {
+      const fullPath = path.join(dir, candidate);
+      if (fs.existsSync(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+  return 'git';
+}
 
 function getSizeCache(reposRoot) {
   const config = getConfig();
@@ -38,7 +56,7 @@ function gitExec(args, cwd = null, options = {}) {
     if (Number.isFinite(options.timeout) && options.timeout > 0) {
       execOptions.timeout = options.timeout;
     }
-    const result = execFileSync('git', commandArgs, execOptions);
+    const result = execFileSync(GIT_EXECUTABLE, commandArgs, execOptions);
     return { success: true, output: result.trim() };
   } catch (e) {
     const isTimeout =
@@ -59,7 +77,7 @@ function gitExec(args, cwd = null, options = {}) {
  */
 function isGitAvailable() {
   try {
-    execSync('git --version', { encoding: 'utf8', stdio: 'pipe' });
+    execFileSync(GIT_EXECUTABLE, ['--version'], { encoding: 'utf8', stdio: 'pipe' });
     return true;
   } catch {
     return false;

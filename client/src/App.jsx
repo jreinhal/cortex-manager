@@ -4480,9 +4480,12 @@ function App() {
       const data = await res.json();
       if (data.success) {
         fetchWorkspaces();
+        return { success: true, workspace: data.workspace || null };
       }
+      return { success: false, error: data.error || 'Failed to create workspace.' };
     } catch (e) {
       console.error('Failed to create workspace:', e);
+      return { success: false, error: 'Failed to create workspace. Check server connectivity.' };
     }
   };
 
@@ -4496,9 +4499,12 @@ function App() {
       const data = await res.json();
       if (data.success) {
         fetchWorkspaces();
+        return { success: true, workspace: data.workspace || null };
       }
+      return { success: false, error: data.error || 'Failed to update workspace.' };
     } catch (e) {
       console.error('Failed to update workspace:', e);
+      return { success: false, error: 'Failed to update workspace. Check server connectivity.' };
     }
   };
 

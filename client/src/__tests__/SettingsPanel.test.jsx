@@ -96,6 +96,43 @@ describe('SettingsPanel workspace actions', () => {
     expect(screen.getByRole('button', { name: 'Create workspace' })).toBeTruthy()
   })
 
+  it('omits blank outputDir when updating a workspace', async () => {
+    const props = createProps()
+    render(<SettingsPanel {...props} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
+    fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'Secondary Updated' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => {
+      expect(props.onUpdateWorkspace).toHaveBeenCalledWith('ws-2', {
+        name: 'Secondary Updated',
+        reposRoot: 'D:\\Repos\\Secondary',
+        createStructure: false,
+      })
+    })
+  })
+
+  it('keeps form values when workspace save fails', async () => {
+    const onCreateWorkspace = vi.fn().mockResolvedValue({
+      success: false,
+      error: 'Workspace save failed',
+    })
+    const props = createProps({ onCreateWorkspace })
+    render(<SettingsPanel {...props} />)
+
+    fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'Temp Workspace' } })
+    fireEvent.change(screen.getByPlaceholderText('Repos root'), { target: { value: 'D:\\Repos\\Temp' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
+
+    await waitFor(() => {
+      expect(onCreateWorkspace).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByText('Workspace save failed')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Workspace name').value).toBe('Temp Workspace')
+    expect(screen.getByPlaceholderText('Repos root').value).toBe('D:\\Repos\\Temp')
+  })
+
   it('resets workspace form when canceling edit', async () => {
     const props = createProps()
     render(<SettingsPanel {...props} />)

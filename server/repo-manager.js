@@ -29,16 +29,16 @@ function gitExec(args, cwd = null, options = {}) {
     return { success: false, error: 'Invalid git arguments', output: '' };
   }
   try {
+    const commandArgs = ['-c', 'credential.interactive=never', ...args];
     const execOptions = {
       cwd: cwd || process.cwd(),
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     };
     if (Number.isFinite(options.timeout) && options.timeout > 0) {
       execOptions.timeout = options.timeout;
     }
-    const result = execFileSync('git', args, execOptions);
+    const result = execFileSync('git', commandArgs, execOptions);
     return { success: true, output: result.trim() };
   } catch (e) {
     const isTimeout =

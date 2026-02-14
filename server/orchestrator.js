@@ -99,14 +99,14 @@ function generateRunId() {
 function getGitMetadata(cwd) {
   try {
     execSync('git rev-parse --is-inside-work-tree', { cwd, stdio: 'pipe' });
-  } catch (e) {
+  } catch {
     return null;
   }
 
   const exec = (cmd) => {
     try {
       return execSync(cmd, { cwd, stdio: 'pipe' }).toString().trim();
-    } catch (e) {
+    } catch {
       return '';
     }
   };
@@ -835,7 +835,7 @@ ${techStackDisplay.length > 0 ? `| **Tech Stack** | ${techStackDisplay.join(', '
 
 ### Required Capabilities
 ${Object.entries(analysis.capabilities)
-  .filter(([k, v]) => v === true)
+  .filter(([, v]) => v === true)
   .map(([k]) => `- ${k}`)
   .join('\n') || '- No specific capabilities required'}
 ${risksSection}
@@ -878,18 +878,41 @@ _Resources: ${resources.knowledge.length + resources.skills.length + resources.t
 
 // --- CLI Entry Point ---
 
-const goal = process.argv[2];
-const formatArg = process.argv[3] || 'universal';
-if (!goal) {
-  console.error("Usage: node orchestrator.js \"<User Goal>\"");
-  process.exit(1);
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let input = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      input += chunk;
+    });
+    process.stdin.on('end', () => resolve(input));
+    process.stdin.on('error', reject);
+  });
 }
 
-(async () => {
+async function runCli() {
+  const firstArg = process.argv[2];
+  const useStdin = firstArg === '--stdin';
+  const formatArg = process.argv[3] || 'universal';
+  const goal = useStdin ? await readStdin() : firstArg;
+
+  if (!goal || !goal.trim()) {
+    console.error('Usage: node orchestrator.js "<User Goal>" [format]');
+    console.error('   or: node orchestrator.js --stdin [format]');
+    process.exit(1);
+  }
+
   const result = await orchestrate(goal, formatArg);
   if (!result.success) {
     process.exit(1);
   }
-})();
+}
+
+if (require.main === module) {
+  runCli().catch((error) => {
+    console.error('Orchestrator failed:', error?.message || error);
+    process.exit(1);
+  });
+}
 
 module.exports = { orchestrate, analyzeGoal };

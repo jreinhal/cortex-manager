@@ -47,6 +47,7 @@ This checklist complements the automated Playwright suite and covers visual, acc
 - Runs view lists historical runs; selecting a run shows Decision Matrix and Trace.
 - Runs view comparison dropdown highlights deltas.
 - Runs view shows git metadata (branch/commit/diff) when available.
+- Runs view export buttons download run JSON and the flight plan file.
 - Evaluations view:
   - Create dataset, add at least one item, and generate an evaluation.
   - Evaluation status shows pass/warn/fail with per-item grading.

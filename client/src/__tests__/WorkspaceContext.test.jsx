@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import { WorkspaceProvider, useWorkspace } from '../contexts/WorkspaceContext'
 
 // Mock apiFetch

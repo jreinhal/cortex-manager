@@ -26,6 +26,7 @@ yarn-error.log*
 # Editor directories and files
 .idea
 .vscode
+.ai/
 *.suo
 *.ntvs
 *.njsproj
@@ -47,3 +48,6 @@ config.json
 vector_index*.json
 spawned_agents/
 test-results/
+.codex-*.log
+cortex-*.log
+.claude/

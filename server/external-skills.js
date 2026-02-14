@@ -691,6 +691,10 @@ async function pullExternalSkills({ goal, analysis, config, reposRoot, workspace
     training: {
       mode: trainingMode
     },
+    timings: {
+      searchMs: 0,
+      installMs: 0
+    },
     skippedReason: null,
     error: null
   };
@@ -720,7 +724,11 @@ async function pullExternalSkills({ goal, analysis, config, reposRoot, workspace
     return meta;
   }
 
+  let searchStart = 0;
+  let installStart = 0;
   try {
+    searchStart = Date.now();
+
     // 1) Explicit slugs.
     const explicitCandidates = [];
     for (const provider of enabledProviders) {
@@ -789,7 +797,7 @@ async function pullExternalSkills({ goal, analysis, config, reposRoot, workspace
           let pointer = 0;
           for (const provider of enabledProviders) {
             const providerMax = Math.max(0, Number(provider.maxSkills || 0));
-            for (const q of llmQueries) {
+            for (const _query of llmQueries) {
               const result = assistSettled[pointer];
               pointer += 1;
               if (result?.status === 'fulfilled') {
@@ -821,10 +829,13 @@ async function pullExternalSkills({ goal, analysis, config, reposRoot, workspace
     }));
 
     if (selected.length === 0) {
+      meta.timings.searchMs = Math.max(0, Date.now() - searchStart);
       meta.skippedReason = 'no_candidates';
       return meta;
     }
 
+    meta.timings.searchMs = Math.max(0, Date.now() - searchStart);
+    installStart = Date.now();
     const installs = await mapWithConcurrency(selected, installConcurrency, async (candidate) => {
       const provider = enabledProviders.find((p) => p.id === candidate.providerId);
       if (!provider) {
@@ -861,8 +872,15 @@ async function pullExternalSkills({ goal, analysis, config, reposRoot, workspace
     }
 
     meta.used = meta.installed.some((item) => item.installed || item.alreadyInstalled);
+    meta.timings.installMs = Math.max(0, Date.now() - installStart);
     return meta;
   } catch (e) {
+    if (!meta.timings.searchMs) {
+      meta.timings.searchMs = Math.max(0, Date.now() - (typeof searchStart === 'number' ? searchStart : Date.now()));
+    }
+    if (typeof installStart === 'number' && installStart > 0 && !meta.timings.installMs) {
+      meta.timings.installMs = Math.max(0, Date.now() - installStart);
+    }
     meta.error = e?.message || String(e);
     return meta;
   }

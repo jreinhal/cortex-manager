@@ -6,11 +6,29 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { execFileSync } = require('child_process');
 const { getConfig } = require('./config');
 
 const SIZE_REFRESH_MS = 5000;
 const sizeCacheByRoot = new Map();
+const GIT_EXECUTABLE = resolveGitExecutable();
+
+function resolveGitExecutable() {
+  const pathValue = process.env.PATH || process.env.Path || '';
+  const entries = pathValue.split(path.delimiter).filter(Boolean);
+  const candidates = process.platform === 'win32'
+    ? ['git.exe', 'git.cmd', 'git.bat']
+    : ['git'];
+  for (const dir of entries) {
+    for (const candidate of candidates) {
+      const fullPath = path.join(dir, candidate);
+      if (fs.existsSync(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+  return 'git';
+}
 
 function getSizeCache(reposRoot) {
   const config = getConfig();
@@ -24,17 +42,33 @@ function getSizeCache(reposRoot) {
 /**
  * Execute git command and return result
  */
-function gitExec(args, cwd = null) {
+function gitExec(args, cwd = null, options = {}) {
+  if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
+    return { success: false, error: 'Invalid git arguments', output: '' };
+  }
   try {
-    const result = execSync(`git ${args}`, {
+    const commandArgs = ['-c', 'credential.interactive=never', ...args];
+    const execOptions = {
       cwd: cwd || process.cwd(),
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
-    });
+    };
+    if (Number.isFinite(options.timeout) && options.timeout > 0) {
+      execOptions.timeout = options.timeout;
+    }
+    const result = execFileSync(GIT_EXECUTABLE, commandArgs, execOptions);
     return { success: true, output: result.trim() };
   } catch (e) {
-    return { success: false, error: e.message, output: e.stdout || '' };
+    const isTimeout =
+      e?.code === 'ETIMEDOUT' ||
+      e?.killed === true ||
+      e?.signal === 'SIGTERM' ||
+      String(e?.message || '').toLowerCase().includes('timed out');
+    return {
+      success: false,
+      error: isTimeout ? 'Operation timed out. Check the URL and your network connection.' : e.message,
+      output: e.stdout || ''
+    };
   }
 }
 
@@ -43,7 +77,7 @@ function gitExec(args, cwd = null) {
  */
 function isGitAvailable() {
   try {
-    execSync('git --version', { encoding: 'utf8', stdio: 'pipe' });
+    execFileSync(GIT_EXECUTABLE, ['--version'], { encoding: 'utf8', stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -94,7 +128,7 @@ function saveRegistry(repos, reposRootOverride = null) {
  */
 function detectDefaultBranch(repoPath) {
   // Try to get remote HEAD reference
-  const result = gitExec('symbolic-ref refs/remotes/origin/HEAD', repoPath);
+  const result = gitExec(['symbolic-ref', 'refs/remotes/origin/HEAD'], repoPath);
   if (result.success) {
     // Extract branch name from refs/remotes/origin/main
     const match = result.output.match(/refs\/remotes\/origin\/(.+)/);
@@ -104,7 +138,7 @@ function detectDefaultBranch(repoPath) {
   // Fallback: check for common branch names
   const branches = ['main', 'master', 'develop'];
   for (const branch of branches) {
-    const checkResult = gitExec(`rev-parse --verify ${branch}`, repoPath);
+    const checkResult = gitExec(['rev-parse', '--verify', branch], repoPath);
     if (checkResult.success) return branch;
   }
 
@@ -191,7 +225,7 @@ function analyzeRepoContent(repoPath) {
           });
         }
       });
-    } catch (e) {
+    } catch {
       // Ignore read errors
     }
   }
@@ -356,10 +390,10 @@ async function cloneRepository(url, progressCallback = null, options = {}) {
 
   if (callback) callback(`Cloning: ${repoName}`);
 
-  // Validate remote URL before cloning
-  const remoteCheck = gitExec(`ls-remote --heads --tags "${trimmedUrl}"`);
+  // Validate remote URL before cloning (15s timeout to fail fast for invalid URLs)
+  const remoteCheck = gitExec(['ls-remote', '--heads', '--tags', trimmedUrl], null, { timeout: 15000 });
   if (!remoteCheck.success) {
-    return { success: false, error: 'Repository not found or inaccessible' };
+    return { success: false, error: remoteCheck.error || 'Repository not found or inaccessible' };
   }
 
   // Clone to temp location first
@@ -367,7 +401,7 @@ async function cloneRepository(url, progressCallback = null, options = {}) {
 
   try {
     // Clone repository
-    const cloneResult = gitExec(`clone "${trimmedUrl}" "${tempDir}"`);
+    const cloneResult = gitExec(['clone', trimmedUrl, tempDir]);
     if (!cloneResult.success) {
       return { success: false, error: `Clone failed: ${cloneResult.error}` };
     }
@@ -411,7 +445,7 @@ async function cloneRepository(url, progressCallback = null, options = {}) {
     }
 
     // Add safe.directory config for git
-    gitExec(`config --global --add safe.directory "${destPath}"`);
+    gitExec(['config', '--global', '--add', 'safe.directory', destPath]);
 
     // Detect branch
     const branch = detectDefaultBranch(destPath);
@@ -495,7 +529,7 @@ function updateRepository(repoName, reposRootOverride = null) {
     return { success: false, error: `Repository path not found: ${repo.Path}` };
   }
 
-  const result = gitExec('pull', repo.Path);
+  const result = gitExec(['pull'], repo.Path);
   return {
     success: result.success,
     output: result.output || result.error

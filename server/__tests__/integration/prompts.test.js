@@ -7,8 +7,6 @@ beforeAll(() => {
 })
 
 describe('Prompts API', () => {
-  let createdPromptId
-
   describe('GET /api/prompts', () => {
     it('returns an array of prompts', async () => {
       const res = await request(app).get('/api/prompts')
@@ -27,7 +25,6 @@ describe('Prompts API', () => {
       expect(res.body.prompt).toHaveProperty('id')
       expect(res.body.prompt.title).toBe('Test Prompt')
       expect(res.body.prompt.query).toBe('Build a REST API for user management')
-      createdPromptId = res.body.prompt.id
     })
 
     it('validates required fields', async () => {

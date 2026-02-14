@@ -16,13 +16,14 @@
     "e2e:ui": "playwright test --ui --project=chromium",
     "e2e:edge": "playwright test --project=edge --headed",
     "e2e:edge:ui": "playwright test --ui --project=edge",
-    "marketability:demo": "node scripts/marketability-demo.js --start-server --port 3003 --scan --spawn --eval"
+    "marketability:demo": "node scripts/marketability-demo.js --start-server --port 3003 --scan --spawn --eval --index"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "body-parser": "^2.2.2",
     "concurrently": "^9.2.1",
     "cors": "^2.8.6",

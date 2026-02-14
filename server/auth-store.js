@@ -38,7 +38,7 @@ function saveUsers(users) {
 
 function sanitizeUser(user) {
   if (!user) return null;
-  const { passwordHash, passwordSalt, ...safe } = user;
+  const { passwordHash: _passwordHash, passwordSalt: _passwordSalt, ...safe } = user;
   return safe;
 }
 

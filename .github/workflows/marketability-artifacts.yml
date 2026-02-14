@@ -34,9 +34,6 @@ jobs:
         run: npm install
         working-directory: ./client
 
-      - name: Capture UI screenshots (Edge)
-        run: npx playwright test --project=edge tests/e2e/screenshots.spec.js tests/e2e/theme-check.spec.js
-
       - name: Generate marketability demo report
         run: npm run marketability:demo
 
@@ -45,12 +42,6 @@ jobs:
         with:
           name: cortex-screenshots
           path: docs/screenshots
-
-      - name: Upload theme sweeps
-        uses: actions/upload-artifact@v4
-        with:
-          name: cortex-theme-check
-          path: test-results/theme-check
 
       - name: Upload demo report
         uses: actions/upload-artifact@v4

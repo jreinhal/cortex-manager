@@ -200,6 +200,13 @@ describe('spawn schemas', () => {
     })
     expect(result.success).toBe(true)
   })
+
+  it('accepts long goals up to the configured max size', () => {
+    const result = spawnSchema.safeParse({
+      goal: 'a'.repeat(120000),
+    })
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('workspace schemas', () => {

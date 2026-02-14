@@ -23,6 +23,7 @@ const startServer = flag('start-server');
 const doScan = flag('scan');
 const doSpawn = flag('spawn');
 const doEval = flag('eval');
+const doIndex = flag('index') || flag('vector-index') || flag('rebuild-index');
 
 const headers = { 'Content-Type': 'application/json' };
 if (process.env.DEMO_TOKEN) {
@@ -48,6 +49,21 @@ async function request(endpoint, options = {}) {
   return { ok: response.ok, status: response.status, data };
 }
 
+async function waitForJob(jobId, maxAttempts = 120, delayMs = 2000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await sleep(delayMs);
+    const jobRes = await request(`/jobs/${jobId}`);
+    if (!jobRes.ok) {
+      return jobRes;
+    }
+    const status = jobRes.data?.status;
+    if (['completed', 'failed', 'cancelled'].includes(status)) {
+      return jobRes;
+    }
+  }
+  return null;
+}
+
 async function waitForServer(maxAttempts = 40) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -71,6 +87,12 @@ function formatJson(value) {
   }
 }
 
+function redactReport(text) {
+  return text
+    .replace(/[A-Z]:\\+Projects\\+reference-repos/g, '<REPOS_ROOT>')
+    .replace(/[A-Z]:\\+Projects\\+reference-manager\\+spawned_agents/g, '<OUTPUT_DIR>');
+}
+
 async function main() {
   let serverProcess = null;
   const report = [];
@@ -81,7 +103,9 @@ async function main() {
   report.push('');
   report.push(`Generated: ${new Date().toISOString()}`);
   report.push(`API Base: ${apiBase}`);
-  report.push(`Flags: scan=${doScan} spawn=${doSpawn} eval=${doEval} start-server=${startServer}`);
+  report.push(`Flags: scan=${doScan} spawn=${doSpawn} eval=${doEval} index=${doIndex} start-server=${startServer}`);
+  report.push('');
+  report.push('Note: local paths are redacted; replace `<REPOS_ROOT>` and `<OUTPUT_DIR>` with your environment.');
   report.push('');
 
   if (startServer) {
@@ -162,17 +186,43 @@ async function main() {
   checks.push(`- Observability summary: ${observabilityRes.ok ? 'ok' : `fail (${observabilityRes.status})`}`);
 
   let scanRes = null;
+  let scanDurationMs = null;
   if (doScan) {
+    const scanStart = Date.now();
     try {
       scanRes = await request('/scan', { method: 'POST', body: JSON.stringify({}) });
     } catch (error) {
       scanRes = { ok: false, status: 'ERR', data: error.message };
     }
+    scanDurationMs = Date.now() - scanStart;
     checks.push(`- Repo scan: ${scanRes.ok ? 'ok' : `fail (${scanRes.status})`}`);
+  }
+
+  let indexRes = null;
+  let indexJobStatus = null;
+  let indexDurationMs = null;
+  if (doIndex) {
+    const indexStart = Date.now();
+    try {
+      indexRes = await request('/vector-index/rebuild', { method: 'POST', body: JSON.stringify({}) });
+    } catch (error) {
+      indexRes = { ok: false, status: 'ERR', data: error.message };
+    }
+
+    if (indexRes.ok && indexRes.data?.job?.id) {
+      indexJobStatus = await waitForJob(indexRes.data.job.id);
+      if (indexJobStatus?.data?.durationMs) {
+        indexDurationMs = indexJobStatus.data.durationMs;
+      }
+    } else {
+      indexDurationMs = Date.now() - indexStart;
+    }
+    checks.push(`- Vector index rebuild: ${indexRes.ok ? 'ok' : `fail (${indexRes.status})`}`);
   }
 
   let spawnRes = null;
   let spawnJob = null;
+  let spawnDurationMs = null;
   if (doSpawn) {
     try {
       spawnRes = await request('/spawn', {
@@ -194,28 +244,21 @@ async function main() {
 
   let jobStatus = null;
   if (spawnJob) {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      await sleep(2000);
-      const jobRes = await request(`/jobs/${spawnJob.id}`);
-      if (!jobRes.ok) {
-        jobStatus = jobRes;
-        break;
-      }
-      const status = jobRes.data?.status;
-      if (['completed', 'failed', 'cancelled'].includes(status)) {
-        jobStatus = jobRes;
-        break;
-      }
-    }
+    jobStatus = await waitForJob(spawnJob.id);
     if (jobStatus) {
       checks.push(`- Spawn job status: ${jobStatus.ok ? jobStatus.data.status : `fail (${jobStatus.status})`}`);
+      if (jobStatus.ok) {
+        spawnDurationMs = jobStatus.data?.durationMs ?? null;
+      }
     } else {
       warnings.push('Spawn job did not reach a terminal state within the timeout window.');
     }
   }
 
   let evalRes = null;
+  let evalDurationMs = null;
   if (doEval) {
+    const evalStart = Date.now();
     try {
       const datasetRes = await request('/datasets', {
         method: 'POST',
@@ -247,6 +290,7 @@ async function main() {
     } catch (error) {
       evalRes = { ok: false, status: 'ERR', data: error.message };
     }
+    evalDurationMs = Date.now() - evalStart;
     checks.push(`- Evaluation run: ${evalRes.ok ? 'ok' : `fail (${evalRes.status})`}`);
   }
 
@@ -328,6 +372,16 @@ async function main() {
     report.push('');
   }
 
+  if (doScan || doSpawn || doEval || doIndex) {
+    report.push('## Timing Summary');
+    report.push('');
+    report.push(`- Repo scan: ${scanDurationMs !== null ? `${scanDurationMs} ms` : 'skipped'}`);
+    report.push(`- Spawn (job duration): ${spawnDurationMs !== null ? `${spawnDurationMs} ms` : 'skipped'}`);
+    report.push(`- Evaluation run: ${evalDurationMs !== null ? `${evalDurationMs} ms` : 'skipped'}`);
+    report.push(`- Vector index rebuild: ${indexDurationMs !== null ? `${indexDurationMs} ms` : 'skipped'}`);
+    report.push('');
+  }
+
   if (scanRes) {
     report.push('## Scan Result');
     report.push('');
@@ -364,6 +418,24 @@ async function main() {
     report.push('');
   }
 
+  if (indexRes) {
+    report.push('## Vector Index Rebuild Result');
+    report.push('');
+    report.push('```json');
+    report.push(formatJson(indexRes.data));
+    report.push('```');
+    report.push('');
+  }
+
+  if (indexJobStatus) {
+    report.push('## Vector Index Job Status');
+    report.push('');
+    report.push('```json');
+    report.push(formatJson(indexJobStatus.data));
+    report.push('```');
+    report.push('');
+  }
+
   if (warnings.length > 0) {
     report.push('## Warnings');
     report.push('');
@@ -372,7 +444,7 @@ async function main() {
   }
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, report.join('\n'), 'utf8');
+  fs.writeFileSync(outputPath, redactReport(report.join('\n')), 'utf8');
 
   if (serverProcess) {
     serverProcess.kill('SIGTERM');

@@ -7,8 +7,6 @@ beforeAll(() => {
 })
 
 describe('Jobs API', () => {
-  let createdJobId
-
   describe('GET /api/jobs', () => {
     it('returns an array of jobs', async () => {
       const res = await request(app).get('/api/jobs')
@@ -26,7 +24,6 @@ describe('Jobs API', () => {
       expect(res.body.success).toBe(true)
       expect(res.body.job).toHaveProperty('id')
       expect(res.body.job.type).toBe('test-job')
-      createdJobId = res.body.job.id
     })
 
     it('validates required type field', async () => {

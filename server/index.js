@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 3001
 // ==========================================
 
 app.use(cors())
-app.use(bodyParser.json())
+app.use(bodyParser.json({ limit: '2mb' }))
 app.use('/api', apiLimiter)
 
 // ==========================================
@@ -36,9 +36,13 @@ app.use('/api', apiLimiter)
 // ==========================================
 
 const manualDir = path.resolve(__dirname, '..', 'docs', 'user-manual')
+const manualScreenshotsDir = path.resolve(__dirname, '..', 'docs', 'screenshots')
 const manualMarkdownPath = path.resolve(__dirname, '..', 'USER_MANUAL.md')
 
 if (fs.existsSync(manualDir)) {
+  if (fs.existsSync(manualScreenshotsDir)) {
+    app.use('/manual/screenshots', express.static(manualScreenshotsDir))
+  }
   app.use('/manual', express.static(manualDir))
 } else if (fs.existsSync(manualMarkdownPath)) {
   const escapeHtml = (value) =>

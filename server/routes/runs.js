@@ -11,6 +11,66 @@ const { createSessionSchema } = require('../validators/sessions')
 const { readJsonFileAsync, writeJsonAtomicAsync } = require('../storage')
 const { audit, matchesWorkspace, resolveRunOutputPath } = require('./helpers')
 
+function parseOutputPath(rawText) {
+  if (!rawText) return null
+  const marker = 'Saved to:'
+  const lines = String(rawText).split('\n')
+  for (const line of lines) {
+    const idx = line.indexOf(marker)
+    if (idx !== -1) {
+      const value = line.slice(idx + marker.length).trim()
+      if (value) return value
+    }
+  }
+  return null
+}
+
+function extractFlightPlanFromLogs(rawText) {
+  if (!rawText) return ''
+  const marker = '--- PREVIEW ---'
+  const index = rawText.indexOf(marker)
+  if (index === -1) return rawText
+  return rawText.slice(index + marker.length).trim()
+}
+
+function resolveRunFromOutputPath({ runsStore, outputPath, workspaceId }) {
+  if (!outputPath) return null
+  const runs = runsStore.loadRuns()
+  return (
+    runs.find(
+      (run) => run?.outputPath === outputPath && matchesWorkspace(run, workspaceId || null)
+    ) || null
+  )
+}
+
+function appendLimited(buffer, chunk, maxChars) {
+  const text = chunk ? chunk.toString() : ''
+  if (!text) return buffer
+  const combined = `${buffer}${text}`
+  if (!Number.isFinite(maxChars) || maxChars <= 0 || combined.length <= maxChars) return combined
+  return combined.slice(combined.length - maxChars)
+}
+
+function resolveMaxOutputChars(value) {
+  const fallback = 120000
+  const maxAllowed = 1000000
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.min(Math.floor(parsed), maxAllowed)
+}
+
+async function loadRunOutput(run, workspace, maxChars) {
+  const resolved = resolveRunOutputPath(run, workspace)
+  if (!resolved) return null
+  try {
+    const content = await fsp.readFile(resolved, 'utf8')
+    if (!Number.isFinite(maxChars) || maxChars <= 0) return content
+    return content.length > maxChars ? content.slice(0, maxChars) : content
+  } catch (_e) {
+    return null
+  }
+}
+
 function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
   const router = express.Router()
   const { summarizeObservability } = require('../observability')
@@ -61,7 +121,7 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
         return res.json({ success: true, queued: true, job })
       }
 
-      const child = spawn('node', [orchestratorPath, goal, normalizedFormat], {
+      const child = spawn(process.execPath, [orchestratorPath, '--stdin', normalizedFormat], {
         cwd: path.join(__dirname, '..', '..'),
         env: {
           ...process.env,
@@ -72,28 +132,52 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
         },
       })
 
+      const currentConfig = config.getConfig()
+      const maxOutputChars = resolveMaxOutputChars(currentConfig?.llm?.maxOutputChars)
+      const maxBufferedChars = Math.max(maxOutputChars * 2, 250000)
+      const verboseSpawnLogs = process.env.CORTEX_SPAWN_STREAM_DEBUG === '1'
       let stdout = ''
       let stderr = ''
+      let settled = false
+      const finish = (status, payload) => {
+        if (settled) return
+        settled = true
+        res.status(status).json(payload)
+      }
 
       child.stdout.on('data', (data) => {
-        stdout += data.toString()
-        console.log(`[ORCHESTRATOR] ${data.toString().trim()}`)
+        stdout = appendLimited(stdout, data, maxBufferedChars)
+        if (verboseSpawnLogs) {
+          console.log(`[ORCHESTRATOR] ${data.toString().trim()}`)
+        }
       })
 
       child.stderr.on('data', (data) => {
-        stderr += data.toString()
+        stderr = appendLimited(stderr, data, maxBufferedChars)
         console.error(`[ORCHESTRATOR ERR] ${data.toString().trim()}`)
       })
 
+      try {
+        child.stdin.end(goal)
+      } catch (e) {
+        console.error('[ORCHESTRATOR] Failed to stream goal to orchestrator stdin:', e)
+        try {
+          child.stdin.end()
+        } catch (_stdinEndError) {
+          // no-op
+        }
+      }
+
       child.on('error', (err) => {
         console.error('[ORCHESTRATOR] Process error:', err)
-        res.status(500).json({ success: false, error: err.message })
+        finish(500, { success: false, error: err.message })
       })
 
-      child.on('close', (code) => {
+      child.on('close', async (code) => {
+        if (settled) return
         if (code !== 0) {
           audit('spawn.failed', { format: normalizedFormat, goal, code }, req)
-          return res.status(500).json({
+          return finish(500, {
             success: false,
             error: `Orchestrator exited with code ${code}`,
             output: stdout + stderr,
@@ -102,28 +186,17 @@ function createRunRoutes({ config, auth, runsStore, jobQueue, vectorIndex }) {
 
         audit('spawn.complete', { format: normalizedFormat, goal }, req)
         config.recordSpawn(goal, 'std-agent', 0, req.workspace?.id || null)
+        const outputPath = parseOutputPath(stdout + stderr)
+        const workspaceId = req.workspace?.id || null
+        const matchedRun = resolveRunFromOutputPath({
+          runsStore,
+          outputPath,
+          workspaceId,
+        })
+        const runOutput = await loadRunOutput(matchedRun, req.workspace, maxOutputChars)
+        const output = runOutput ?? extractFlightPlanFromLogs(stdout)
 
-        // Extract structured metadata emitted by the orchestrator
-        let performance = null
-        let cleanOutput = stdout
-        const metaSentinel = '___CORTEX_META___'
-        const metaIndex = stdout.lastIndexOf(metaSentinel)
-        if (metaIndex !== -1) {
-          const metaLine = stdout.substring(metaIndex + metaSentinel.length).split('\n')[0]
-          cleanOutput = stdout.substring(0, metaIndex).trimEnd()
-          try {
-            const meta = JSON.parse(metaLine)
-            performance = meta.performance || null
-          } catch (_e) {
-            // non-critical: continue without structured metadata
-          }
-        }
-
-        const response = { success: true, output: cleanOutput }
-        if (performance) {
-          response.performance = performance
-        }
-        res.json(response)
+        finish(200, { success: true, output, run: matchedRun })
       })
     }
   )

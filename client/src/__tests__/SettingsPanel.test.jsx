@@ -1,4 +1,3 @@
-/* global beforeEach, describe, expect, it, vi */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SettingsPanel } from '../views/SettingsPanel'
 

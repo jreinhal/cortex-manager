@@ -194,7 +194,7 @@ function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }) {
         setItems(data.items || []);
         setParentPath(data.parent);
       }
-    } catch (e) {
+    } catch {
       setError('Failed to browse directory. Check permissions or try a different path.');
     }
     setLoading(false);
@@ -387,7 +387,7 @@ function SetupWizard({ onComplete, defaultPath }) {
       });
       const data = await res.json();
       setValidation(data);
-    } catch (e) {
+    } catch {
       setValidation({ valid: false, errors: ['Unable to validate path. Will attempt to continue anyway.'] });
     }
   };
@@ -413,7 +413,7 @@ function SetupWizard({ onComplete, defaultPath }) {
         setError(data.error || 'Setup failed. Check the path and try again.');
         reposRootInputRef.current?.focus();
       }
-    } catch (e) {
+    } catch {
       setError('Failed to connect to server. Start the CORTEX backend and try again.');
       reposRootInputRef.current?.focus();
     }
@@ -1433,7 +1433,7 @@ function OrchestratorView({
       await navigator.clipboard.writeText(result);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       /* Fallback for non-secure contexts */
       const textarea = document.createElement('textarea');
       textarea.value = result;
@@ -2025,7 +2025,7 @@ function HomeView({
   datasets,
   evaluations,
   savedPrompts,
-  sessions,
+  _sessions,
   onNavigate,
   onOpenChecklist,
   appConfig,
@@ -3848,7 +3848,7 @@ function App() {
       } else {
         setAuthError(data?.error || 'Login failed.');
       }
-    } catch (e) {
+    } catch {
       setAuthError('Login failed. Check server connectivity.');
     }
     setAuthLoading(false);
@@ -3871,7 +3871,7 @@ function App() {
       } else {
         setAuthError(data?.error || 'Bootstrap failed.');
       }
-    } catch (e) {
+    } catch {
       setAuthError('Bootstrap failed. Check server connectivity.');
     }
     setAuthLoading(false);
@@ -4557,7 +4557,7 @@ function App() {
       pushRepoNotice(data.output || 'Scan complete.', 'success');
       fetchData();
       fetchCategorySizes();
-    } catch (e) {
+    } catch {
       addLog("Scan failed. Check the server and try again.");
       pushRepoNotice('Scan failed. Check the server and try again.', 'error');
     }
@@ -4613,7 +4613,7 @@ function App() {
         shouldRefresh = true;
         fetchCategorySizes();
       }
-    } catch (e) {
+    } catch {
       addLog("Add failed. Check the URL and try again.");
       pushRepoNotice('Add failed. Check the URL and try again.', 'error');
     }
@@ -5186,7 +5186,7 @@ function App() {
                     <div className="text-sm text-slate-500 py-4">Initializing Knowledge Base…</div>
                   ) : (
                     <div className="flex flex-wrap items-center gap-6">
-                      {categories.map((cat, i) => {
+                      {categories.map((cat) => {
                         const sizeBytes = categorySizes[cat.toLowerCase()] ?? 0;
                         const testKey = cat.toLowerCase();
                         const count = categorized[cat] ? categorized[cat].length : 0;

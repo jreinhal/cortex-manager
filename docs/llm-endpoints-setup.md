@@ -62,4 +62,4 @@ Remote endpoints are disabled by default. To enable them:
 On Windows, the decision matrix assumes local model artifacts live on a dedicated drive (example `C:\Models`). Set `LLM_MODEL_DIR` to that path or update the model directory in Settings.
 
 ## Screenshot
-![Settings LLM configuration](user-manual/screenshots/settings.png)
+![Settings LLM configuration](screenshots/settings.png)

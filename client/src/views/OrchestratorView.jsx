@@ -435,7 +435,7 @@ export function OrchestratorView({
       await navigator.clipboard.writeText(result);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       /* Fallback for non-secure contexts */
       const textarea = document.createElement('textarea');
       textarea.value = result;

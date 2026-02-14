@@ -1366,11 +1366,20 @@ function OrchestratorView({
     }
 
     if (spawnOutcome?.queued) {
-      setSpawnSteps((prev) => prev.map((step) => (
-        step.key === 'compose'
-          ? { ...step, detail: 'Queued in Jobs. Open Jobs to track progress.' }
-          : step
-      )));
+      const now = Date.now();
+      setSpawnSteps((prev) => prev.map((step) => {
+        const startedAt = step.startedAt || now;
+        return {
+          ...step,
+          startedAt,
+          done: true,
+          error: false,
+          durationMs: step.durationMs ?? Math.max(0, now - startedAt),
+          detail: step.key === 'compose'
+            ? 'Queued in Jobs. Open Jobs to track progress.'
+            : step.detail
+        };
+      }));
       activeSpawnStartedAtRef.current = 0;
       return;
     }

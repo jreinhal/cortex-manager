@@ -26,16 +26,23 @@ function getSizeCache(reposRoot) {
  */
 function gitExec(args, cwd = null, options = {}) {
   try {
-    const result = execSync(`git ${args}`, {
+    const execOptions = {
       cwd: cwd || process.cwd(),
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
       encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: options.timeout || 120000
-    });
+      stdio: ['pipe', 'pipe', 'pipe']
+    };
+    if (Number.isFinite(options.timeout) && options.timeout > 0) {
+      execOptions.timeout = options.timeout;
+    }
+    const result = execSync(`git ${args}`, execOptions);
     return { success: true, output: result.trim() };
   } catch (e) {
-    const isTimeout = e.killed || e.signal === 'SIGTERM';
+    const isTimeout =
+      e?.code === 'ETIMEDOUT' ||
+      e?.killed === true ||
+      e?.signal === 'SIGTERM' ||
+      String(e?.message || '').toLowerCase().includes('timed out');
     return {
       success: false,
       error: isTimeout ? 'Operation timed out. Check the URL and your network connection.' : e.message,

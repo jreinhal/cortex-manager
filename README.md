@@ -80,7 +80,7 @@ Built with React, Tailwind CSS, and Framer Motion, featuring:
 ![Audit Trail](docs/screenshots/audit-trail.png)
 ![Settings](docs/screenshots/settings.png)
 
-To refresh screenshots: `npm run e2e:edge -- tests/e2e/screenshots.spec.js`
+To run Edge E2E coverage: `npm run e2e:edge`
 
 ### ✅ **Marketability Proof (Demo Report)**
 Generate a live report from the running system (repos, scans, spawns, evaluations):

@@ -62,6 +62,31 @@ We decouple **Data** (your local repositories) from **Intelligence** (the LLM), 
 
 ---
 
+## February 14, 2026 Product Update
+
+- Added tabbed Information Architecture in **Settings** (`General`, `Security`, `Workspaces`, `Processing`, `Observability`).
+- Added actionable empty states:
+  - **Library** now includes direct actions to open Agent Factory and Knowledge Base.
+  - **Evaluations** now includes direct actions to open Runs and Agent Factory.
+- Refreshed all primary UI screenshots in `docs/screenshots/` from the live app.
+
+### Reference Root Layout (Verified)
+
+Based on the active reference root (`D:\Projects\reference-repos`), this structure is recommended:
+
+```text
+reference-repos/
+  agents/
+  skills/
+  knowledge/
+  tools/
+  benchmarks/   (optional, for benchmark/training-style assets)
+```
+
+`training/` is optional. If you do not use a dedicated `training/` folder, keep training and benchmark assets in `benchmarks/` or `knowledge/`.
+
+---
+
 ## Key Features
 
 ### ðŸ­ **Agent Factory**

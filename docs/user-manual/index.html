@@ -261,7 +261,7 @@
     <div class="header-row">
       <div>
         <h1>CORTEX User Manual</h1>
-        <p class="muted">Version 1.0.0 | Last Updated: February 2026</p>
+        <p class="muted">Version 1.0.0 | Last Updated: February 14, 2026 (Phase 4 refresh)</p>
       </div>
     </div>
   </header>
@@ -561,6 +561,13 @@ git pull</code></pre>
         <li>Import to upload a previously exported dataset.</li>
       </ul>
 
+      <h3>Empty-State Shortcuts</h3>
+      <ul>
+        <li>If no datasets exist, use <strong>Open Agent Factory</strong> directly from the empty state.</li>
+        <li>If no evaluations exist, use <strong>Open Runs</strong> directly from the empty state.</li>
+        <li>When a response evaluation is selected and there are no runs, CORTEX shows an inline warning with a direct <strong>Open Agent Factory</strong> action.</li>
+      </ul>
+
       <h3>Score a Run</h3>
       <ol>
         <li>Select a dataset and a recent run.</li>
@@ -615,6 +622,12 @@ git pull</code></pre>
         <li>Review tools registered in the tools folder.</li>
       </ul>
 
+      <h3>Empty-State Shortcuts</h3>
+      <ul>
+        <li>Saved Prompts empty state includes <strong>Open Agent Factory</strong>.</li>
+        <li>Agent Templates and Tools &amp; Utilities empty states include <strong>Open Knowledge Base</strong>.</li>
+      </ul>
+
       <figure>
         <img src="screenshots/library.png" alt="Library" />
         <figcaption>Library view.</figcaption>
@@ -624,6 +637,14 @@ git pull</code></pre>
     <section id="workspaces">
       <h2>Workspaces</h2>
       <p>Workspaces isolate repositories, runs, evaluations, and audit trails per team or customer.</p>
+      <h3>Reference Root Layout</h3>
+      <pre><code>reference-repos/
+  agents/
+  skills/
+  knowledge/
+  tools/
+  benchmarks/   (optional)</code></pre>
+      <p>If you do not use a dedicated <code>training/</code> folder, store training and benchmark assets in <code>benchmarks/</code> or <code>knowledge/</code>.</p>
       <h3>Create a Workspace</h3>
       <ol>
         <li>Open Settings and select Workspaces.</li>
@@ -672,6 +693,7 @@ git pull</code></pre>
     <section id="settings">
       <h2>Settings</h2>
       <p>Configure repository roots, authentication, observability alerts, and workspace settings.</p>
+      <p>Settings is organized into tabs: <code>General</code>, <code>Security</code>, <code>Workspaces</code>, <code>Processing</code>, and <code>Observability</code>.</p>
       <figure>
         <img src="screenshots/settings.png" alt="Settings" />
         <figcaption>Settings view.</figcaption>

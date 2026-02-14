@@ -1,7 +1,7 @@
 ﻿# CORTEX User Manual
 
 **Version 1.0.0**  
-**Last Updated: February 14, 2026**
+**Last Updated: February 14, 2026 (Phase 4 refresh)**
 
 ---
 
@@ -144,7 +144,7 @@ Open the Knowledge Base view. Your new repository should appear in the appropria
 
 ## UI Screenshot Gallery
 
-These screenshots were captured from a live local CORTEX instance on **February 14, 2026**.
+These screenshots were captured from a live local CORTEX instance on **February 14, 2026** after the Settings IA and onboarding CTA updates.
 
 ### Command Center
 ![Command Center](docs/screenshots/command-center.png)
@@ -182,18 +182,21 @@ These screenshots were captured from a live local CORTEX instance on **February 
 
 ### Navigation
 
-The sidebar contains the primary workspace areas:
+The sidebar is grouped into:
 
-1. **ðŸ  Command Center**: Overview of runs, evaluations, and knowledge coverage
-2. **ðŸ­ Agent Factory**: Spawn specialized AI agents
-3. **ðŸ§­ Runs**: Trace explorer with decision matrices and performance signals
-4. **ðŸ§µ Jobs**: Background queue monitoring
-5. **ðŸ§ª Evaluations**: Dataset management and run scoring
-6. **ðŸ“¦ Library**: Saved prompts, agent templates, and tools
-7. **ðŸ“š Knowledge Base**: Manage reference repositories
-8. **ðŸ§¾ Audit Trail**: Compliance events and security logs
-9. **ðŸ“œ Logs**: Real-time operation logs
-10. **âš™ï¸ Settings**: Configuration options
+**Core Workflow**
+1. **Command Center**: Overview of runs, evaluations, and knowledge coverage
+2. **Agent Factory**: Spawn specialized AI agents
+3. **Knowledge Base**: Manage reference repositories
+4. **Runs**: Trace explorer with decision matrices and performance signals
+5. **Library**: Saved prompts, agent templates, and tools
+
+**Operations**
+1. **Jobs**: Background queue monitoring
+2. **Evaluations**: Dataset management and run scoring
+3. **System Logs**: Real-time operation logs
+4. **Audit Trail**: Compliance events and security logs
+5. **Settings**: Configuration options
 
 ### Command Center Cards
 
@@ -387,6 +390,11 @@ The Job Queue keeps long-running tasks responsive:
 
 Evaluations let you score runs against curated datasets.
 
+### Empty-State Shortcuts
+- If no datasets exist yet, use **Open Agent Factory** to generate a run context first.
+- If no evaluations exist yet, use **Open Runs** to pick candidate runs before scoring.
+- When response evaluation is selected and no runs are available, CORTEX shows an inline warning with a direct **Open Agent Factory** action.
+
 ### Create a Dataset
 1. Go to **Evaluations**.
 2. Name a dataset and add prompt/expected outcome pairs (use `regex:` or switch the type to Regex).
@@ -420,6 +428,11 @@ Evaluations let you score runs against curated datasets.
 
 The Library keeps reusable assets in one place.
 
+### Empty-State Shortcuts
+- **Saved Prompts** empty state includes **Open Agent Factory**.
+- **Agent Templates** and **Tools & Utilities** empty states include **Open Knowledge Base**.
+- These shortcuts are designed to reduce dead ends during first-time setup.
+
 ### Saved Prompts
 - Save prompts from Agent Factory.
 - Reuse them directly from the Library.
@@ -433,6 +446,20 @@ The Library keeps reusable assets in one place.
 ## Workspaces
 
 Workspaces let you isolate repositories, runs, evaluations, and audit trails per team or customer.
+
+### Reference Root Layout
+For most teams, use this reference root structure:
+
+```text
+reference-repos/
+  agents/
+  skills/
+  knowledge/
+  tools/
+  benchmarks/   (optional)
+```
+
+If you do not maintain a dedicated `training/` folder, keep training and benchmark assets in `benchmarks/` or `knowledge/`.
 
 ### Create a Workspace
 1. Open **Settings -> Workspaces**.
@@ -463,6 +490,14 @@ The Audit Trail records securityâ€‘relevant actions (spawns, evaluations, c
 ---
 
 ## Security & Access
+
+### Settings Tabs
+Settings are organized into tabs:
+- `General`
+- `Security`
+- `Workspaces`
+- `Processing`
+- `Observability`
 
 ### Enable Authentication
 1. Open **Settings**.

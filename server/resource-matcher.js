@@ -200,6 +200,7 @@ const HYBRID_DEFAULT = {
 const DOC_EXTENSIONS = ['.md', '.mdx', '.txt', '.rst', '.adoc', '.org', '.markdown'];
 const DATA_EXTENSIONS = [...DOC_EXTENSIONS, '.json', '.yaml', '.yml'];
 const TOOL_EXTENSIONS = [...DATA_EXTENSIONS, '.js', '.ts', '.py', '.sh'];
+const RESOURCE_INDEX_CACHE = new Map();
 
 /**
  * Walk directory recursively
@@ -832,45 +833,97 @@ function applyRagFusion(variantLists, config) {
   return { used: true, items };
 }
 
+function getCacheKey(reposRoot, category) {
+  return `${path.resolve(reposRoot)}::${category}`;
+}
+
+function getCachedCategoryIndex(reposRoot, category) {
+  const key = getCacheKey(reposRoot, category);
+  if (!RESOURCE_INDEX_CACHE.has(key)) {
+    RESOURCE_INDEX_CACHE.set(key, { entries: new Map() });
+  }
+  return RESOURCE_INDEX_CACHE.get(key);
+}
+
+function getFileFingerprint(stat) {
+  return `${stat.size}:${Math.round(stat.mtimeMs)}`;
+}
+
+function buildResourceEntry(filePath, reposRoot, cat, stat) {
+  let content = '';
+  try {
+    const buffer = fs.readFileSync(filePath);
+    if (buffer.length < 50000) {
+      content = buffer.toString('utf8').substring(0, 10000);
+    }
+  } catch {
+    // Keep empty content for unreadable files; preserve file-level metadata.
+  }
+
+  const fileName = path.basename(filePath);
+  const relativePath = path.relative(reposRoot, filePath);
+  const pathTokens = extractPathTokens(relativePath);
+  const fileNameTokens = extractPathTokens(fileName);
+  const pathSignals = analyzePathSignals(relativePath, fileName);
+
+  const keywords = extractKeywords(content, fileName);
+  const mergedKeywords = [...new Set([...keywords, ...pathTokens])];
+
+  return {
+    filePath,
+    relativePath,
+    fileName,
+    category: cat,
+    techStack: detectFileTechStack(filePath, content),
+    domains: detectFileDomains(filePath, content),
+    keywords: mergedKeywords,
+    pathTokens,
+    fileNameTokens,
+    pathSignals,
+    isInstruction: pathSignals.isAgents,
+    summary: extractSummary(content),
+    fileSize: stat.size
+  };
+}
+
 function buildResourceIndex(files, reposRoot, cat, semanticLookup) {
-  return files.map((filePath) => {
-    let content = '';
+  const cache = getCachedCategoryIndex(reposRoot, cat);
+  const seen = new Set();
+  const resources = [];
+
+  files.forEach((filePath) => {
+    seen.add(filePath);
+    let stat;
     try {
-      const buffer = fs.readFileSync(filePath);
-      if (buffer.length < 50000) {
-        content = buffer.toString('utf8').substring(0, 10000);
-      }
+      stat = fs.statSync(filePath);
     } catch {
-      // Skip unreadable files
+      cache.entries.delete(filePath);
+      return;
+    }
+    if (!stat.isFile()) return;
+
+    const fingerprint = getFileFingerprint(stat);
+    const cached = cache.entries.get(filePath);
+    let base = cached?.resource;
+
+    if (!cached || cached.fingerprint !== fingerprint || !base) {
+      base = buildResourceEntry(filePath, reposRoot, cat, stat);
+      cache.entries.set(filePath, { fingerprint, resource: base });
     }
 
-    const stat = fs.statSync(filePath);
-    const fileName = path.basename(filePath);
-    const relativePath = path.relative(reposRoot, filePath);
-    const pathTokens = extractPathTokens(relativePath);
-    const fileNameTokens = extractPathTokens(fileName);
-    const pathSignals = analyzePathSignals(relativePath, fileName);
-
-    const keywords = extractKeywords(content, fileName);
-    const mergedKeywords = [...new Set([...keywords, ...pathTokens])];
-
-    return {
-      filePath,
-      relativePath,
-      fileName,
-      category: cat,
-      techStack: detectFileTechStack(filePath, content),
-      domains: detectFileDomains(filePath, content),
-      keywords: mergedKeywords,
-      pathTokens,
-      fileNameTokens,
-      pathSignals,
-      isInstruction: pathSignals.isAgents,
-      summary: extractSummary(content),
-      fileSize: stat.size,
+    resources.push({
+      ...base,
       semanticScoreOverride: semanticLookup ? (semanticLookup.get(filePath) || null) : null
-    };
+    });
   });
+
+  for (const cachedPath of cache.entries.keys()) {
+    if (!seen.has(cachedPath)) {
+      cache.entries.delete(cachedPath);
+    }
+  }
+
+  return resources;
 }
 
 function scoreResourcesForGoal(resources, analyzedGoal, techContext, options) {
